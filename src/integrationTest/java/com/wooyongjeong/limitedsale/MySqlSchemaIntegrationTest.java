@@ -35,18 +35,20 @@ class MySqlSchemaIntegrationTest {
         sql("CREATE USER 'pg_user'@'%' IDENTIFIED BY 'test_password_pg'");
         sql("GRANT ALL ON pg.* TO 'pg_user'@'%'");
         sales = Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
-            .locations("filesystem:src/main/resources/db/migration").load();
+            .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration").load();
         pg = Flyway.configure()
             .dataSource(db.getJdbcUrl().replace("/sales", "/pg"), "pg_user", "test_password_pg")
             .locations("filesystem:mock-pg/src/main/resources/db/migration").load();
         Flyway.configure().dataSource(db.getJdbcUrl(), db.getUsername(), db.getPassword())
-            .locations("filesystem:src/main/resources/db/migration").target("1").load().migrate();
+            .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration").target("1").load().migrate();
         Flyway.configure().dataSource(db.getJdbcUrl().replace("/sales", "/pg"), "pg_user", "test_password_pg")
             .locations("filesystem:mock-pg/src/main/resources/db/migration").target("1").load().migrate();
         sql("""
             INSERT INTO sales.members(email, password_hash, role, created_at, updated_at) VALUES
-            ('test@example.com', 'hash', 'USER', NOW(6), NOW(6))
+            ('test@example.com', 'hash', 'USER', '2020-01-02 03:04:05.123456', '2021-02-03 04:05:06.234567')
             """);
+        sql("INSERT INTO sales.members(id, email, password_hash, role, created_at, updated_at) "
+            + "VALUES (-9223372036854775808, 'legacy@example.com', 'legacyhash', 'ADMIN', NOW(6), NOW(6))");
         sql("""
             INSERT INTO sales.products(name, description, base_price, created_at, updated_at) VALUES
             ('product', '', 1000000000, NOW(6), NOW(6))
@@ -78,10 +80,46 @@ class MySqlSchemaIntegrationTest {
             VALUES (UNHEX('21223344556677889900AABBCCDDEEFF'), 1000000000000000, 'PROCESSING',
             'SUCCESS', NOW(6), NOW(6))
             """);
-        assertThat(sales.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(sales.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(pg.migrate().migrationsExecuted).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
+        assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "
+            + "WHERE m.id=1 AND m.email='test@example.com' AND m.password_hash='hash' AND m.role='USER' "
+            + "AND m.created_at='2020-01-02 03:04:05.123456' "
+            + "AND m.updated_at='2021-02-03 04:05:06.234567'")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
+        assertThat(count("SELECT COUNT(DISTINCT nickname_key) FROM sales.members WHERE nickname IS NOT NULL "
+            + "AND CHAR_LENGTH(nickname) BETWEEN 1 AND 12")).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM sales.members WHERE email='legacy@example.com' "
+            + "AND password_hash='legacyhash' AND role='ADMIN'")).isEqualTo(1);
+        sql("DELETE FROM sales.members WHERE email='legacy@example.com'");
+    }
+
+    @Test
+    void nicknameMigrationHandlesBothSignedLongExtremes() throws Exception {
+        sql("CREATE DATABASE nickname_boundaries CHARACTER SET utf8mb4");
+        try {
+            String url = db.getJdbcUrl().replace("/sales", "/nickname_boundaries");
+            Flyway.configure().dataSource(url, "root", db.getPassword())
+                .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration")
+                .target("1").load().migrate();
+            sql("INSERT INTO nickname_boundaries.members(id, email, password_hash, role, created_at, updated_at) "
+                + "VALUES (-9223372036854775808, 'min@example.com', 'minhash', 'USER', NOW(6), NOW(6)), "
+                + "(9223372036854775807, 'max@example.com', 'maxhash', 'ADMIN', NOW(6), NOW(6))");
+            Flyway.configure().dataSource(url, "root", db.getPassword())
+                .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration")
+                .load().migrate();
+            assertThat(count("SELECT COUNT(DISTINCT nickname_key) FROM nickname_boundaries.members "
+                + "WHERE CHAR_LENGTH(nickname) BETWEEN 1 AND 12 "
+                + "AND nickname = nickname_key AND nickname REGEXP '^[a-z0-9가나다라마]+$'")).isEqualTo(2);
+            assertThat(count("SELECT COUNT(*) FROM nickname_boundaries.members WHERE "
+                + "(id = -9223372036854775808 AND email = 'min@example.com' "
+                + "AND password_hash = 'minhash' AND role = 'USER') OR "
+                + "(id = 9223372036854775807 AND email = 'max@example.com' "
+                + "AND password_hash = 'maxhash' AND role = 'ADMIN')")).isEqualTo(2);
+        } finally {
+            sql("DROP DATABASE nickname_boundaries");
+        }
     }
     @AfterAll
     static void stop() throws Exception {
@@ -95,15 +133,15 @@ class MySqlSchemaIntegrationTest {
         assertThat(pg.migrate().migrationsExecuted).isZero();
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(3);
         assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(2);
     }
     @Test
     void rejectsUniqueForeignKeyAndCheckViolations() {
         assertSqlErrors(1062, List.of(
             """
-                INSERT INTO sales.members(email, password_hash, role, created_at, updated_at) VALUES
-                ('TEST@example.com', 'h', 'USER', NOW(6), NOW(6))
+                INSERT INTO sales.members(email, password_hash, nickname, nickname_key, role, created_at, updated_at) VALUES
+                ('TEST@example.com', 'h', 'Second', 'second', 'USER', NOW(6), NOW(6))
                 """,
             """
                 INSERT INTO sales.sale_buyer_quantities(sale_id, member_id, created_at, updated_at) VALUES (1,
@@ -305,8 +343,8 @@ class MySqlSchemaIntegrationTest {
     @Test
     void differentMembersMayUseTheSameRequestKey() throws SQLException {
         sql("""
-            INSERT INTO sales.members(email, password_hash, role, created_at, updated_at)
-            VALUES ('second@example.com', 'hash', 'USER', NOW(6), NOW(6))
+            INSERT INTO sales.members(email, password_hash, nickname, nickname_key, role, created_at, updated_at)
+            VALUES ('second@example.com', 'hash', 'Second', 'second', 'USER', NOW(6), NOW(6))
             """);
         try {
             sql("""
