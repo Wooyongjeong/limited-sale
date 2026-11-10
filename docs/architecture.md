@@ -66,7 +66,7 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 
 기본 패키지는 `com.wooyongjeong.limitedsale`로 확정한다. 단계 표시는 도입 시점이며 실제 디렉터리 이름에 포함하지 않는다.
 
-아래 트리는 향후 구조를 포함한다. 현재 0단계에는 진입점과 도메인별 `package-info.java`, 프로파일 설정과 최소 테스트만 있으며 업무 인터페이스·구현은 아직 없다.
+아래 트리는 향후 구조를 포함한다. 현재 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했다. 업무 인터페이스·유스케이스는 아직 없다.
 
 ```text
 src/main/java/com/wooyongjeong/limitedsale/
@@ -139,6 +139,7 @@ docs/
     00-project-bootstrap.md
     01-mysql-order.md
     01-contracts.md
+    01-2-mysql-schema-and-boundaries.md
     02-redis.md
     03-kafka.md
     04-reliability.md
@@ -187,7 +188,7 @@ flowchart LR
 - 핵심 의존 방향은 `order → sale → product`, `order → payment`다. payment가 order 구현을 역호출하지 않으며, order의 복구 작업이 payment.api 결과를 조회해 주문·수량을 마무리한다. `sale → product` 호출은 이벤트 생성에 사용하며 주문 경로에서는 고정된 판매 정보를 사용한다.
 - 각 `domain`은 다른 도메인, HTTP, Redis·Kafka 클라이언트, 저장소 구현에 의존하지 않는다.
 - 저장소 계약은 소유 도메인의 `domain`, 구현과 분리한 JPA 영속 엔티티는 `infrastructure.persistence`에 둔다. READ COMMITTED와 명시적 행 잠금을 기본안으로 하고 상세 인덱스·매핑은 1-2에서 재점검한다.
-- 도메인 간 SQL 조인과 다른 도메인 테이블의 직접 쓰기는 금지한다. 물리적인 외래 키는 스키마 설계에서 별도로 판단한다.
+- 도메인 간 SQL 조인과 다른 도메인 테이블의 직접 쓰기는 금지한다. 판매 스키마 내 물리 FK는 RESTRICT로 적용하되 Java 도메인 간에는 ID만 보관한다. 별도 PG 스키마로 FK를 연결하지 않는다.
 - 공개 구현은 Spring DI로 연결한다. 소비자는 구현 클래스를 직접 주입하지 않는다.
 
 ## 1단계 주문·결제 흐름과 트랜잭션
@@ -213,7 +214,7 @@ flowchart LR
 
 Java 21, Spring Boot 3.5.16, Gradle Wrapper 8.14.3과 MySQL 8.4.7의 로컬 Compose 설정을 사용한다. Spring Data JPA와 Flyway를 준비하되 업무 엔티티나 마이그레이션은 없다. `product`, `sale`, `order`, `common` 패키지는 책임만 표시한다. 기본 `local` 프로파일과 Actuator health를 구성하며, 지표 노출과 전체 모니터링은 1-9에서 구축한다.
 
-H2 기반 테스트는 컨텍스트와 HTTP health만 확인한다. 실제 MySQL 연결·Flyway 초기화·local 프로파일 health 검증은 별도로 필요하며, 현재 상태와 다음 작업은 [기획 문서의 0단계](project-plan.md#0단계-프로젝트-뼈대)를 따른다. 실행 명령은 [README](../README.md)에 둔다.
+1-2 워커가 실제 MySQL 연결·Flyway 초기화·local health를 확인했고 Testcontainers 검사를 추가했다. 주 에이전트 검증은 대기 중이다. 실행 명령은 [README](../README.md)에 둔다.
 
 ## 단계별 구조 변화
 
@@ -259,6 +260,8 @@ Kafka는 `order`의 요청 접수와 주문 처리 사이에 둔다. `sale`과 `
 | 도메인별 서비스·DB 분리 | 독립 배포와 확장 | 재고·주문 간 분산 정합성 비용이 초기 목표에 비해 큼 |
 
 현재 설계는 판매와 주문이 같은 DB 트랜잭션에 참여한다는 전제를 가진다. 인터페이스만으로 독립 배포가 가능해지지는 않는다. 서비스나 DB를 분리하면 수량 예약·확정·복구 계약부터 다시 설계한다.
+
+1-2에서 확정한 UUID BINARY(16), 문자열 enum+CHECK, FK·RESTRICT와 주문 중심 복구 예약의 상세는 [스키마 설계](stages/01-2-mysql-schema-and-boundaries.md)를 따른다.
 
 ## 구현 소단계에서 점검할 상세
 

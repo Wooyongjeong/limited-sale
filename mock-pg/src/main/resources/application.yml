@@ -1,0 +1,22 @@
+server:
+  port: ${MOCK_PG_PORT:8081}
+spring:
+  application:
+    name: mock-pg
+  datasource:
+    url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/${MOCK_PG_DATABASE:mock_pg}?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+    username: ${MOCK_PG_USER:mock_pg}
+    password: ${MOCK_PG_PASSWORD}
+    hikari:
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
