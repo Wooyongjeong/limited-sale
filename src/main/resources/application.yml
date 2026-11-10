@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: limited-sale
+  profiles:
+    default: local
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

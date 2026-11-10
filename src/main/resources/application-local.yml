@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/${MYSQL_DATABASE:limited_sale}
+    username: ${MYSQL_USER:limited_sale}
+    password: ${MYSQL_PASSWORD}
