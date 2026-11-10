@@ -1,10 +1,16 @@
 # 한정 수량 제품 판매 서비스
 
-1-3 회원가입·닉네임·비밀번호 해시와 관리자 초기화 명령을 구현했다. 로그인·Redis 세션은 1-4, 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증을 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+
+## 세션 인증
+
+`GET /api/v1/csrf` 응답의 `data.token`을 변경 요청의 `X-CSRF-TOKEN` 헤더에 넣고 세션 쿠키를 함께 보낸다. 회원가입과 `POST /api/v1/sessions` 로그인 전에도 토큰을 조회한다. 로그인 또는 `DELETE /api/v1/sessions/current` 성공 후 다음 변경 요청 전에 토큰을 다시 조회한다. `GET /api/v1/members/me`는 현재 회원의 이메일·닉네임·역할을 반환한다.
+
+로그인 실패는 정규화 이메일과 직접 연결 IP별로 첫 실패부터 5분간 집계한다. 다섯 번째 실패부터 429이며 구간 만료 전 올바른 비밀번호도 차단된다. 제한 전에 성공하면 해당 조합의 기록을 지운다. 기본 유휴 세션 시간은 30분이며 `SPRING_SESSION_TIMEOUT`, 실패 구간은 `LIMITED_SALE_AUTH_FAILURE_WINDOW`, 실패 횟수는 양의 정수인 `LIMITED_SALE_AUTH_FAILURE_LIMIT`으로 조정할 수 있다. Redis 주소는 `REDIS_HOST`, `REDIS_PORT`로 설정한다. 쿠키는 HttpOnly·SameSite=Lax이며 HTTPS 요청에는 Secure가 적용된다. Redis 장애 시 인증과 CSRF 처리는 503으로 실패하고 복구 뒤 재시도한다.
 
 ## 준비와 실행
 
-Java 21, Docker Compose가 필요하다. Spring Boot 3.5.16, Gradle 8.14.3, MySQL 8.4.7을 사용한다. 시작 전 3306, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
+Java 21, Docker Compose가 필요하다. Spring Boot 3.5.16, Gradle 8.14.3, MySQL 8.4.7, Redis 7.4를 사용한다. 시작 전 3306, 6379, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
 
 Apple Silicon macOS에서 Homebrew로 설치한 Java 21은 다음과 같이 현재 셸에서 선택하고 버전을 확인한다. 다른 환경에서는 설치한 Java 21의 경로로 `JAVA_HOME`을 지정한다. 이 설정은 전역 Java 기본값을 변경하지 않는다.
 

@@ -10,6 +10,8 @@ import com.wooyongjeong.limitedsale.member.infrastructure.persistence.JdbcMember
 import com.wooyongjeong.limitedsale.member.presentation.MemberController;
 import com.wooyongjeong.limitedsale.member.presentation.MemberExceptionHandler;
 import jakarta.validation.Validator;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,10 +40,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -52,8 +56,11 @@ class MemberIntegrationTest {
     private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
 
+    private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
+
     static {
         DB.start();
+        REDIS.start();
     }
 
     @Autowired
@@ -79,6 +86,8 @@ class MemberIntegrationTest {
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.flyway.locations",
             () -> "filesystem:src/main/resources/db/migration,classpath:db/nickmigration");
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
         registry.add("spring.datasource.url", DB::getJdbcUrl);
         registry.add("spring.datasource.username", DB::getUsername);
         registry.add("spring.datasource.password", DB::getPassword);
@@ -87,6 +96,7 @@ class MemberIntegrationTest {
     @AfterAll
     static void stop() {
         DB.stop();
+        REDIS.stop();
     }
 
     @BeforeEach
@@ -96,7 +106,7 @@ class MemberIntegrationTest {
 
     @Test
     void registrationHttpAndHash() throws Exception {
-        mvc.perform(post("/api/v1/members").contentType("application/json")
+        mvc.perform(post("/api/v1/members").with(csrf()).contentType("application/json")
                 .content("{\"email\":\" TEST@example.com \",\"password\":\"password\","
                     + "\"nickname\":\"  가  Name  \",\"role\":\"ADMIN\"}"))
             .andExpect(status().isCreated())
@@ -110,29 +120,35 @@ class MemberIntegrationTest {
         assertThat(hash).startsWith("$argon2id$v=19$m=19456,t=2,p=1$");
         assertThat(new org.springframework.security.crypto.argon2.Argon2PasswordEncoder(16, 32, 1, 19456, 2)
             .matches("password", hash)).isTrue();
-        mvc.perform(post("/api/v1/members").contentType("application/json")
+        mvc.perform(post("/api/v1/members").with(csrf()).contentType("application/json")
                 .content("{\"email\":\"test@example.com\",\"password\":\"password\"}"))
             .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("EMAIL_ALREADY_EXISTS"));
-        mvc.perform(post("/api/v1/members").contentType("application/json")
+        mvc.perform(post("/api/v1/members").with(csrf()).contentType("application/json")
                 .content("{\"email\":\"other@example.com\",\"password\":\"password\",\"nickname\":\"가 name\"}"))
             .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("NICKNAME_ALREADY_EXISTS"));
-        mvc.perform(post("/api/v1/members").contentType("application/json")
+        mvc.perform(post("/api/v1/members").with(csrf()).contentType("application/json")
                 .content("{\"email\":\"broken\",\"password\":\"short\"}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.data[0].field").value("email"));
     }
 
     @Test
     void unsupportedMediaTypesDoNotCreateMembers() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
+        HttpClient client = HttpClient.newBuilder()
+            .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
         URI uri = URI.create("http://localhost:" + port + "/api/v1/members");
-        HttpRequest invalidContent = HttpRequest.newBuilder(uri).header("Content-Type", "text/plain")
+        var tokenResponse = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/csrf"))
+            .GET().build(), HttpResponse.BodyHandlers.ofString());
+        String token = objectMapper.readTree(tokenResponse.body()).path("data").path("token").asText();
+        HttpRequest invalidContent = HttpRequest.newBuilder(uri).header("X-CSRF-TOKEN", token)
+            .header("Content-Type", "text/plain")
             .header("Accept", "application/json").POST(HttpRequest.BodyPublishers.ofString("hello")).build();
         HttpResponse<String> unsupported = client.send(invalidContent, HttpResponse.BodyHandlers.ofString());
         assertThat(unsupported.statusCode()).isEqualTo(415);
         assertThat(objectMapper.readTree(unsupported.body()).get("httpStatus").asInt()).isEqualTo(415);
         assertThat(objectMapper.readTree(unsupported.body()).get("code").asText()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
 
-        HttpRequest invalidAccept = HttpRequest.newBuilder(uri).header("Content-Type", "application/json")
+        HttpRequest invalidAccept = HttpRequest.newBuilder(uri).header("X-CSRF-TOKEN", token)
+            .header("Content-Type", "application/json")
             .header("Accept", "application/xml")
             .POST(HttpRequest.BodyPublishers.ofString("{\"email\":\"test@example.com\",\"password\":\"password\"}"))
             .build();

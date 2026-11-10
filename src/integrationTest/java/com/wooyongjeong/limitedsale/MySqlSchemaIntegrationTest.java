@@ -388,8 +388,10 @@ class MySqlSchemaIntegrationTest {
         String url = db.getJdbcUrl() + "?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true";
         try (var context = new org.springframework.boot.builder.SpringApplicationBuilder(LimitedSaleApplication.class)
                 .web(org.springframework.boot.WebApplicationType.SERVLET)
-                .run("--server.port=0", "--spring.datasource.url=" + url, "--spring.datasource.username=" + db.getUsername(),
-                     "--spring.datasource.password=" + db.getPassword(), "--spring.flyway.enabled=false")) {
+                .run("--server.port=0", "--spring.datasource.url=" + url,
+                     "--spring.datasource.username=" + db.getUsername(),
+                     "--spring.datasource.password=" + db.getPassword(), "--spring.flyway.enabled=false",
+                     "--management.health.redis.enabled=false")) {
             assertHealth(context);
             assertConnectionSettings(context);
             var emf = context.getBean(jakarta.persistence.EntityManagerFactory.class);
@@ -426,7 +428,12 @@ class MySqlSchemaIntegrationTest {
                 .web(org.springframework.boot.WebApplicationType.SERVLET)
                 .run("--server.port=0", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
                      "--spring.datasource.url=" + url, "--spring.datasource.username=pg_user",
-                     "--spring.datasource.password=test_password_pg", "--spring.flyway.enabled=false")) {
+                     "--spring.datasource.password=test_password_pg", "--spring.flyway.enabled=false",
+                     "--management.health.redis.enabled=false",
+                     "--spring.autoconfigure.exclude="
+                         + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
+                         + "org.springframework.boot.actuate.autoconfigure.security.servlet."
+                         + "ManagementWebSecurityAutoConfiguration")) {
             assertHealth(context);
             assertConnectionSettings(context);
             var em = context.getBean(jakarta.persistence.EntityManagerFactory.class).createEntityManager();
