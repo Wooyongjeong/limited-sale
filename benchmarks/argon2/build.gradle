@@ -1,0 +1,19 @@
+plugins {
+    id 'application'
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation platform('org.springframework.boot:spring-boot-dependencies:3.5.16')
+    implementation 'org.springframework.security:spring-security-crypto'
+    implementation 'org.springframework:spring-jcl'
+    // Spring Boot's BOM does not manage Bouncy Castle.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+application { mainClass = 'Argon2Benchmark' }

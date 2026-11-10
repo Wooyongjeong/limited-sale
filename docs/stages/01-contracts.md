@@ -57,7 +57,7 @@ order.application이 sale.api와 payment.api를 호출한다. sale은 이벤트 
 
 | 스키마·테이블 | 주요 데이터와 제약 |
 |---|---|
-| 판매 members | 내부 ID, 정규화 이메일 유니크, 비밀번호 해시, USER/ADMIN |
+| 판매 members | 내부 ID, 정규화 이메일과 닉네임 비교 키 각각 유니크, 닉네임, 비밀번호 해시, USER/ADMIN |
 | 판매 products | 제품 이름·설명·기준 가격 |
 | 판매 sales | 제품 ID·정보 보관, 판매 가격·기간, 중단 여부, 총수량·점유 수량·판매 수량, 사용자 구매 한도 |
 | 판매 sale_buyer_quantities | (sale_id, member_id) 유니크, 사용자 점유·확정 구매 수량 |
@@ -81,7 +81,7 @@ DB 내부 PK는 BIGINT, 외부 주문 ID·결제 키는 UUID를 제안한다. �
 | 대상 | API 초안 | 결과 |
 |---|---|---|
 | CSRF | GET /csrf | 200, CSRF 토큰. 신규 로그인·로그아웃 후 토큰 갱신 처리 |
-| 회원가입 | POST /members | 201, 회원 정보. 비밀번호 해시는 반환하지 않음 |
+| 회원가입 | POST /members | 201, 이메일·닉네임·권한. 내부 ID와 비밀번호 해시는 반환하지 않음 |
 | 로그인·로그아웃 | POST /sessions, DELETE /sessions/current | 200, 로그인 정보 또는 data:null |
 | 내 정보 | GET /members/me | 200, 본인 정보 |
 | 공개 조회 | GET /products, /products/{id}, /sales, /sales/{id} | 200, 목록·상세 |

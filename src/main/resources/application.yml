@@ -3,6 +3,8 @@ spring:
     name: limited-sale
   profiles:
     default: local
+  flyway:
+    locations: classpath:db/migration,classpath:db/nickmigration
   datasource:
     hikari:
       transaction-isolation: TRANSACTION_READ_COMMITTED
