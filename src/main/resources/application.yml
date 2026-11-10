@@ -3,10 +3,15 @@ spring:
     name: limited-sale
   profiles:
     default: local
+  datasource:
+    hikari:
+      transaction-isolation: TRANSACTION_READ_COMMITTED
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
 management:
   endpoints:
     web:

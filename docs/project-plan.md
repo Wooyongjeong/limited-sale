@@ -87,8 +87,8 @@ API 응답은 HTTP 상태 코드, 도메인별 enum 성공·오류 코드, 제�
 
 | 단계 | 문서 | 상태 |
 |---|---|---|
-| 0 | [프로젝트 뼈대](stages/00-project-bootstrap.md) | 구현 완료, 실제 MySQL 검증 대기 |
-| 1 | [MySQL 주문·Mock PG](stages/01-mysql-order.md) | 1-1 확정 완료, 1-2 상세 점검·구현 지시 대기 |
+| 0 | [프로젝트 뼈대](stages/00-project-bootstrap.md) | 구현·실제 MySQL·주 에이전트 독립 검증 완료 |
+| 1 | [MySQL 주문·Mock PG](stages/01-mysql-order.md) | 1-1 확정·1-2 구현 및 독립 검증 완료 |
 | 2 | [Redis](stages/02-redis.md) | 착수 전 |
 | 3 | [Kafka](stages/03-kafka.md) | 착수 전 |
 | 4 | [장애 검증과 정리](stages/04-reliability.md) | 착수 전 |
@@ -111,7 +111,7 @@ API 응답은 HTTP 상태 코드, 도메인별 enum 성공·오류 코드, 제�
 
 완료 기준: 빌드와 최소 컨텍스트 테스트, Compose 설정 검증, 실제 MySQL 연결과 local 프로파일의 health 확인을 모두 통과한다. Docker를 실행할 수 없어 실제 연결을 확인하지 못하면 뼈대 구현과 MySQL 검증 대기를 구분해 기록한다. H2 기반 테스트로 MySQL 연결 검증을 대신하지 않는다.
 
-현재 검증 상태: Java 21 빌드, H2 기반 컨텍스트·HTTP health 테스트와 Compose 설정 검증은 통과했다. 0단계 검증 당시 Docker 데몬이 실행되지 않아 실제 MySQL 연결·Flyway 초기화와 local 프로파일 health는 아직 확인하지 못했다. 해당 검증을 마친 뒤 1단계 구현으로 넘어간다. 실행 방법은 [README](../README.md)를 따른다.
+현재 검증 상태: 1-2 워커가 Java 21 빌드와 실제 MySQL 8.4.7 연결, Flyway 초기화, local health를 확인했다. 주 에이전트가 Java 21 clean build·MySQL·앱 health·구조 검사를 독립 검증해 1-2를 완료했다. 다음 1-3은 별도 정책 점검·구현 지시 후 진행한다. 실행 방법은 [README](../README.md)를 따른다.
 
 ### 1단계: MySQL 기반 주문과 관측
 
@@ -245,4 +245,4 @@ AI 사용 기록에는 작업 목적, 요청 요약, 생성 결과, 본인이 �
 
 [프로젝트 구조와 도메인 경계](architecture.md)에 도메인별 패키지, 공개 인터페이스, 트랜잭션 경계와 단계별 확장 방향을 정리했다.
 
-1-1 기본 기획·정책·기술 계약은 확정했다. 다음 구현 전에는 0단계의 실제 MySQL 연결 검증을 마무리하고 1-2에서 테이블·제약·인덱스·매핑 상세를 점검한다. 구현은 별도 시작 지시를 받은 뒤 진행한다.
+1-1 기본 계약과 1-2 상세 설계를 확정했고, 구현 시작 지시에 따라 워커가 1-2를 구현했다. 주 에이전트가 Java 21 clean build·MySQL·앱 health·구조 검사를 독립 검증해 1-2를 완료했다. 다음 1-3은 별도 정책 점검·구현 지시 후 진행한다.
