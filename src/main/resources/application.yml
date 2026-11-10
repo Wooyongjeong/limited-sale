@@ -3,6 +3,14 @@ spring:
     name: limited-sale
   profiles:
     default: local
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    timeout: 30m
+    redis:
+      flush-mode: immediate
   flyway:
     locations: classpath:db/migration,classpath:db/nickmigration
   datasource:
@@ -19,3 +27,9 @@ management:
     web:
       exposure:
         include: health
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax

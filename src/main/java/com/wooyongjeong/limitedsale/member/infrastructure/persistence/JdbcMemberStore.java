@@ -1,5 +1,7 @@
 package com.wooyongjeong.limitedsale.member.infrastructure.persistence;
 
+import com.wooyongjeong.limitedsale.member.domain.AuthenticationRecord;
+import com.wooyongjeong.limitedsale.member.domain.AuthenticationStore;
 import com.wooyongjeong.limitedsale.member.domain.Member;
 import com.wooyongjeong.limitedsale.member.domain.MemberConflict;
 import com.wooyongjeong.limitedsale.member.domain.MemberInput;
@@ -15,7 +17,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Repository
-public class JdbcMemberStore implements MemberStore {
+public class JdbcMemberStore implements MemberStore, AuthenticationStore {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
 
@@ -30,6 +32,14 @@ public class JdbcMemberStore implements MemberStore {
         return jdbc.query("SELECT email, nickname, role FROM members WHERE email = ?",
             (row, index) -> new Member(row.getString(1), row.getString(2), MemberRole.valueOf(row.getString(3))),
             email).stream().findFirst();
+    }
+
+    @Override
+    public Optional<AuthenticationRecord> findForAuthentication(String email) {
+        return jdbc.query("SELECT id, email, nickname, role, password_hash FROM members WHERE email = ?",
+            (row, index) -> new AuthenticationRecord(row.getLong(1),
+                new Member(row.getString(2), row.getString(3), MemberRole.valueOf(row.getString(4))),
+                row.getString(5)), email).stream().findFirst();
     }
 
     @Override

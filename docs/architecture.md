@@ -66,7 +66,7 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 
 기본 패키지는 `com.wooyongjeong.limitedsale`로 확정한다. 단계 표시는 도입 시점이며 실제 디렉터리 이름에 포함하지 않는다.
 
-아래 트리는 향후 구조를 포함한다. 현재 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했다. 업무 인터페이스·유스케이스는 아직 없다.
+아래 트리는 향후 구조를 포함한다. 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했고, 1-3에서 회원가입, 1-4에서 세션 인증 유스케이스를 구현했다. 제품·판매·주문·결제 업무 유스케이스는 이후 단계 범위다.
 
 ```text
 src/main/java/com/wooyongjeong/limitedsale/
@@ -278,4 +278,10 @@ Kafka는 `order`의 요청 접수와 주문 처리 사이에 둔다. `sale`과 `
 
 ## 1-3 회원가입 구현 경계
 
-회원가입은 `member.presentation`에서 입력과 응답을 변환하고 `member.application`에서 정규화·검증, 트랜잭션 밖 Argon2id 해싱과 닉네임 선택을 조합한다. `member.infrastructure.persistence`는 각 삽입을 새 트랜잭션으로 수행한다. 이메일·닉네임 비교 키의 MySQL 유니크 제약이 동시 충돌을 최종 판정하며, 자동 닉네임 충돌 후 실패 트랜잭션을 종료하고 재시도한다. 별도 관리자 초기화 명령은 같은 서비스를 사용한다. 로그인·세션은 1-4에서 구현한다. [정책과 검증](stages/01-3-member.md).
+회원가입은 `member.presentation`에서 입력과 응답을 변환하고 `member.application`에서 정규화·검증, 트랜잭션 밖 Argon2id 해싱과 닉네임 선택을 조합한다. `member.infrastructure.persistence`는 각 삽입을 새 트랜잭션으로 수행한다. 이메일·닉네임 비교 키의 MySQL 유니크 제약이 동시 충돌을 최종 판정하며, 자동 닉네임 충돌 후 실패 트랜잭션을 종료하고 재시도한다. 별도 관리자 초기화 명령은 같은 서비스를 사용한다. [정책과 검증](stages/01-3-member.md).
+
+## 1-4 세션 인증 구현 경계
+
+`member.application.AuthenticationService`가 회원 조회, 트랜잭션 밖 비밀번호 검증, 로그인 제한 확인과 결과 반영을 조합한다. 저장소·비밀번호 검증·로그인 제한 계약은 `member.domain`이 소유하고 JDBC·Argon2id·Redis 구현은 `member.infrastructure`에 둔다. 로그인 제한은 Redis Lua 연산으로 횟수·최초 만료·차단 판정을 원자적으로 처리한다.
+
+`member.presentation.SessionController`는 로그인·로그아웃·내 정보·CSRF HTTP 변환과 명시적 세션 인증 저장을 맡는다. `member.infrastructure.security`의 보안 설정이 공개·ADMIN·로그인 필수 경로와 CSRF를 구분한다. Spring Session Redis가 두 인스턴스에서 세션을 공유하며 세션에는 내부 회원 ID와 응답용 회원 정보만 저장한다. 해시를 응답·세션에 넣지 않는다. 인증·세션 인프라 장애는 503으로 처리한다. [정책·구현·검증](stages/01-4-session-auth.md).

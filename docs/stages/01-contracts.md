@@ -129,7 +129,7 @@ DB 내부 PK는 BIGINT, 외부 주문 ID·결제 키는 UUID를 제안한다. �
 
 Argon2id는 OWASP 최소 권장값인 메모리 19MiB·반복 2·병렬도 1 이상을 기준으로 설정하고 실제 JDK·자원에서 검증한다. 해시 비용을 줄여 주문 부하 테스트 수치를 높이지 않는다. 로그인·세션 준비와 주문 부하는 분리한다. 참고: [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [Spring PasswordEncoder](https://docs.spring.io/spring-security/reference/6.5/features/authentication/password-storage.html).
 
-쿠키·CSRF·30분 세션 만료와 로그인 제한은 확정 정책을 따른다. 로그인 제한 구간은 이메일+IP 조합의 첫 실패부터 기본 5분으로 두고 이후 실패로 만료를 연장하지 않는 안이다. 신뢰할 프록시를 정하기 전에는 임의의 X-Forwarded-For를 신뢰하지 않는다. 알 수 없는 이메일과 비밀번호 불일치는 같은 코드·메시지를 반환한다.
+쿠키·CSRF·30분 세션 만료와 로그인 제한은 확정 정책을 따른다. 로그인 제한 구간은 정규화 이메일+IP 조합의 첫 실패부터 기본 5분이며 추가 실패로 연장하지 않는다. 1~4번째 실패는 401, 5번째부터 구간 만료까지 429다. 차단 전 로그인 성공 시 해당 조합의 실패 기록을 초기화하고 다른 IP의 기록은 유지한다. 현재는 직접 연결한 IP를 사용하고 전달 헤더는 무시한다. 프록시 도입 시 신뢰 범위를 별도로 정한다. 알 수 없는 이메일과 비밀번호 불일치는 같은 코드·메시지를 반환한다. 선택 이유와 남은 설계는 [1-4 상세 협의](01-4-session-auth.md)에 기록한다.
 
 1-2에서 합의한 저장 방식과 복구 예약 책임은 [상세 설계](01-2-mysql-schema-and-boundaries.md)에 기록한다.
 
