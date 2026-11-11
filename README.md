@@ -1,12 +1,16 @@
 # 한정 수량 제품 판매 서비스
 
-회원가입·관리자 초기화와 Redis 세션 인증을 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회를 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
 ## 세션 인증
 
 `GET /api/v1/csrf` 응답의 `data.token`을 변경 요청의 `X-CSRF-TOKEN` 헤더에 넣고 세션 쿠키를 함께 보낸다. 회원가입과 `POST /api/v1/sessions` 로그인 전에도 토큰을 조회한다. 로그인 또는 `DELETE /api/v1/sessions/current` 성공 후 다음 변경 요청 전에 토큰을 다시 조회한다. `GET /api/v1/members/me`는 현재 회원의 이메일·닉네임·역할을 반환한다.
 
 로그인 실패는 정규화 이메일과 직접 연결 IP별로 첫 실패부터 5분간 집계한다. 다섯 번째 실패부터 429이며 구간 만료 전 올바른 비밀번호도 차단된다. 제한 전에 성공하면 해당 조합의 기록을 지운다. 기본 유휴 세션 시간은 30분이며 `SPRING_SESSION_TIMEOUT`, 실패 구간은 `LIMITED_SALE_AUTH_FAILURE_WINDOW`, 실패 횟수는 양의 정수인 `LIMITED_SALE_AUTH_FAILURE_LIMIT`으로 조정할 수 있다. Redis 주소는 `REDIS_HOST`, `REDIS_PORT`로 설정한다. 쿠키는 HttpOnly·SameSite=Lax이며 HTTPS 요청에는 Secure가 적용된다. Redis 장애 시 인증과 CSRF 처리는 503으로 실패하고 복구 뒤 재시도한다.
+
+## 제품 등록과 조회
+
+ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제품명","description":"설명","basePrice":1000}`을 보낸다. 설명은 생략할 수 있다. `GET /api/v1/products?page=0&size=20`과 `GET /api/v1/products/{id}`는 공개 조회다. 목록은 ID 내림차순이며 size는 1~100이다. 제품명은 앞뒤 공백을 제거하고 설명은 원문을 보존한다. 같은 이름의 제품을 여러 번 등록할 수 있다. 상세 계약은 [1-5 문서](docs/stages/01-5-product-registration-and-query.md)를 참고한다.
 
 ## 준비와 실행
 
