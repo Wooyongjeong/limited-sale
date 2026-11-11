@@ -1,8 +1,8 @@
 # 제품 등록과 조회
 
-[위키 시작](README.md) · 이전: [세션 인증](authentication.md) · 다음: [데이터베이스](persistence.md)
+[위키 시작](README.md) · 이전: [세션 인증](authentication.md) · 다음: [판매 이벤트](sales.md)
 
-제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 재고는 이후 판매 기능의 계획이다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
+제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유·확정은 이후 구현한다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
 
 아래 클라이언트 요청은 HTTP다. 서비스와 저장소 사이는 메서드 호출이며 MySQL 화살표는 트랜잭션과 DB 접근을 나타낸다.
 

@@ -26,6 +26,7 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 | 단위 | [MemberInputTest](../../src/test/java/com/wooyongjeong/limitedsale/member/domain/MemberInputTest.java), [ProductInputTest](../../src/test/java/com/wooyongjeong/limitedsale/product/domain/ProductInputTest.java) | 입력 정규화와 규칙 |
 | 구조 | [ArchitectureTest](../../src/test/java/com/wooyongjeong/limitedsale/architecture/ArchitectureTest.java) | 패키지 의존성 |
 | MySQL 통합 | [MySqlSchemaIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java), [MemberIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java) | 마이그레이션, 제약, 가입 저장 |
+| 판매 이벤트 MySQL·HTTP 통합 | [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java) | 기간·상태·필터·수정 버전·실제 행 잠금 대기 |
 | HTTP 및 Redis 통합 | [SessionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java), [ProductIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java) | 세션, 권한, 제품 계약, 장애 |
 
 현재 노출된 Actuator 엔드포인트 설정은 health다. Prometheus·Grafana·부하 및 장애 실험은 [전체 계획](../project-plan.md)의 향후 범위이며 이미 구축된 관측 체계로 간주하지 않는다.

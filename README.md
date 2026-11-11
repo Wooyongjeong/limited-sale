@@ -1,6 +1,6 @@
 # 한정 수량 제품 판매 서비스
 
-회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회를 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회를 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
 코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
 
@@ -13,6 +13,12 @@
 ## 제품 등록과 조회
 
 ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제품명","description":"설명","basePrice":1000}`을 보낸다. 설명은 생략할 수 있다. `GET /api/v1/products?page=0&size=20`과 `GET /api/v1/products/{id}`는 공개 조회다. 목록은 ID 내림차순이며 size는 1~100이다. 제품명은 앞뒤 공백을 제거하고 설명은 원문을 보존한다. 같은 이름의 제품을 여러 번 등록할 수 있다. 상세 계약은 [1-5 문서](docs/stages/01-5-product-registration-and-query.md)를 참고한다.
+
+## 판매 이벤트 관리와 조회
+
+`POST /api/v1/admin/sales`는 productId·name·startsAt·endsAt·totalQuantity를 필수로 받는다. 시각은 오프셋이 있는 ISO 8601로 보내며 미래 시작만 가능하다. 가격과 구매 한도를 생략하면 제품 기준 가격과 1개를 사용한다. 생성·수정·삭제·중단·재개는 ADMIN 세션과 CSRF가 필요하다.
+
+`GET /api/v1/sales?productId=1&status=SCHEDULED&page=0&size=20`과 `GET /api/v1/sales/{id}`는 공개 조회다. 수량은 총수량만 공개한다. PATCH는 조회한 version을 보내야 하며 충돌 시 409다. 시작 후에는 이름·설명만 수정할 수 있다. 중단·재개는 시작 전에도 가능하며 종료 후에는 거절한다. [전체 계약](docs/stages/01-6-sale-management-and-query.md)을 참고한다.
 
 ## 준비와 실행
 

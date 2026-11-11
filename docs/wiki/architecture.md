@@ -12,7 +12,7 @@ flowchart LR
     PG[Mock PG 부트스트랩] --> PGDB[(Mock PG MySQL 스키마)]
 ```
 
-[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 현재 판매 앱에서 PG로 결제 HTTP 호출을 수행하지 않는다. 추후 주문 조합과 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
+[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 현재 판매 앱에서 PG로 결제 HTTP 호출을 수행하지 않는다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 추후 주문 조합과 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
 
 ## 요청이 지나는 경계
 

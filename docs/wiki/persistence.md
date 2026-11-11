@@ -1,14 +1,14 @@
 # 데이터베이스와 마이그레이션
 
-[위키 시작](README.md) · 이전: [제품](products.md) · 다음: [실행과 문제 해결](operations.md)
+[위키 시작](README.md) · 이전: [판매 이벤트](sales.md) · 다음: [실행과 문제 해결](operations.md)
 
 판매 앱과 Mock PG는 각자 소유한 MySQL 스키마와 Flyway 이력을 사용한다. [판매 V1](../../src/main/resources/db/migration/V1__sales_schema.sql)은 회원·제품과 이후 판매·주문·결제용 테이블 및 FK·제약을 만든다. [Mock PG V1](../../mock-pg/src/main/resources/db/migration/V1__mock_pg_schema.sql)은 별도 `mock_payments`를 만든다. 서로 다른 스키마 사이 FK는 없다. 양쪽 V2는 enum 비교 규칙을 변경한다.
 
-아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`와 `products`는 현재 회원·제품 기능에서 사용한다. 나머지 판매 스키마 테이블은 생성되어 있지만 관련 업무 흐름은 향후 구현이다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
+아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 나머지 판매 스키마 테이블은 생성되어 있지만 관련 업무 흐름은 향후 구현이다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
 
 ```mermaid
 flowchart LR
-    B["sale_buyer_quantities<br/>향후 업무"] --> S["sales<br/>향후 업무"]
+    B["sale_buyer_quantities<br/>향후 업무"] --> S["sales<br/>현재 사용"]
     B --> M["members<br/>현재 사용"]
     S --> P["products<br/>현재 사용"]
     O["purchase_orders<br/>향후 업무"] --> M
@@ -59,7 +59,7 @@ flowchart LR
 | `MemberEntity.toAuthenticationRecord()` | 로그인 검증용 내부 값 | HTTP 응답에는 포함하지 않음 |
 | `ProductEntity.toProduct()` | 제품 도메인 값 | 해당 없음 |
 
-회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 판매·주문·결제 및 Mock PG의 JPA 엔티티와 스키마는 1-2 기반으로 존재하지만, 해당 업무 유스케이스가 이미 동작한다는 뜻은 아니다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
+회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문·결제 및 Mock PG의 JPA 엔티티와 스키마는 1-2 기반으로 존재하지만, 해당 업무 유스케이스가 이미 동작한다는 뜻은 아니다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
 
 가입 성공 응답은 `MemberService`가 저장에 성공한 입력값으로 `Member`를 구성한다. 로그인은 `toAuthenticationRecord()`를 통해 조회한 엔티티를 변환한다. 모든 응답이 항상 `toMember()`의 별도 호출이나 DB 재조회를 거치는 것은 아니다.
 
