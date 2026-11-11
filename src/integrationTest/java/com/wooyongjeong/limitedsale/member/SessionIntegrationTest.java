@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
+import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.member.domain.LoginAttemptLimit;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.RedisLoginAttemptLimit;
 import java.net.CookieManager;
@@ -68,12 +69,12 @@ class SessionIntegrationTest {
         first.getBean(MemberService.class).register("session@example.com", "password", "session");
         first.getBean(MemberService.class).register("limited@example.com", "password", "limited");
         first.getBean(MemberService.class).initializeAdmin("admin@example.com", "password", "admin");
+        first.getBean(ProductCommand.class).register("session test product", "", 1L);
     }
 
     @RestController
     static class TestEndpoints {
-        @GetMapping({"/api/v1/admin/test", "/api/v1/products", "/api/v1/products/1",
-            "/api/v1/sales", "/api/v1/sales/1"})
+        @GetMapping({"/api/v1/admin/test", "/api/v1/sales", "/api/v1/sales/1"})
         String endpoint() {
             return "ok";
         }

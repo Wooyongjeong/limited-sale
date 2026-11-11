@@ -17,7 +17,7 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 호출 예시는 다음과 같다. 기본 API 계약은 1-1 기술 계약을 따르며 Java 시그니처는 각 구현 소단계에서 점검한다.
 
 ```text
-판매 이벤트 생성 → ProductQuery.get(productId) → 제품 정보 확인 후 이벤트 저장
+판매 이벤트 생성 → ProductQuery.find(productId) → 제품 정보 확인 후 이벤트 저장
 주문 컨트롤러 → OrderCommand.create(주문 요청)
 주문 유스케이스 → 판매 수량·사용자 한도 처리
 주문·결제 흐름 → Mock PG 처리 → 결과에 따른 주문 상태 전이
@@ -66,7 +66,7 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 
 기본 패키지는 `com.wooyongjeong.limitedsale`로 확정한다. 단계 표시는 도입 시점이며 실제 디렉터리 이름에 포함하지 않는다.
 
-아래 트리는 향후 구조를 포함한다. 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했고, 1-3에서 회원가입, 1-4에서 세션 인증 유스케이스를 구현했다. 제품·판매·주문·결제 업무 유스케이스는 이후 단계 범위다.
+아래 트리는 향후 구조를 포함한다. 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했고, 1-3에서 회원가입, 1-4에서 세션 인증, 1-5에서 제품 등록·조회 유스케이스를 구현했다. 판매·주문·결제 업무 유스케이스는 이후 단계 범위다.
 
 ```text
 src/main/java/com/wooyongjeong/limitedsale/
@@ -285,3 +285,8 @@ Kafka는 `order`의 요청 접수와 주문 처리 사이에 둔다. `sale`과 `
 `member.application.AuthenticationService`가 회원 조회, 트랜잭션 밖 비밀번호 검증, 로그인 제한 확인과 결과 반영을 조합한다. 저장소·비밀번호 검증·로그인 제한 계약은 `member.domain`이 소유하고 JDBC·Argon2id·Redis 구현은 `member.infrastructure`에 둔다. 로그인 제한은 Redis Lua 연산으로 횟수·최초 만료·차단 판정을 원자적으로 처리한다.
 
 `member.presentation.SessionController`는 로그인·로그아웃·내 정보·CSRF HTTP 변환과 명시적 세션 인증 저장을 맡는다. `member.infrastructure.security`의 보안 설정이 공개·ADMIN·로그인 필수 경로와 CSRF를 구분한다. Spring Session Redis가 두 인스턴스에서 세션을 공유하며 세션에는 내부 회원 ID와 응답용 회원 정보만 저장한다. 해시를 응답·세션에 넣지 않는다. 인증·세션 인프라 장애는 503으로 처리한다. [정책·구현·검증](stages/01-4-session-auth.md).
+
+
+## 1-5 제품 등록·조회 구현 경계
+
+`product.api`의 불변 계약을 `ProductService`가 구현하고 순수 도메인 입력 검증 및 저장소 계약을 조합한다. `JpaProductStore`는 별도의 JPA 엔티티와 Spring Data Pageable·Page로 ID 내림차순 조회를 수행한다. JPA 정수 오프셋을 넘는 경우에만 총수를 확인하고 필요하면 long 오프셋을 사용하는 MySQL 쿼리로 조회한다. READ COMMITTED에서 목록과 총수 조회 사이에 삽입이 일어나면 서로 다른 시점의 결과가 보일 수 있다. HTTP 입력은 숫자 JSON 타입과 알려진 필드를 검사하고 기존 인증·CSRF 설정을 재사용한다. 입력 검증 오류는 안전한 field·reason 목록으로 응답한다. 주 에이전트 독립 검증은 [1-5 문서](stages/01-5-product-registration-and-query.md)에 따른다.
