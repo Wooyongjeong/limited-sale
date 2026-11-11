@@ -67,7 +67,7 @@ flowchart TD
 
 `GET /api/v1/members/me`는 DB를 다시 조회하지 않고 세션의 회원 정보를 반환한다. 따라서 이후 DB에서 닉네임·권한이 바뀌더라도 기존 세션 값이 자동 갱신되는 구조는 아니다. 현재는 해당 정보의 변경 API가 없다. `DELETE /api/v1/sessions/current`는 토큰을 지우고 현재 세션만 무효화하며 다른 기기의 세션은 유지한다. 이후 변경 요청 전에 토큰을 다시 조회한다.
 
-기본 유휴 시간은 30분이다. 쿠키는 HttpOnly와 SameSite=Lax이며 HTTPS 요청에서 Secure가 적용된다. 로컬 HTTP에서는 Secure가 붙지 않는다. 설정은 [application.yml](../../src/main/resources/application.yml)과 [실행 안내](../../README.md)를 본다. Redis 오류가 응답 커밋 전에 발생하면 필터가 503으로 변환한다. 공개 제품·판매 GET에 세션 쿠키가 있고 Redis 연결이 실패하면 fallback 필터는 해당 쿠키를 요청에서 제거해 익명 조회를 계속한다. 판매 조회 경로 권한 설정 자체가 판매 API 구현을 뜻하지는 않는다. 인증·CSRF 및 보호된 요청은 Redis 장애 시 실패할 수 있다.
+기본 유휴 시간은 30분이다. 쿠키는 HttpOnly와 SameSite=Lax이며 HTTPS 요청에서 Secure가 적용된다. 로컬 HTTP에서는 Secure가 붙지 않는다. 설정은 [application.yml](../../src/main/resources/application.yml)과 [실행 안내](../../README.md)를 본다. Redis 오류가 응답 커밋 전에 발생하면 필터가 503으로 변환한다. 공개 제품·판매 GET에 세션 쿠키가 있고 Redis 연결이 실패하면 fallback 필터는 해당 쿠키를 요청에서 제거해 익명 조회를 계속한다. 판매 이벤트 관리·조회 API도 같은 세션·CSRF 및 공개 조회 fallback을 사용한다. 인증·CSRF 및 보호된 요청은 Redis 장애 시 실패할 수 있다.
 
 fallback은 현재 요청을 감싼 객체에서만 세션 쿠키를 숨긴다. 브라우저 쿠키를 삭제하거나 Redis 세션을 복구하는 작업은 아니다. `ping` 이후 실제 세션 조회에서 새로 장애가 생기면 바깥 필터가 503을 반환할 수도 있다. 또한 응답이 이미 커밋됐거나 예외가 필터까지 전파되지 않으면 필터가 응답을 503으로 바꿀 수 없다.
 
