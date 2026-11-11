@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
-import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.member.domain.LoginAttemptLimit;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.RedisLoginAttemptLimit;
+import com.wooyongjeong.limitedsale.product.api.ProductCommand;
+import com.wooyongjeong.limitedsale.sale.api.SaleCommand;
+import com.wooyongjeong.limitedsale.sale.api.SaleCreation;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
@@ -69,12 +71,15 @@ class SessionIntegrationTest {
         first.getBean(MemberService.class).register("session@example.com", "password", "session");
         first.getBean(MemberService.class).register("limited@example.com", "password", "limited");
         first.getBean(MemberService.class).initializeAdmin("admin@example.com", "password", "admin");
-        first.getBean(ProductCommand.class).register("session test product", "", 1L);
+        long productId = first.getBean(ProductCommand.class).register("session test product", "", 1L).productId();
+        first.getBean(SaleCommand.class).create(new SaleCreation(productId, "session test sale", "", null,
+            java.time.Instant.parse("2099-01-01T00:00:00Z"), java.time.Instant.parse("2099-01-02T00:00:00Z"),
+            10, null));
     }
 
     @RestController
     static class TestEndpoints {
-        @GetMapping({"/api/v1/admin/test", "/api/v1/sales", "/api/v1/sales/1"})
+        @GetMapping("/api/v1/admin/test")
         String endpoint() {
             return "ok";
         }
