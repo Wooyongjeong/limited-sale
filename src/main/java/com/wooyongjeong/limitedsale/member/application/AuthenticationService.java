@@ -39,7 +39,8 @@ public class AuthenticationService {
             throw new RateLimited();
         }
         AuthenticationRecord record = store.findForAuthentication(normalized).orElse(null);
-        boolean valid = record != null && passwords.matches(password, record.passwordHash());
+        boolean matched = passwords.matches(password, record == null ? passwords.dummyHash() : record.passwordHash());
+        boolean valid = record != null && matched;
         if (limits.finish(normalized, address, valid)) {
             throw new RateLimited();
         }

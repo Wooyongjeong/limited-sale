@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.member.presentation;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.member.application.AuthenticationService;
 import com.wooyongjeong.limitedsale.member.domain.Member;
@@ -38,7 +39,13 @@ public class SessionController {
         this.csrf = csrf;
     }
 
-    public record Login(String email, String password) { }
+    @JsonDeserialize(using = MemberJson.LoginDeserializer.class)
+    public record Login(String email, String password) {
+        @Override
+        public String toString() {
+            return "Login[redacted]";
+        }
+    }
     public record Token(String token, String headerName) { }
 
     @GetMapping(value = "/api/v1/csrf", produces = MediaType.APPLICATION_JSON_VALUE)

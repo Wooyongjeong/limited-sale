@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.member.presentation;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.member.domain.Member;
@@ -20,7 +21,13 @@ public class MemberController {
         this.service = service;
     }
 
-    public record Registration(String email, String password, String nickname) { }
+    @JsonDeserialize(using = MemberJson.RegistrationDeserializer.class)
+    public record Registration(String email, String password, String nickname) {
+        @Override
+        public String toString() {
+            return "Registration[redacted]";
+        }
+    }
 
     @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<Member>> register(@RequestBody Registration input) {
