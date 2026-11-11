@@ -106,7 +106,7 @@ class MemberIntegrationTest {
     void registrationHttpAndHash() throws Exception {
         mvc.perform(post("/api/v1/members").with(csrf()).contentType("application/json")
                 .content("{\"email\":\" TEST@example.com \",\"password\":\"password\","
-                    + "\"nickname\":\"  가  Name  \",\"role\":\"ADMIN\"}"))
+                    + "\"nickname\":\"  가  Name  \"}"))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.code").value("MEMBER_CREATED"))
             .andExpect(jsonPath("$.data.email").value("test@example.com"))

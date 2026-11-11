@@ -2,6 +2,8 @@
 
 회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회를 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
+코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
+
 ## 세션 인증
 
 `GET /api/v1/csrf` 응답의 `data.token`을 변경 요청의 `X-CSRF-TOKEN` 헤더에 넣고 세션 쿠키를 함께 보낸다. 회원가입과 `POST /api/v1/sessions` 로그인 전에도 토큰을 조회한다. 로그인 또는 `DELETE /api/v1/sessions/current` 성공 후 다음 변경 요청 전에 토큰을 다시 조회한다. `GET /api/v1/members/me`는 현재 회원의 이메일·닉네임·역할을 반환한다.

@@ -127,6 +127,47 @@ class SessionIntegrationTest {
     }
 
     @Test
+    void malformedMemberJsonHasNoSideEffects() throws Exception {
+        Client client = new Client();
+        client.csrf(port1);
+        String registration = "{\"email\":\"strict@example.com\",\"password\":\"password\",\"nickname\":\"strictnick\"}";
+        for (String body : List.of(registration + " garbage", registration + " {}", registration + " 1",
+                registration.replace("}", ",\"role\":\"ADMIN\"}"),
+                registration.replace("}", ",\"email\":\"other@example.com\"}"),
+                registration.replace("\"strictnick\"", "123"),
+                registration.replace("\"password\":\"password\"", "\"password\":false"),
+                registration.replace("\"email\":\"strict@example.com\"", "\"email\":[]"), "[]", "null")) {
+            var response = client.request(port1, "POST", "/api/v1/members", body, true);
+            assertThat(response.statusCode()).as(body).isEqualTo(400);
+            assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
+        }
+        assertThat(client.request(port1, "POST", "/api/v1/members", registration, true).statusCode()).isEqualTo(201);
+        assertThat(client.request(port1, "POST", "/api/v1/members",
+            "{\"email\":\"nonick@example.com\",\"password\":\"password\"}", true).statusCode()).isEqualTo(201);
+        assertThat(client.request(port1, "POST", "/api/v1/members",
+            "{\"email\":\"nullnick@example.com\",\"password\":\"password\",\"nickname\":null}", true)
+            .statusCode()).isEqualTo(201);
+        client.email = "strict@example.com";
+        for (int i = 0; i < 4; i++) {
+            assertThat(client.login(port1, "wrongpass").statusCode()).isEqualTo(401);
+        }
+        String login = "{\"email\":\"strict@example.com\",\"password\":\"password\"}";
+        for (String body : List.of(login + " garbage", login + " {}", login + " true",
+                login.replace("}", ",\"role\":\"ADMIN\"}"),
+                login.replace("}", ",\"password\":\"password\"}"),
+                login.replace("\"password\":\"password\"", "\"password\":true"),
+                login.replace("\"email\":\"strict@example.com\"", "\"email\":{}"), "[]", "null")) {
+            var response = client.request(port1, "POST", "/api/v1/sessions", body, true);
+            assertThat(response.statusCode()).as(body).isEqualTo(400);
+            assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
+            assertThat(client.request(port1, "GET", "/api/v1/members/me", null, false).statusCode()).isEqualTo(401);
+        }
+        assertThat(client.login(port1, "password").statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void unacceptableLogoutMediaDoesNotInvalidateSession() throws Exception {
         Client client = new Client();
         client.csrf(port1);
