@@ -6,7 +6,6 @@ import com.wooyongjeong.limitedsale.member.domain.MemberConflict;
 import com.wooyongjeong.limitedsale.member.domain.MemberRole;
 import com.wooyongjeong.limitedsale.member.domain.MemberStore;
 import com.wooyongjeong.limitedsale.member.domain.PasswordHasher;
-import com.wooyongjeong.limitedsale.member.infrastructure.persistence.JdbcMemberStore;
 import com.wooyongjeong.limitedsale.member.presentation.MemberController;
 import com.wooyongjeong.limitedsale.member.presentation.MemberExceptionHandler;
 import jakarta.validation.Validator;
@@ -38,7 +37,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
@@ -72,8 +70,6 @@ class MemberIntegrationTest {
     @Autowired
     private PasswordHasher passwordHasher;
     @Autowired
-    private PlatformTransactionManager transactionManager;
-    @Autowired
     private JdbcTemplate jdbc;
     @Autowired
     private MockMvc mvc;
@@ -84,6 +80,8 @@ class MemberIntegrationTest {
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.jpa.properties.hibernate.session_factory.statement_inspector",
+            () -> SqlInspector.class.getName());
         registry.add("spring.flyway.locations",
             () -> "filesystem:src/main/resources/db/migration,classpath:db/nickmigration");
         registry.add("spring.data.redis.host", REDIS::getHost);
@@ -258,20 +256,54 @@ class MemberIntegrationTest {
                 statement.setString(2, name);
                 statement.setString(3, name);
             });
-        AtomicInteger gapQueries = new AtomicInteger();
-        JdbcTemplate countedJdbc = new JdbcTemplate(jdbc.getDataSource()) {
-            @Override
-            public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
-                gapQueries.incrementAndGet();
-                return super.queryForObject(sql, requiredType, args);
-            }
-        };
-        MemberStore countedStore = new JdbcMemberStore(countedJdbc, transactionManager);
-        MemberService named = new MemberService(countedStore, passwordHasher, validator, () -> "BaSe");
+        int before = SqlInspector.gapQueries.get();
+        MemberService named = new MemberService(store, passwordHasher, validator, () -> "BaSe");
         assertThat(named.register("new@example.com", "password", null).nickname()).isEqualTo("BaSe713");
-        assertThat(gapQueries).hasValue(1);
-        assertThat(countedStore.firstAvailableNicknameSuffix("absent")).isZero();
-        assertThat(gapQueries).hasValue(2);
+        assertThat(SqlInspector.gapQueries.get() - before).isEqualTo(1);
+        assertThat(store.firstAvailableNicknameSuffix("absent")).isZero();
+        assertThat(SqlInspector.gapQueries.get() - before).isEqualTo(2);
+    }
+
+    public static class SqlInspector implements org.hibernate.resource.jdbc.spi.StatementInspector {
+        private static final AtomicInteger gapQueries = new AtomicInteger();
+
+        @Override
+        public String inspect(String sql) {
+            if (sql.toLowerCase(java.util.Locale.ROOT).contains("lead(number)")) {
+                gapQueries.incrementAndGet();
+            }
+            return sql;
+        }
+    }
+
+    @Test
+    void springWiresJpaStoreAndPersistsUtcMicrosecondTimestamps() {
+        assertThat(org.springframework.aop.support.AopUtils.getTargetClass(store).getSimpleName())
+            .isEqualTo("JpaMemberStore");
+        var before = jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", java.time.LocalDateTime.class);
+        service.register("timestamps@example.com", "password", "시간검증");
+        var after = jdbc.queryForObject("SELECT UTC_TIMESTAMP(6)", java.time.LocalDateTime.class);
+        var created = jdbc.queryForObject("SELECT created_at FROM members WHERE email = ?",
+            java.time.LocalDateTime.class, "timestamps@example.com");
+        var updated = jdbc.queryForObject("SELECT updated_at FROM members WHERE email = ?",
+            java.time.LocalDateTime.class, "timestamps@example.com");
+        assertThat(created).isBetween(before, after).isEqualTo(updated);
+        assertThat(created.getNano() % 1000).isZero();
+    }
+
+    @Test
+    void unrelatedUniqueConstraintPropagatesAndNextTransactionSucceeds() {
+        jdbc.execute("ALTER TABLE members ADD CONSTRAINT uk_members_email_extra UNIQUE (password_hash)");
+        try {
+            store.insert("first@example.com", "same-hash", "첫번째", MemberRole.USER);
+            assertThatThrownBy(() -> store.insert("second@example.com", "same-hash", "두번째", MemberRole.USER))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            store.insert("third@example.com", "other-hash", "세번째", MemberRole.USER);
+            assertThat(store.findByEmail("second@example.com")).isEmpty();
+            assertThat(store.findByEmail("third@example.com")).isPresent();
+        } finally {
+            jdbc.execute("ALTER TABLE members DROP INDEX uk_members_email_extra");
+        }
     }
 
     @Test
