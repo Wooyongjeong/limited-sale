@@ -2,6 +2,7 @@ package com.wooyongjeong.limitedsale.product.presentation;
 
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.common.web.CommonResponseCode;
+import com.wooyongjeong.limitedsale.common.web.FieldErrorResponse;
 import com.wooyongjeong.limitedsale.product.domain.ProductValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +19,9 @@ public class ProductExceptionHandler {
 
     @ExceptionHandler(ProductValidationException.class)
     ResponseEntity<ApiResponse<?>> invalid(ProductValidationException exception) {
-        return ResponseEntity.badRequest().body(ApiResponse.of(CommonResponseCode.INVALID_INPUT, exception.errors()));
+        var errors = exception.errors().stream()
+            .map(error -> new FieldErrorResponse(error.field(), error.reason())).toList();
+        return ResponseEntity.badRequest().body(ApiResponse.of(CommonResponseCode.INVALID_INPUT, errors));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

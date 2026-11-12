@@ -2,6 +2,7 @@ package com.wooyongjeong.limitedsale.member.presentation;
 
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.common.web.CommonResponseCode;
+import com.wooyongjeong.limitedsale.common.web.FieldErrorResponse;
 import com.wooyongjeong.limitedsale.member.application.AuthenticationService;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.RedisFailureFilter;
@@ -31,7 +32,9 @@ public class SessionExceptionHandler {
 
     @ExceptionHandler(MemberService.InputException.class)
     ResponseEntity<ApiResponse<?>> input(MemberService.InputException exception) {
-        return ResponseEntity.badRequest().body(ApiResponse.of(CommonResponseCode.INVALID_INPUT, exception.errors()));
+        var errors = exception.errors().stream()
+            .map(error -> new FieldErrorResponse(error.field(), error.reason())).toList();
+        return ResponseEntity.badRequest().body(ApiResponse.of(CommonResponseCode.INVALID_INPUT, errors));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

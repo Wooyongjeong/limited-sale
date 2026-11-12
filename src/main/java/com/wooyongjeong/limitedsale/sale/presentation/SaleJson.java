@@ -1,13 +1,7 @@
 package com.wooyongjeong.limitedsale.sale.presentation;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.sale.domain.SaleException;
-import java.io.IOException;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -15,27 +9,6 @@ import java.util.Set;
 
 final class SaleJson {
     private SaleJson() {
-    }
-
-    @JsonDeserialize(using = Deserializer.class)
-    record Body(JsonNode value) {
-    }
-
-    static class Deserializer extends JsonDeserializer<Body> {
-        @Override
-        public Body deserialize(JsonParser parser, DeserializationContext context) throws IOException {
-            parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-            JsonNode value = parser.getCodec().readTree(parser);
-            if (value == null || !value.isObject() || parser.nextToken() != null) {
-                throw JsonMappingException.from(parser, "Expected one JSON object");
-            }
-            return new Body(value);
-        }
-
-        @Override
-        public Body getNullValue(DeserializationContext context) throws JsonMappingException {
-            return context.reportInputMismatch(Body.class, "Expected one JSON object");
-        }
     }
 
     static void fields(JsonNode node, Set<String> allowed) {

@@ -4,11 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.sale.api.SaleCommand;
 import com.wooyongjeong.limitedsale.sale.api.SaleCreation;
-import com.wooyongjeong.limitedsale.sale.api.SaleDetails;
-import com.wooyongjeong.limitedsale.sale.api.SalePage;
 import com.wooyongjeong.limitedsale.sale.api.SalePatch;
 import com.wooyongjeong.limitedsale.sale.api.SaleQuery;
 import com.wooyongjeong.limitedsale.sale.presentation.code.SaleResponseCode;
+import com.wooyongjeong.limitedsale.sale.presentation.request.SaleRequest;
+import com.wooyongjeong.limitedsale.sale.presentation.response.SaleDetailsResponse;
+import com.wooyongjeong.limitedsale.sale.presentation.response.SalePageResponse;
 import java.util.Set;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -36,18 +37,19 @@ public class SaleController {
     }
 
     @PostMapping(path = "/api/v1/admin/sales", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<SaleDetails>> create(@RequestBody SaleJson.Body body) {
+    public ResponseEntity<ApiResponse<SaleDetailsResponse>> create(@RequestBody SaleRequest body) {
         JsonNode input = body.value();
         SaleJson.fields(input, CREATE_FIELDS);
         var created = command.create(new SaleCreation(SaleJson.number(input, "productId", true),
             SaleJson.text(input, "name", true), SaleJson.description(input), SaleJson.number(input, "unitPrice", false),
             SaleJson.time(input, "startsAt", true), SaleJson.time(input, "endsAt", true),
             SaleJson.integer(input, "totalQuantity", true), SaleJson.integer(input, "perMemberLimit", false)));
-        return ResponseEntity.status(201).body(ApiResponse.of(SaleResponseCode.SALE_CREATED, created));
+        return ResponseEntity.status(201)
+            .body(ApiResponse.of(SaleResponseCode.SALE_CREATED, SaleDetailsResponse.from(created)));
     }
 
     @PatchMapping(path = "/api/v1/admin/sales/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<SaleDetails> patch(@PathVariable String id, @RequestBody SaleJson.Body body) {
+    public ApiResponse<SaleDetailsResponse> patch(@PathVariable String id, @RequestBody SaleRequest body) {
         JsonNode input = body.value();
         SaleJson.fields(input, PATCH_FIELDS);
         var changed = command.patch(SaleJson.id(id, "saleId"), new SalePatch(SaleJson.number(input, "version", true),
@@ -56,7 +58,7 @@ public class SaleController {
             SaleJson.number(input, "unitPrice", false), SaleJson.time(input, "startsAt", false),
             SaleJson.time(input, "endsAt", false), SaleJson.integer(input, "totalQuantity", false),
             SaleJson.integer(input, "perMemberLimit", false)));
-        return ApiResponse.of(SaleResponseCode.SALE_UPDATED, changed);
+        return ApiResponse.of(SaleResponseCode.SALE_UPDATED, SaleDetailsResponse.from(changed));
     }
 
     @DeleteMapping(path = "/api/v1/admin/sales/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -66,27 +68,30 @@ public class SaleController {
     }
 
     @PostMapping(path = "/api/v1/admin/sales/{id}/stop", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<SaleDetails> stop(@PathVariable String id) {
-        return ApiResponse.of(SaleResponseCode.SALE_STOPPED, command.stop(SaleJson.id(id, "saleId")));
+    public ApiResponse<SaleDetailsResponse> stop(@PathVariable String id) {
+        return ApiResponse.of(SaleResponseCode.SALE_STOPPED,
+            SaleDetailsResponse.from(command.stop(SaleJson.id(id, "saleId"))));
     }
 
     @PostMapping(path = "/api/v1/admin/sales/{id}/resume", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<SaleDetails> resume(@PathVariable String id) {
-        return ApiResponse.of(SaleResponseCode.SALE_RESUMED, command.resume(SaleJson.id(id, "saleId")));
+    public ApiResponse<SaleDetailsResponse> resume(@PathVariable String id) {
+        return ApiResponse.of(SaleResponseCode.SALE_RESUMED,
+            SaleDetailsResponse.from(command.resume(SaleJson.id(id, "saleId"))));
     }
 
     @GetMapping(path = "/api/v1/sales/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<SaleDetails> get(@PathVariable String id) {
-        return ApiResponse.of(SaleResponseCode.SALE_FOUND, query.get(SaleJson.id(id, "saleId")));
+    public ApiResponse<SaleDetailsResponse> get(@PathVariable String id) {
+        return ApiResponse.of(SaleResponseCode.SALE_FOUND,
+            SaleDetailsResponse.from(query.get(SaleJson.id(id, "saleId"))));
     }
 
     @GetMapping(path = "/api/v1/sales", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<SalePage> list(@RequestParam(required = false) String page,
+    public ApiResponse<SalePageResponse> list(@RequestParam(required = false) String page,
             @RequestParam(required = false) String size, @RequestParam(required = false) String productId,
             @RequestParam(required = false) String status) {
-        return ApiResponse.of(SaleResponseCode.SALES_FOUND, query.list(
+        return ApiResponse.of(SaleResponseCode.SALES_FOUND, SalePageResponse.from(query.list(
             page == null ? 0 : SaleJson.pageNumber(page, "page"),
             size == null ? 20 : SaleJson.pageNumber(size, "size"),
-            productId == null ? null : SaleJson.id(productId, "productId"), status));
+            productId == null ? null : SaleJson.id(productId, "productId"), status)));
     }
 }
