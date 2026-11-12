@@ -2,21 +2,15 @@
 
 [위키 시작](README.md) · [구조와 경계](architecture.md)
 
+같은 주문을 표현해도 클라이언트가 보내는 값, 서버 내부에서 전달하는 값, DB에 저장하는 값은 역할이 다르다. 이 페이지는 Request·Response·내부 api 계약을 분리하는 이유를 설명한다. Entity와의 차이는 [코드 읽기](code-walkthrough.md)를 함께 본다.
+
 외부 HTTP 요청과 응답은 각 도메인의 `presentation/request`, `presentation/response`에 별도 파일로 둔다. `SessionController.Login`처럼 컨트롤러 안에 선언했던 record는 `LoginRequest`로 옮겼다. CSRF 응답은 `CsrfTokenResponse`다. 컨트롤러는 내부 서비스나 도메인 값을 받은 뒤 응답 DTO로 변환한다.
 
 파일을 나눈 이유는 HTTP 필드와 내부 모델이 서로 다른 이유로 바뀌기 때문이다. 내부 조회 값에 필드가 추가돼도 응답 DTO에 명시하지 않으면 외부 JSON에는 추가되지 않는다. DTO 분리는 접근 권한 검사를 대신하지 않으며, 주문 소유권과 인증·CSRF 검사는 기존 위치에서 수행한다.
 
-```mermaid
-flowchart LR
-    J[HTTP JSON] --> R[presentation.request의 Request]
-    R --> C[컨트롤러]
-    C --> A[application 또는 내부 api]
-    A --> D[domain과 저장소]
-    A --> V[내부 결과 값]
-    V --> M[컨트롤러와 Response.from 변환]
-    M --> S[presentation.response의 Response]
-    S --> W[ApiResponse와 HTTP JSON]
-```
+![외부 HTTP DTO와 내부 계약의 경계](diagrams/http-contracts-1.svg)
+
+[Excalidraw 원본 편집](diagrams/http-contracts-1.excalidraw)
 
 ## 파일에서 확인할 경계
 

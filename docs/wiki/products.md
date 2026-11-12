@@ -2,33 +2,17 @@
 
 [위키 시작](README.md) · 이전: [세션 인증](authentication.md) · 다음: [판매 이벤트](sales.md)
 
+제품은 물건의 기본 정보이고, 판매 이벤트는 그 물건을 파는 조건이다. 예를 들어 기준 가격이 12,000원인 텀블러를 이벤트에서 10,000원에 3개만 팔 수 있다. 이 페이지는 제품 정보 등록·조회를 다룬다. 판매 가능 수량은 [이벤트](sales.md)와 [주문](orders.md)에서 다룬다.
+
 제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유는 [주문 생성](orders.md)에서 구현했고 확정은 후속 범위다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
 
 아래 클라이언트 요청은 HTTP다. 서비스와 저장소 사이는 메서드 호출이며 MySQL 화살표는 트랜잭션과 DB 접근을 나타낸다.
 
 `ProductService.register`의 `@Transactional` 프록시가 입력 검증 전에 트랜잭션을 시작하고, 메서드가 반환하려는 시점에 커밋한다. 그림의 트랜잭션 화살표는 이 프록시의 동작을 포함한 것이다. 컨트롤러는 커밋이 성공한 뒤 201을 반환하며, 커밋 실패를 성공 응답으로 바꾸지 않는다.
 
-```mermaid
-sequenceDiagram
-    participant C as 클라이언트
-    participant S as Security / CSRF
-    participant P as ProductController
-    participant A as ProductService
-    participant J as JpaProductStore
-    participant D as MySQL
-    C->>S: POST /api/v1/admin/products
-    S->>P: ADMIN 및 CSRF 확인
-    P->>P: JSON 형태와 필드 검사
-    P->>A: ProductCommand.register
-    A->>D: 서비스 진입 시 트랜잭션 시작
-    A->>A: ProductInput.create
-    A->>J: create
-    J->>D: ProductEntity 저장
-    A->>D: 커밋
-    A-->>P: ProductDetails
-    P->>P: ProductDetailsResponse.from
-    P-->>C: 201 ApiResponse
-```
+![제품 등록 요청과 저장·응답](diagrams/products-1.svg)
+
+[Excalidraw 원본 편집](diagrams/products-1.excalidraw)
 
 `POST /api/v1/admin/products`는 ADMIN 세션과 CSRF가 필요하다. JSON 객체의 `name`, 선택 `description`, 정수 `basePrice`를 받는다. 성공 `data`는 `productId`, `name`, `description`, `basePrice`, `createdAt`, `updatedAt`이다. `GET /api/v1/products?page=0&size=20`은 공개 목록이다. `data`에는 `items`, `page`, `size`, `totalElements`, `totalPages`가 있고 항목은 설명을 제외한 제품 정보다. ID 내림차순이다. `GET /api/v1/products/{id}`는 공개 상세다.
 
@@ -49,16 +33,9 @@ sequenceDiagram
 
 조회와 생성은 같은 제품 데이터를 다루지만 진입 권한이 다르다. 다음 경로는 [보안 설정](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)과 컨트롤러를 함께 읽는다.
 
-```mermaid
-flowchart LR
-    C[클라이언트] --> G[GET 목록 또는 상세]
-    C --> P[POST 관리자 제품]
-    G --> Q[공개 ProductQuery]
-    P --> S[ADMIN 및 CSRF 검사]
-    S --> W[ProductCommand]
-    Q --> DB[(MySQL 제품)]
-    W --> DB
-```
+![제품 조회와 관리자 등록의 권한 경계](diagrams/products-2.svg)
+
+[Excalidraw 원본 편집](diagrams/products-2.excalidraw)
 
 등록 전용 `ProductRegistrationRequest.Deserializer`는 중복 JSON 필드와 뒤따르는 추가 JSON 값을 거절한다. 컨트롤러는 객체 여부, 알 수 없는 필드와 타입을 검사한다. [ProductInput.create](../../src/main/java/com/wooyongjeong/limitedsale/product/domain/ProductInput.java)는 이름 앞뒤 공백을 제거한 후 1~100 코드 포인트인지 확인한다. 설명은 생략 또는 null이면 빈 문자열이며 원문을 보존하고 최대 2,000 코드 포인트다. 가격은 1~1,000,000,000원의 정수다. 이름 중복은 허용한다.
 
@@ -70,16 +47,9 @@ flowchart LR
 
 목록에서 `page * size`가 매우 크면 다음 분기를 탄다. 예를 들어 offset이 총 개수 이상이면 큰 offset 조회 대신 빈 목록과 총 개수를 반환한다.
 
-```mermaid
-flowchart TD
-    A[page와 size 검증] --> B[long offset 계산]
-    B --> C{offset이 int 범위 이내인가}
-    C -- 예 --> D[PageRequest와 findAll]
-    C -- 아니요 --> E[count 조회]
-    E --> F{offset이 total 이상인가}
-    F -- 예 --> G[빈 목록과 total]
-    F -- 아니요 --> H[long offset 네이티브 조회]
-```
+![큰 페이지 offset의 조회 경로](diagrams/products-3.svg)
+
+[Excalidraw 원본 편집](diagrams/products-3.excalidraw)
 
 [제품 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java)는 HTTP 계약·경계·JSON·Redis 장애를 다룬다. [입력 테스트](../../src/test/java/com/wooyongjeong/limitedsale/product/domain/ProductInputTest.java)와 [저장소 테스트](../../src/test/java/com/wooyongjeong/limitedsale/product/infrastructure/persistence/JpaProductStoreTest.java)도 확인한다.
 

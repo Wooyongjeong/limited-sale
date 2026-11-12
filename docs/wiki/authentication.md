@@ -2,40 +2,15 @@
 
 [위키 시작](README.md) · 이전: [회원 가입](member.md) · 다음: [제품](products.md)
 
+로그인 성공 후 주문할 때마다 비밀번호를 다시 보내지는 않는다. 클라이언트의 세션 쿠키를 Redis에 저장된 인증 정보와 연결해 사용자를 식별한다. 이 페이지는 세션과 CSRF가 어디에서 만나고, 인증 실패가 어느 단계에서 끝나는지 설명한다. 먼저 [로그인부터 구매까지](purchase-flow.md)를 읽어도 좋다.
+
 로그인은 [SessionController](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/SessionController.java)의 HTTP 요청에서 시작한다. [AuthenticationService](../../src/main/java/com/wooyongjeong/limitedsale/member/application/AuthenticationService.java)는 컨트롤러가 호출하는 인증 업무이며 HTTP 진입점이 아니다.
 
 아래에서 클라이언트 화살표는 HTTP다. 서버의 Redis와 MySQL 접근은 각각 별도 연결이며 하나의 DB 트랜잭션으로 묶이지 않는다.
 
-```mermaid
-sequenceDiagram
-    participant C as 클라이언트
-    participant W as 필터와 SessionController
-    participant A as AuthenticationService
-    participant R as Redis
-    participant D as MySQL
-    C->>W: GET /api/v1/csrf
-    W->>R: 익명 세션에 토큰 저장
-    W-->>C: 토큰과 세션 쿠키
-    C->>W: POST /api/v1/sessions, 쿠키와 토큰
-    W->>A: CSRF 확인 후 authenticate
-    A->>R: 실패 제한 확인
-    A->>D: 이메일로 인증 정보 조회
-    D-->>A: 인증 레코드 또는 없음
-    A->>A: 저장 해시 또는 더미 해시로 Argon2id 비교
-    A->>R: 성공 또는 실패 기록
-    A-->>W: 인증 성공
-    W->>R: 세션 ID 변경, 이전 토큰 제거, context 저장
-    W-->>C: 회원 정보와 갱신 쿠키
-    C->>W: GET /api/v1/csrf
-    W->>R: 새 CSRF 토큰 저장
-    W-->>C: 새 토큰
-    C->>W: GET /api/v1/members/me
-    W->>R: 세션과 SecurityContext 조회
-    W-->>C: 세션의 회원 정보
-    C->>W: DELETE /api/v1/sessions/current, 새 토큰
-    W->>R: 현재 세션 무효화
-    W-->>C: 로그아웃 결과
-```
+![세션 로그인부터 내 정보 조회·로그아웃까지](diagrams/authentication-1.svg)
+
+[Excalidraw 원본 편집](diagrams/authentication-1.excalidraw)
 
 서블릿 필터 순서는 [RedisFailureFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisFailureFilter.java), [PublicSessionFallbackFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/PublicSessionFallbackFilter.java), 이후 세션 및 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)의 보안 처리다. 보안 설정은 CSRF와 권한을 검사한다. 가입·로그인 요청은 [MemberJson](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/request/MemberJson.java)에서 JSON 객체 하나만 허용한다. 후행 값·중복 필드·미지 필드·비문자열 값은 400으로 거절하고 인증이나 로그인 실패 카운터 갱신 전에 끝난다. `GET /api/v1/csrf`는 세션에 저장된 토큰을 반환한다. 클라이언트는 `data.token`을 `X-CSRF-TOKEN`에 넣고 같은 쿠키를 보낸다. 가입과 로그인에도 필요하다.
 
@@ -49,15 +24,9 @@ sequenceDiagram
 
 아래는 공개 제품·판매 GET에 적용되는 [PublicSessionFallbackFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/PublicSessionFallbackFilter.java)의 분기다. 그 외 요청은 이 fallback 없이 일반 필터 체인으로 전달한다. 공개 GET이라도 다른 원인의 오류나 뒤이어 발생한 오류가 무조건 성공한다는 뜻은 아니다.
 
-```mermaid
-flowchart TD
-    A["공개 제품·판매 GET"] --> C{"세션 쿠키 있음?"}
-    C -- 예 --> D{"Redis 연결 오류?"}
-    D -- 예 --> E["요청 쿠키 숨김<br/>익명 처리로 전달"]
-    D -- 아니요 --> F["일반 필터 체인"]
-    E --> F
-    C -- 아니요 --> F
-```
+![Redis 장애 중 공개 조회는 어떻게 이어가나](diagrams/authentication-2.svg)
+
+[Excalidraw 원본 편집](diagrams/authentication-2.excalidraw)
 
 인증 서비스는 입력 검증 뒤 정규화 이메일과 직접 연결 IP 조합의 제한을 확인한다. [RedisLoginAttemptLimit](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisLoginAttemptLimit.java)은 해시한 키와 Lua 스크립트로 실패 횟수 및 첫 실패부터 시작하는 고정 구간을 관리한다. 기본 5분, 다섯 번째 실패부터 429다. 제한 전 성공은 해당 키를 삭제한다. 이미 제한에 도달하면 올바른 비밀번호도 구간 만료까지 거절한다. 없는 이메일과 잘못된 비밀번호는 같은 401 응답이다. 없는 회원도 빈 초기화 시 한 번 만든 더미 해시와 비교하고, 비교가 일치하더라도 인증하지 않는다. 이 보완은 해시 비교 생략에 따른 비용 차이를 줄이지만 모든 처리 시간을 같게 보장하지는 않는다.
 

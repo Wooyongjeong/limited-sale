@@ -2,6 +2,8 @@
 
 [위키 시작](README.md) · 이전: [데이터베이스](persistence.md) · 다음: [구조](architecture.md)
 
+요청이 기대와 다르게 동작하면 먼저 HTTP 상태와 응답 code를 확인한다. 첫 실행이라면 [주문까지 따라 하기](first-order.md)를 사용하고, 이 페이지에서는 실행 명령·테스트·오류를 추적할 코드를 찾아본다.
+
 ## 로컬에서 흐름 확인
 
 Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트 README의 실행 안내](../../README.md)를 따른다. 개발 볼륨을 지우지 않는다. 판매 앱과 Mock PG의 `/actuator/health`를 각각 확인한다. Mock PG health는 결제 API 구현의 증거가 아니다.
@@ -39,16 +41,9 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 먼저 HTTP 상태를 확인한 다음 응답의 `code`로 원인을 좁힌다. 예를 들어 403이라도 토큰 오류와 권한 부족은 서로 다른 코드다. 아래 클래스는 확인을 시작할 위치이며 모든 장애 원인을 망라하지 않는다.
 
-```mermaid
-flowchart TD
-    A[HTTP 상태와 응답 code 확인] --> B{상태}
-    B -- 401 또는 403 --> C[SecurityConfiguration 및 인증 코드]
-    B -- 429 --> D[RedisLoginAttemptLimit]
-    B -- 409 --> E[요청 도메인의 코드와 저장소]
-    B -- 503 --> F[RedisFailureFilter 또는 MemberService]
-    B -- 400 또는 404 --> G[요청 도메인의 컨트롤러 및 예외 처리]
-    B -- 기타 --> H[서버 로그와 해당 컨트롤러 확인]
-```
+![HTTP 상태에서 확인할 코드 찾기](diagrams/operations-1.svg)
+
+[Excalidraw 원본 편집](diagrams/operations-1.excalidraw)
 
 - 401: 로그인 필요 또는 자격 증명 실패를 [인증 코드](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/code/AuthenticationResponseCode.java)로 구분하고 세션 쿠키와 입력을 확인한다.
 - 403: CSRF 토큰 누락·불일치인지 역할 부족인지 응답 코드를 확인하고 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)을 본다.

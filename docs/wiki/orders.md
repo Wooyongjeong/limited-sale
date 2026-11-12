@@ -2,6 +2,8 @@
 
 [위키 시작](README.md) · 이전: [판매 이벤트](sales.md) · 다음: [데이터베이스](persistence.md)
 
+주문 버튼을 누르는 순간 결제가 완료되는 것은 아니다. 먼저 다른 사람과 겹치지 않게 수량을 확보하고, 누가 무엇을 얼마에 주문했는지 저장한다. 여기서는 그 원자적 처리를 코드·DB 수준에서 설명한다. 수량 예시부터 보고 싶다면 [전체 구매 흐름](purchase-flow.md), 재시도가 궁금하면 [실패 사례](failure-cases.md)를 먼저 읽는다.
+
 주문 생성은 이벤트 재고와 사용자 구매 한도를 확보하고 결제 준비 기록까지 한 번에 저장한다. 같은 요청을 다시 보내도 주문이 늘어나지 않으며, 업무상 거절도 요청 키별로 보관한다. 이 페이지는 1-7-1 구현을 설명한다. PG 호출·결제 확정·점유 해제·복구 실행기는 후속 단계다.
 
 ## 요청에서 트랜잭션까지
@@ -14,29 +16,9 @@
 
 [OrderController](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/OrderController.java)는 엄격한 JSON·양의 ID·수량 1~1,000,000·UUID 형식을 검증한다. 로그인 ID는 [MemberIdentity](../../src/main/java/com/wooyongjeong/limitedsale/member/api/MemberIdentity.java) 계약을 통해 얻는다. 다른 도메인의 보안 구현이나 JPA 엔티티를 직접 참조하지 않는다.
 
-```mermaid
-sequenceDiagram
-    participant C as 클라이언트
-    participant S as OrderService
-    participant T as OrderTransaction
-    participant A as sale.api
-    participant P as payment.api
-    participant D as 판매 MySQL
-    C->>S: 사용자와 키, 이벤트, 수량
-    S->>T: create / 트랜잭션 시작
-    T->>D: 기존 요청 결과 조회
-    T->>A: allocate
-    A->>D: 이벤트 및 기존 회원 수량 행 잠금
-    A->>D: 별도 SQL로 현재 UTC 시각 조회
-    A->>D: 조건 통과 후 전체·회원 수량 점유
-    A-->>T: 제품·가격 스냅샷과 판정 시각
-    T->>D: AWAITING_PAYMENT 주문 저장
-    T->>A: 주문별 RESERVED 기록 연결
-    T->>P: 고정 PG 키의 READY 기록 준비
-    P->>D: 결제 기록 저장
-    T->>D: CREATED 요청 결과 저장 후 커밋
-    T-->>C: 201 / ORDER_CREATED
-```
+![주문 생성의 한 트랜잭션](diagrams/orders-1.svg)
+
+[Excalidraw 원본 편집](diagrams/orders-1.excalidraw)
 
 [OrderTransaction](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderTransaction.java)이 트랜잭션을 소유한다. 도메인 판정·주문 결과·HTTP 코드의 enum은 명시적 switch로 매핑하므로 새 항목을 추가하면 누락된 변환을 컴파일 단계에서 확인할 수 있다. [SaleReservation](../../src/main/java/com/wooyongjeong/limitedsale/sale/api/SaleReservation.java)과 [PaymentPreparation](../../src/main/java/com/wooyongjeong/limitedsale/payment/api/PaymentPreparation.java)은 같은 로컬 트랜잭션에 참여한다. 구현 어댑터는 `MANDATORY`로 외부 트랜잭션 없는 호출을 거절한다. 여기에는 PG 네트워크 호출이 없다.
 
@@ -54,19 +36,9 @@ sequenceDiagram
 
 키는 `(member_id, request_key)`로 구분하고 TTL 없이 보관한다. 서로 다른 사용자는 같은 UUID를 독립적으로 사용할 수 있다. [OrderRequestResultEntity](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/OrderRequestResultEntity.java)는 입력 이벤트·수량과 주문 참조 또는 업무 거절 사유를 보관한다.
 
-```mermaid
-flowchart TD
-    R[사용자와 UUID 키] --> E{기존 결과 존재}
-    E -- 예 --> I{이벤트와 수량 동일}
-    I -- 아니요 --> X[409 IDEMPOTENCY_CONFLICT]
-    I -- 예 --> K{보관된 결과}
-    K -- CREATED --> O[주문의 최신 상태 / 200]
-    K -- REJECTED --> B[원래 404 또는 409 / data null]
-    E -- 아니요 --> V[판매 조건 판정]
-    V --> A{허용}
-    A -- 예 --> N[주문·점유·READY·CREATED 커밋 / 201]
-    A -- 아니요 --> F[REJECTED만 커밋 / 404 또는 409]
-```
+![동일한 요청 키로 다시 주문하면](diagrams/orders-2.svg)
+
+[Excalidraw 원본 편집](diagrams/orders-2.excalidraw)
 
 없는 이벤트도 `SALE_NOT_FOUND`로 보관한다. 같은 키의 거절 뒤 판매가 재개되거나 재고 조건이 바뀌어도 원래 거절을 반환한다. 새 구매 시도에는 새 키가 필요하다. 성공 결과는 응답 JSON을 복사하지 않고 주문을 다시 읽으므로 이후 주문 상태가 바뀌면 최신 상태를 반환한다.
 
@@ -76,19 +48,9 @@ flowchart TD
 
 둘 다 기존 결과를 찾지 못해도 DB 유니크 제약이 최종 승자를 정한다. [JpaOrderStore](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/JpaOrderStore.java)는 MySQL 1062 중 두 요청 키 제약만 `OrderRequestKeyCollision`으로 변환한다. [OrderService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderService.java)는 실패 트랜잭션이 종료된 다음 별도 조회 트랜잭션으로 승자의 결과를 읽는다. 다른 유니크 충돌과 DB 오류는 500으로 전파한다.
 
-```mermaid
-sequenceDiagram
-    participant A as 요청 A
-    participant B as 요청 B
-    participant D as MySQL
-    A->>D: 같은 키로 주문과 결과 커밋
-    B->>D: 같은 키 삽입 시도
-    D-->>B: 요청 키 유니크 충돌
-    B->>D: B의 주문·수량·점유·결제 모두 롤백
-    Note over B,D: 실패 트랜잭션 종료
-    B->>D: 새 트랜잭션으로 A 결과 조회
-    D-->>B: 같은 입력은 재생, 다른 입력은 409
-```
+![같은 키의 두 요청 중 하나만 커밋](diagrams/orders-3.svg)
+
+[Excalidraw 원본 편집](diagrams/orders-3.excalidraw)
 
 ## 상세 응답과 현재 상태
 

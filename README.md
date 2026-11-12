@@ -1,6 +1,6 @@
 # 한정 수량 제품 판매 서비스
 
-회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회를 구현했다. 주문·결제 API와 Mock PG 업무 동작은 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회, 주문 생성·수량 점유·본인 주문 상세를 구현했다. 주문 생성 시 READY 결제 기록도 저장한다. Mock PG HTTP 연동·결제 실행·주문 확정·점유 해제·자동 만료 복구는 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
 코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
 
