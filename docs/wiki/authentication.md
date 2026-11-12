@@ -37,7 +37,7 @@ sequenceDiagram
     W-->>C: 로그아웃 결과
 ```
 
-서블릿 필터 순서는 [RedisFailureFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisFailureFilter.java), [PublicSessionFallbackFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/PublicSessionFallbackFilter.java), 이후 세션 및 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)의 보안 처리다. 보안 설정은 CSRF와 권한을 검사한다. 가입·로그인 요청은 [MemberJson](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/MemberJson.java)에서 JSON 객체 하나만 허용한다. 후행 값·중복 필드·미지 필드·비문자열 값은 400으로 거절하고 인증이나 로그인 실패 카운터 갱신 전에 끝난다. `GET /api/v1/csrf`는 세션에 저장된 토큰을 반환한다. 클라이언트는 `data.token`을 `X-CSRF-TOKEN`에 넣고 같은 쿠키를 보낸다. 가입과 로그인에도 필요하다.
+서블릿 필터 순서는 [RedisFailureFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisFailureFilter.java), [PublicSessionFallbackFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/PublicSessionFallbackFilter.java), 이후 세션 및 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)의 보안 처리다. 보안 설정은 CSRF와 권한을 검사한다. 가입·로그인 요청은 [MemberJson](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/request/MemberJson.java)에서 JSON 객체 하나만 허용한다. 후행 값·중복 필드·미지 필드·비문자열 값은 400으로 거절하고 인증이나 로그인 실패 카운터 갱신 전에 끝난다. `GET /api/v1/csrf`는 세션에 저장된 토큰을 반환한다. 클라이언트는 `data.token`을 `X-CSRF-TOKEN`에 넣고 같은 쿠키를 보낸다. 가입과 로그인에도 필요하다.
 
 세 가지 값은 역할이 다르다. 예를 들어 로그인 성공 후 쿠키를 갱신해도 이전 CSRF 토큰은 그대로 쓸 수 없다.
 
@@ -72,3 +72,5 @@ flowchart TD
 fallback은 현재 요청을 감싼 객체에서만 세션 쿠키를 숨긴다. 브라우저 쿠키를 삭제하거나 Redis 세션을 복구하는 작업은 아니다. `ping` 이후 실제 세션 조회에서 새로 장애가 생기면 바깥 필터가 503을 반환할 수도 있다. 또한 응답이 이미 커밋됐거나 예외가 필터까지 전파되지 않으면 필터가 응답을 503으로 바꿀 수 없다.
 
 [세션 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java)는 다중 인스턴스 세션, 토큰 교체, 실패 제한, 쿠키와 Redis 장애를 다룬다. [제품 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java)는 공개 조회와 보호된 생성의 장애 동작을 확인한다.
+
+로그인 본문은 [LoginRequest](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/request/LoginRequest.java), CSRF 조회 data는 [CsrfTokenResponse](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/response/CsrfTokenResponse.java)다. 로그인·내 정보는 MemberResponse로 변환한다. 기존 JSON 필드는 유지하며 [HTTP 계약 페이지](http-contracts.md)에서 파일 배치와 변환을 확인한다.

@@ -70,3 +70,5 @@ flowchart TD
 [SaleTerms](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleTerms.java)는 이름·가격·수량·기간을 검증한다. 시각은 오프셋을 포함해 입력하고 DB 마이크로초 정밀도를 넘으면 400이다. [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java)는 실제 MySQL의 잠금 대기·동시 수정·시각·필터와 HTTP 계약을 검사한다. 정책 및 한계는 [1-6 상세 문서](../stages/01-6-sale-management-and-query.md)를 따른다.
 
 매우 큰 페이지의 네이티브 조회에는 기준 시각을 `Instant`로 직접 바인딩한다. UTC 값을 LocalDateTime으로 바꿔 넘기면 Hibernate/JDBC의 시간대 처리에 따라 비교 시각이 이동할 수 있어 실제 MySQL 회귀 테스트로 방어한다.
+
+HTTP 생성·수정 본문은 SaleRequest이며, 내부 SaleDetails·SalePage 결과는 SaleDetailsResponse·SalePageResponse로 변환한다. 목록 항목은 SaleListItemResponse다. DTO 이동 후에도 PATCH의 생략·명시적 null 처리는 같으며 [HTTP 계약](http-contracts.md)에서 구조를 확인한다.

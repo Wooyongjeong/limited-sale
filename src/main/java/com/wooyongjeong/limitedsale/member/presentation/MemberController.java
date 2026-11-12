@@ -1,10 +1,11 @@
 package com.wooyongjeong.limitedsale.member.presentation;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.member.domain.Member;
 import com.wooyongjeong.limitedsale.member.presentation.code.MemberResponseCode;
+import com.wooyongjeong.limitedsale.member.presentation.request.MemberRegistrationRequest;
+import com.wooyongjeong.limitedsale.member.presentation.response.MemberResponse;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,17 +22,10 @@ public class MemberController {
         this.service = service;
     }
 
-    @JsonDeserialize(using = MemberJson.RegistrationDeserializer.class)
-    public record Registration(String email, String password, String nickname) {
-        @Override
-        public String toString() {
-            return "Registration[redacted]";
-        }
-    }
-
     @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Member>> register(@RequestBody Registration input) {
+    public ResponseEntity<ApiResponse<MemberResponse>> register(@RequestBody MemberRegistrationRequest input) {
         Member member = service.register(input.email(), input.password(), input.nickname());
-        return ResponseEntity.status(201).body(ApiResponse.of(MemberResponseCode.MEMBER_CREATED, member));
+        return ResponseEntity.status(201)
+            .body(ApiResponse.of(MemberResponseCode.MEMBER_CREATED, MemberResponse.from(member)));
     }
 }

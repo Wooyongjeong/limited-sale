@@ -39,7 +39,7 @@ flowchart LR
 | 도메인 값 | `Member`, `Product` | 업무 흐름에서 사용하는 값 |
 | 영속 엔티티 | `MemberEntity`, `ProductEntity` | JPA가 테이블에 매핑하는 객체 |
 | 인증 전용 값 | `AuthenticationRecord` | 내부 ID와 해시를 포함해 인증에 사용 |
-| HTTP 응답 | `ApiResponse<Member>` | 공통 응답 틀과 외부에 제공할 회원 값 |
+| HTTP 응답 | `ApiResponse<MemberResponse>` | 공통 응답 틀과 외부에 제공할 회원 값 |
 
 [Member](../../src/main/java/com/wooyongjeong/limitedsale/member/domain/Member.java)와 [Product](../../src/main/java/com/wooyongjeong/limitedsale/product/domain/Product.java)는 JPA 엔티티가 아니다. 각 저장소 어댑터가 영속 엔티티를 도메인 값으로 바꾼다. 이 분리 덕분에 호출자는 영속성 객체를 직접 다루지 않는다. 자세한 매핑과 아직 사용하지 않는 엔티티는 [데이터베이스](persistence.md)를 본다.
 
@@ -60,3 +60,5 @@ flowchart LR
     P --> D
     R --> D
 ```
+
+외부 요청·응답은 도메인별 presentation/request·response의 최상위 DTO다. 내부 api·domain 결과를 그대로 반환하지 않고 컨트롤러와 응답 DTO의 from 메서드에서 변환한다. [HTTP 계약과 내부 계약](http-contracts.md)에서 배치·변환 예와 구조 검사의 범위를 설명한다.

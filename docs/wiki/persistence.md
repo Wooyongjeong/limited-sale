@@ -64,6 +64,6 @@ flowchart LR
 
 회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문 생성과 수량 점유·READY 결제 기록·요청 결과는 Spring Data JPA 저장소를 사용한다. 주문 생성 시각은 이벤트·회원 수량 잠금 뒤 읽은 MySQL UTC 시각이다. Mock PG는 아직 별도 스키마와 매핑만 있고 결제 API는 없다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
 
-가입 성공 응답은 `MemberService`가 저장에 성공한 입력값으로 `Member`를 구성한다. 로그인은 `toAuthenticationRecord()`를 통해 조회한 엔티티를 변환한다. 모든 응답이 항상 `toMember()`의 별도 호출이나 DB 재조회를 거치는 것은 아니다.
+가입 성공 시 `MemberService`가 저장에 성공한 입력값으로 내부 `Member`를 구성하고 컨트롤러가 `MemberResponse`로 변환한다. 로그인은 `toAuthenticationRecord()`를 통해 조회한 엔티티를 변환한다. 모든 응답이 항상 `toMember()`의 별도 호출이나 DB 재조회를 거치는 것은 아니다.
 
 [스키마 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java)는 실제 MySQL의 마이그레이션·제약·매핑을 다룬다. [V3 테스트](../../src/test/java/db/nickmigration/MemberNicknameMigrationTest.java)와 [회원 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java)도 함께 본다. 전체 스키마 설계와 한계는 [1-2 문서](../stages/01-2-mysql-schema-and-boundaries.md)에 있다.

@@ -1,4 +1,4 @@
-package com.wooyongjeong.limitedsale.member.presentation;
+package com.wooyongjeong.limitedsale.member.presentation.request;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
@@ -8,8 +8,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.util.Set;
 
-final class MemberJson {
-    private MemberJson() { }
+public final class MemberJson {
+    private MemberJson() {
+    }
 
     private static JsonNode read(JsonParser parser, Set<String> fields) throws IOException {
         parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -33,31 +34,31 @@ final class MemberJson {
         return field == null || field.isNull() ? null : field.textValue();
     }
 
-    static class RegistrationDeserializer extends JsonDeserializer<MemberController.Registration> {
+    public static class RegistrationDeserializer extends JsonDeserializer<MemberRegistrationRequest> {
         @Override
-        public MemberController.Registration deserialize(JsonParser parser, DeserializationContext context)
+        public MemberRegistrationRequest deserialize(JsonParser parser, DeserializationContext context)
                 throws IOException {
             JsonNode node = read(parser, Set.of("email", "password", "nickname"));
-            return new MemberController.Registration(value(node, "email"), value(node, "password"),
+            return new MemberRegistrationRequest(value(node, "email"), value(node, "password"),
                 value(node, "nickname"));
         }
 
         @Override
-        public MemberController.Registration getNullValue(DeserializationContext context) throws JsonMappingException {
-            return context.reportInputMismatch(MemberController.Registration.class, "Expected one JSON object");
+        public MemberRegistrationRequest getNullValue(DeserializationContext context) throws JsonMappingException {
+            return context.reportInputMismatch(MemberRegistrationRequest.class, "Expected one JSON object");
         }
     }
 
-    static class LoginDeserializer extends JsonDeserializer<SessionController.Login> {
+    public static class LoginDeserializer extends JsonDeserializer<LoginRequest> {
         @Override
-        public SessionController.Login deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+        public LoginRequest deserialize(JsonParser parser, DeserializationContext context) throws IOException {
             JsonNode node = read(parser, Set.of("email", "password"));
-            return new SessionController.Login(value(node, "email"), value(node, "password"));
+            return new LoginRequest(value(node, "email"), value(node, "password"));
         }
 
         @Override
-        public SessionController.Login getNullValue(DeserializationContext context) throws JsonMappingException {
-            return context.reportInputMismatch(SessionController.Login.class, "Expected one JSON object");
+        public LoginRequest getNullValue(DeserializationContext context) throws JsonMappingException {
+            return context.reportInputMismatch(LoginRequest.class, "Expected one JSON object");
         }
     }
 }

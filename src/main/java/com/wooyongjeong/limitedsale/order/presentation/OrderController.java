@@ -4,6 +4,8 @@ import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.member.api.MemberIdentity;
 import com.wooyongjeong.limitedsale.order.application.OrderResult;
 import com.wooyongjeong.limitedsale.order.application.OrderService;
+import com.wooyongjeong.limitedsale.order.presentation.request.OrderRequest;
+import com.wooyongjeong.limitedsale.order.presentation.response.OrderViewResponse;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -24,7 +26,7 @@ public class OrderController {
 
     @PostMapping(path = "/api/v1/orders", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<?>> create(Authentication authentication,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody OrderJson.Body body) {
+            @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody OrderRequest body) {
         OrderJson.fields(body.value());
         long saleId = OrderJson.number(body.value(), "saleId", Long.MAX_VALUE);
         int quantity = (int) OrderJson.number(body.value(), "quantity", 1_000_000);
@@ -50,6 +52,7 @@ public class OrderController {
             case IDEMPOTENCY_CONFLICT -> OrderResponseCode.IDEMPOTENCY_CONFLICT;
             case ORDER_NOT_FOUND -> OrderResponseCode.ORDER_NOT_FOUND;
         };
-        return ResponseEntity.status(code.httpStatus()).body(ApiResponse.of(code, result.order()));
+        var order = result.order() == null ? null : OrderViewResponse.from(result.order());
+        return ResponseEntity.status(code.httpStatus()).body(ApiResponse.of(code, order));
     }
 }

@@ -1,12 +1,12 @@
 package com.wooyongjeong.limitedsale.member.presentation;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.member.application.AuthenticationService;
-import com.wooyongjeong.limitedsale.member.domain.Member;
-import com.wooyongjeong.limitedsale.member.domain.MemberRole;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.SessionPrincipal;
 import com.wooyongjeong.limitedsale.member.presentation.code.AuthenticationResponseCode;
+import com.wooyongjeong.limitedsale.member.presentation.request.LoginRequest;
+import com.wooyongjeong.limitedsale.member.presentation.response.CsrfTokenResponse;
+import com.wooyongjeong.limitedsale.member.presentation.response.MemberResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
@@ -39,23 +39,14 @@ public class SessionController {
         this.csrf = csrf;
     }
 
-    @JsonDeserialize(using = MemberJson.LoginDeserializer.class)
-    public record Login(String email, String password) {
-        @Override
-        public String toString() {
-            return "Login[redacted]";
-        }
-    }
-    public record Token(String token, String headerName) { }
-
     @GetMapping(value = "/api/v1/csrf", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<Token> csrf(CsrfToken token) {
+    public ApiResponse<CsrfTokenResponse> csrf(CsrfToken token) {
         return ApiResponse.of(AuthenticationResponseCode.CSRF_TOKEN_ISSUED,
-            new Token(token.getToken(), token.getHeaderName()));
+            new CsrfTokenResponse(token.getToken(), token.getHeaderName()));
     }
 
     @PostMapping(value = "/api/v1/sessions", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<Member> login(@RequestBody Login input, HttpServletRequest request,
+    public ApiResponse<MemberResponse> login(@RequestBody LoginRequest input, HttpServletRequest request,
             HttpServletResponse response) {
         var record = service.authenticate(input.email(), input.password(), request.getRemoteAddr());
         var member = record.member();
@@ -68,7 +59,7 @@ public class SessionController {
         context.setAuthentication(auth);
         SecurityContextHolder.setContext(context);
         contexts.saveContext(context, request, response);
-        return ApiResponse.of(AuthenticationResponseCode.LOGIN_SUCCEEDED, member);
+        return ApiResponse.of(AuthenticationResponseCode.LOGIN_SUCCEEDED, MemberResponse.from(member));
     }
 
     @DeleteMapping(value = "/api/v1/sessions/current", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -83,9 +74,9 @@ public class SessionController {
     }
 
     @GetMapping(value = "/api/v1/members/me", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<Member> me(Authentication authentication) {
+    public ApiResponse<MemberResponse> me(Authentication authentication) {
         var principal = (SessionPrincipal) authentication.getPrincipal();
         return ApiResponse.of(AuthenticationResponseCode.MEMBER_RETRIEVED,
-            new Member(principal.email(), principal.nickname(), MemberRole.valueOf(principal.role())));
+            new MemberResponse(principal.email(), principal.nickname(), principal.role()));
     }
 }

@@ -1,38 +1,11 @@
 package com.wooyongjeong.limitedsale.order.presentation;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import java.io.IOException;
 import java.util.Set;
 import java.util.UUID;
 
 final class OrderJson {
     private OrderJson() {
-    }
-
-    @JsonDeserialize(using = Deserializer.class)
-    record Body(JsonNode value) {
-    }
-
-    static class Deserializer extends JsonDeserializer<Body> {
-        @Override
-        public Body deserialize(JsonParser parser, DeserializationContext context) throws IOException {
-            parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-            JsonNode value = parser.getCodec().readTree(parser);
-            if (value == null || !value.isObject() || parser.nextToken() != null) {
-                throw JsonMappingException.from(parser, "Expected one JSON object");
-            }
-            return new Body(value);
-        }
-
-        @Override
-        public Body getNullValue(DeserializationContext context) throws JsonMappingException {
-            return context.reportInputMismatch(Body.class, "Expected one JSON object");
-        }
     }
 
     static long number(JsonNode body, String field, long max) {

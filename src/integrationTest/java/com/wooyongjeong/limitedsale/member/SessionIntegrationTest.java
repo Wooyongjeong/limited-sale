@@ -147,7 +147,18 @@ class SessionIntegrationTest {
             assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
             assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
         }
-        assertThat(client.request(port1, "POST", "/api/v1/members", registration, true).statusCode()).isEqualTo(201);
+        var registered = client.request(port1, "POST", "/api/v1/members", registration, true);
+        assertThat(registered.statusCode()).isEqualTo(201);
+        var member = JSON.readTree(registered.body()).path("data");
+        assertThat(member.size()).isEqualTo(3);
+        assertThat(member.path("email").asText()).isEqualTo("strict@example.com");
+        assertThat(member.path("nickname").asText()).isEqualTo("strictnick");
+        assertThat(member.path("role").asText()).isEqualTo("USER");
+        var invalid = client.request(port1, "POST", "/api/v1/members", "{\"email\":\"bad\"}", true);
+        var fieldError = JSON.readTree(invalid.body()).path("data").get(0);
+        assertThat(fieldError.size()).isEqualTo(2);
+        assertThat(fieldError.path("field").isTextual()).isTrue();
+        assertThat(fieldError.path("reason").isTextual()).isTrue();
         assertThat(client.request(port1, "POST", "/api/v1/members",
             "{\"email\":\"nonick@example.com\",\"password\":\"password\"}", true).statusCode()).isEqualTo(201);
         assertThat(client.request(port1, "POST", "/api/v1/members",

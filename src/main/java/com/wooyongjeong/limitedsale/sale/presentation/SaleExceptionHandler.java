@@ -2,6 +2,7 @@ package com.wooyongjeong.limitedsale.sale.presentation;
 
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.common.web.CommonResponseCode;
+import com.wooyongjeong.limitedsale.common.web.FieldErrorResponse;
 import com.wooyongjeong.limitedsale.sale.domain.SaleException;
 import com.wooyongjeong.limitedsale.sale.presentation.code.SaleResponseCode;
 import java.util.List;
@@ -19,14 +20,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class SaleExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(SaleExceptionHandler.class);
 
-    public record FieldError(String field, String reason) {
-    }
-
     @ExceptionHandler(SaleException.class)
     ResponseEntity<ApiResponse<?>> business(SaleException exception) {
         if (exception.kind() == SaleException.Kind.INVALID) {
             return ResponseEntity.badRequest().body(ApiResponse.of(CommonResponseCode.INVALID_INPUT,
-                List.of(new FieldError(exception.field(), exception.getMessage()))));
+                List.of(new FieldErrorResponse(exception.field(), exception.getMessage()))));
         }
         SaleResponseCode code = switch (exception.kind()) {
             case NOT_FOUND -> SaleResponseCode.SALE_NOT_FOUND;

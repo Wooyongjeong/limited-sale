@@ -2,7 +2,7 @@
 
 [위키 시작](README.md) · 이전: [세션 인증](authentication.md) · 다음: [판매 이벤트](sales.md)
 
-제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유·확정은 이후 구현한다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
+제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유는 [주문 생성](orders.md)에서 구현했고 확정은 후속 범위다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
 
 아래 클라이언트 요청은 HTTP다. 서비스와 저장소 사이는 메서드 호출이며 MySQL 화살표는 트랜잭션과 DB 접근을 나타낸다.
 
@@ -26,6 +26,7 @@ sequenceDiagram
     J->>D: ProductEntity 저장
     A->>D: 커밋
     A-->>P: ProductDetails
+    P->>P: ProductDetailsResponse.from
     P-->>C: 201 ApiResponse
 ```
 
@@ -59,7 +60,7 @@ flowchart LR
     W --> DB
 ```
 
-등록 전용 `RegistrationDeserializer`는 중복 JSON 필드와 뒤따르는 추가 JSON 값을 거절한다. 컨트롤러는 객체 여부, 알 수 없는 필드와 타입을 검사한다. [ProductInput.create](../../src/main/java/com/wooyongjeong/limitedsale/product/domain/ProductInput.java)는 이름 앞뒤 공백을 제거한 후 1~100 코드 포인트인지 확인한다. 설명은 생략 또는 null이면 빈 문자열이며 원문을 보존하고 최대 2,000 코드 포인트다. 가격은 1~1,000,000,000원의 정수다. 이름 중복은 허용한다.
+등록 전용 `ProductRegistrationRequest.Deserializer`는 중복 JSON 필드와 뒤따르는 추가 JSON 값을 거절한다. 컨트롤러는 객체 여부, 알 수 없는 필드와 타입을 검사한다. [ProductInput.create](../../src/main/java/com/wooyongjeong/limitedsale/product/domain/ProductInput.java)는 이름 앞뒤 공백을 제거한 후 1~100 코드 포인트인지 확인한다. 설명은 생략 또는 null이면 빈 문자열이며 원문을 보존하고 최대 2,000 코드 포인트다. 가격은 1~1,000,000,000원의 정수다. 이름 중복은 허용한다.
 
 목록은 기본 `page=0`, `size=20`이다. page는 0~2,147,483,647, size는 1~100 범위의 정수이며 상세 ID는 Java `long` 범위의 양의 정수다. 범위·형식이 잘못되면 400이며 검증 오류는 `data`에 필드와 이유를 담는다. 파싱 불가능한 JSON은 400의 `data: null`이다. 존재하지 않는 유효한 ID는 404다. 권한·CSRF 검사는 본문 검증보다 먼저 실행될 수 있으므로, 잘못된 본문을 보냈더라도 세션이나 토큰이 없으면 먼저 401·403을 받을 수 있다. 세부 코드는 [인증 응답 코드](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/code/AuthenticationResponseCode.java)에서 구분한다.
 
@@ -81,3 +82,5 @@ flowchart TD
 ```
 
 [제품 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java)는 HTTP 계약·경계·JSON·Redis 장애를 다룬다. [입력 테스트](../../src/test/java/com/wooyongjeong/limitedsale/product/domain/ProductInputTest.java)와 [저장소 테스트](../../src/test/java/com/wooyongjeong/limitedsale/product/infrastructure/persistence/JpaProductStoreTest.java)도 확인한다.
+
+HTTP 본문은 [ProductRegistrationRequest](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/request/ProductRegistrationRequest.java), 상세 data는 ProductDetailsResponse다. 목록은 ProductPageResponse 안의 ProductListItemResponse 목록을 사용한다. 내부 ProductDetails·ProductPage는 경계에서 변환하며 JSON 필드는 유지한다. [HTTP 계약](http-contracts.md)을 함께 본다.

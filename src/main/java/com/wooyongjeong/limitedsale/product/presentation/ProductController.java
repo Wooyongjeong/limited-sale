@@ -1,19 +1,15 @@
 package com.wooyongjeong.limitedsale.product.presentation;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.product.api.ProductDetails;
-import com.wooyongjeong.limitedsale.product.api.ProductPage;
 import com.wooyongjeong.limitedsale.product.api.ProductQuery;
 import com.wooyongjeong.limitedsale.product.domain.ProductValidationException;
 import com.wooyongjeong.limitedsale.product.presentation.code.ProductResponseCode;
-import java.io.IOException;
+import com.wooyongjeong.limitedsale.product.presentation.request.ProductRegistrationRequest;
+import com.wooyongjeong.limitedsale.product.presentation.response.ProductDetailsResponse;
+import com.wooyongjeong.limitedsale.product.presentation.response.ProductPageResponse;
 import java.util.Set;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -35,24 +31,9 @@ public class ProductController {
         this.query = query;
     }
 
-    @JsonDeserialize(using = RegistrationDeserializer.class)
-    public record Registration(JsonNode input) {
-    }
-
-    public static class RegistrationDeserializer extends JsonDeserializer<Registration> {
-        @Override
-        public Registration deserialize(JsonParser parser, DeserializationContext context) throws IOException {
-            parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-            JsonNode input = parser.getCodec().readTree(parser);
-            if (parser.nextToken() != null) {
-                throw JsonMappingException.from(parser, "Expected one JSON value");
-            }
-            return new Registration(input);
-        }
-    }
-
     @PostMapping(path = "/api/v1/admin/products", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ProductDetails>> register(@RequestBody Registration registration) {
+    public ResponseEntity<ApiResponse<ProductDetailsResponse>> register(
+            @RequestBody ProductRegistrationRequest registration) {
         JsonNode input = registration.input();
         if (!input.isObject()) {
             throw new ProductValidationException("body", "제품 등록 요청은 JSON 객체여야 합니다");
@@ -76,18 +57,20 @@ public class ProductController {
         }
         ProductDetails created = command.register(name == null || name.isNull() ? null : name.textValue(),
             description == null || description.isNull() ? null : description.textValue(), price.longValue());
-        return ResponseEntity.status(201).body(ApiResponse.of(ProductResponseCode.PRODUCT_CREATED, created));
+        return ResponseEntity.status(201)
+            .body(ApiResponse.of(ProductResponseCode.PRODUCT_CREATED, ProductDetailsResponse.from(created)));
     }
 
     @GetMapping(path = "/api/v1/products", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ApiResponse<ProductPage> list(@RequestParam(required = false) String page,
+    public ApiResponse<ProductPageResponse> list(@RequestParam(required = false) String page,
             @RequestParam(required = false) String size) {
         return ApiResponse.of(ProductResponseCode.PRODUCTS_FOUND,
-            query.list(page == null ? 0 : integer(page, "page"), size == null ? 20 : integer(size, "size")));
+            ProductPageResponse.from(query.list(page == null ? 0 : integer(page, "page"),
+                size == null ? 20 : integer(size, "size"))));
     }
 
     @GetMapping(path = "/api/v1/products/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ProductDetails>> detail(@PathVariable String id) {
+    public ResponseEntity<ApiResponse<ProductDetailsResponse>> detail(@PathVariable String id) {
         long productId;
         try {
             if (!id.matches("[0-9]+")) {
@@ -98,7 +81,8 @@ public class ProductController {
             throw new ProductValidationException("productId", "제품 ID는 양의 정수여야 합니다");
         }
         return query.find(productId)
-            .map(product -> ResponseEntity.ok(ApiResponse.of(ProductResponseCode.PRODUCT_FOUND, product)))
+            .map(product -> ResponseEntity.ok(
+                ApiResponse.of(ProductResponseCode.PRODUCT_FOUND, ProductDetailsResponse.from(product))))
             .orElseGet(() -> ResponseEntity.status(404)
                 .body(ApiResponse.of(ProductResponseCode.PRODUCT_NOT_FOUND, null)));
     }
