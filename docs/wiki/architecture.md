@@ -12,7 +12,7 @@ flowchart LR
     PG[Mock PG 부트스트랩] --> PGDB[(Mock PG MySQL 스키마)]
 ```
 
-[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 현재 판매 앱에서 PG로 결제 HTTP 호출을 수행하지 않는다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 추후 주문 조합과 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
+[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 현재 판매 앱에서 PG로 결제 HTTP 호출을 수행하지 않는다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 현재 주문 트랜잭션의 조합은 [주문 생성과 수량 점유](orders.md), 후속 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
 
 ## 요청이 지나는 경계
 
@@ -44,3 +44,19 @@ flowchart LR
 [Member](../../src/main/java/com/wooyongjeong/limitedsale/member/domain/Member.java)와 [Product](../../src/main/java/com/wooyongjeong/limitedsale/product/domain/Product.java)는 JPA 엔티티가 아니다. 각 저장소 어댑터가 영속 엔티티를 도메인 값으로 바꾼다. 이 분리 덕분에 호출자는 영속성 객체를 직접 다루지 않는다. 자세한 매핑과 아직 사용하지 않는 엔티티는 [데이터베이스](persistence.md)를 본다.
 
 공통 HTTP 응답 [ApiResponse](../../src/main/java/com/wooyongjeong/limitedsale/common/web/ApiResponse.java)는 `httpStatus`, `code`, `data`, `message`를 담는다. 공통 및 도메인별 코드 enum은 [ResponseCode](../../src/main/java/com/wooyongjeong/limitedsale/common/web/ResponseCode.java)를 구현한다. 이 공통 영역은 회원이나 재고 규칙을 소유하지 않는다.
+
+## 주문이 도메인을 조합하는 경계
+
+[OrderTransaction](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderTransaction.java)은 `sale.api`로 수량을 점유하고 `payment.api`로 READY 기록을 준비한다. 세 도메인은 같은 판매 DB 트랜잭션에 참여한다. HTTP 인증 정보는 `member.api.MemberIdentity`로 전달한다. 도메인 간 호출이 인터페이스를 거친다는 사실은 별도 프로세스나 별도 트랜잭션이라는 뜻이 아니다.
+
+```mermaid
+flowchart LR
+    C[OrderController] --> M[member.api.MemberIdentity]
+    C --> O[OrderService와 OrderTransaction]
+    O --> S[sale.api.SaleReservation]
+    O --> P[payment.api.PaymentPreparation]
+    O --> R[order.domain.OrderStore]
+    S --> D[(동일 판매 MySQL 트랜잭션)]
+    P --> D
+    R --> D
+```

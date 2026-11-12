@@ -1,26 +1,28 @@
 # 데이터베이스와 마이그레이션
 
-[위키 시작](README.md) · 이전: [판매 이벤트](sales.md) · 다음: [실행과 문제 해결](operations.md)
+[위키 시작](README.md) · 이전: [주문 생성과 수량 점유](orders.md) · 다음: [실행과 문제 해결](operations.md)
 
 판매 앱과 Mock PG는 각자 소유한 MySQL 스키마와 Flyway 이력을 사용한다. [판매 V1](../../src/main/resources/db/migration/V1__sales_schema.sql)은 회원·제품과 이후 판매·주문·결제용 테이블 및 FK·제약을 만든다. [Mock PG V1](../../mock-pg/src/main/resources/db/migration/V1__mock_pg_schema.sql)은 별도 `mock_payments`를 만든다. 서로 다른 스키마 사이 FK는 없다. 양쪽 V2는 enum 비교 규칙을 변경한다.
 
-아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 나머지 판매 스키마 테이블은 생성되어 있지만 관련 업무 흐름은 향후 구현이다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
+아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·READY 결제·요청 결과도 현재 주문 생성에서 사용한다. 결제 실행과 복구는 후속 단계다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
 
 ```mermaid
 flowchart LR
-    B["sale_buyer_quantities<br/>향후 업무"] --> S["sales<br/>현재 사용"]
+    B["sale_buyer_quantities<br/>주문 생성에서 사용"] --> S["sales<br/>현재 사용"]
     B --> M["members<br/>현재 사용"]
     S --> P["products<br/>현재 사용"]
-    O["purchase_orders<br/>향후 업무"] --> M
+    O["purchase_orders<br/>주문 생성에서 사용"] --> M
     O --> S
     O --> P
-    R["sale_reservations<br/>향후 업무"] --> O
+    R["sale_reservations<br/>주문 생성에서 사용"] --> O
     R -->|복합 FK| B
-    Y["payments<br/>향후 업무"] --> O
+    Y["payments<br/>주문 생성에서 사용"] --> O
+    Q["order_request_results"] --> M
+    Q --> O
     PG["mock_payments<br/>별도 스키마"]
 ```
 
-예를 들어 `sale_reservations`의 복합 FK는 `sale_buyer_quantities`의 `(sale_id, member_id)`를 참조한다. 물리 FK 존재가 주문·점유·결제 유스케이스의 구현을 뜻하지는 않는다.
+예를 들어 `sale_reservations`의 복합 FK는 `sale_buyer_quantities`의 `(sale_id, member_id)`를 참조한다. [판매 V4](../../src/main/resources/db/migration/V4__order_request_results.sql)의 `order_request_results`는 회원·주문에 FK를 둔다. 원본 요청 이벤트 ID에는 FK가 없으므로 없는 이벤트의 거절도 저장할 수 있다. CHECK는 성공에 주문 참조만, 거절에 사유만 허용한다. 요청 키는 회원별 유니크이며 UUID는 BINARY(16)이다.
 
 [판매 설정](../../src/main/resources/application.yml)은 시작 시 SQL 경로와 Java 마이그레이션 경로를 Flyway에 지정하고 Hibernate `ddl-auto: validate`를 사용한다. 따라서 스키마 생성은 Flyway가 담당하고 JPA는 매핑을 검증한다. 적용된 마이그레이션은 수정하지 않고 새 버전을 추가한다. Flyway 이력에 성공한 버전은 정상 재시작 때 다시 적용하지 않는다.
 
@@ -30,10 +32,11 @@ flowchart LR
 flowchart LR
     A[판매 V1 스키마] --> B[판매 V2 enum 비교]
     B --> C[판매 V3 회원 닉네임]
+    C --> F[판매 V4 요청 결과]
     D[Mock PG V1 스키마] --> E[Mock PG V2 enum 비교]
 ```
 
-예를 들어 이미 판매 V1과 V2를 적용한 DB는 다음 시작에서 V3을 적용한다. 중단 시 복구 주의사항은 아래를 따른다. [판매 V2](../../src/main/resources/db/migration/V2__exact_enum_comparisons.sql)와 [Mock PG V2](../../mock-pg/src/main/resources/db/migration/V2__exact_enum_comparisons.sql)도 각각 확인할 수 있다.
+예를 들어 이미 판매 V1과 V2를 적용한 DB는 다음 시작에서 V3과 V4를 순서대로 적용한다. 중단 시 복구 주의사항은 아래를 따른다. [판매 V2](../../src/main/resources/db/migration/V2__exact_enum_comparisons.sql)와 [Mock PG V2](../../mock-pg/src/main/resources/db/migration/V2__exact_enum_comparisons.sql)도 각각 확인할 수 있다.
 
 ## 닉네임 이행과 현재 저장
 
@@ -59,7 +62,7 @@ flowchart LR
 | `MemberEntity.toAuthenticationRecord()` | 로그인 검증용 내부 값 | HTTP 응답에는 포함하지 않음 |
 | `ProductEntity.toProduct()` | 제품 도메인 값 | 해당 없음 |
 
-회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문·결제 및 Mock PG의 JPA 엔티티와 스키마는 1-2 기반으로 존재하지만, 해당 업무 유스케이스가 이미 동작한다는 뜻은 아니다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
+회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문 생성과 수량 점유·READY 결제 기록·요청 결과는 Spring Data JPA 저장소를 사용한다. 주문 생성 시각은 이벤트·회원 수량 잠금 뒤 읽은 MySQL UTC 시각이다. Mock PG는 아직 별도 스키마와 매핑만 있고 결제 API는 없다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
 
 가입 성공 응답은 `MemberService`가 저장에 성공한 입력값으로 `Member`를 구성한다. 로그인은 `toAuthenticationRecord()`를 통해 조회한 엔티티를 변환한다. 모든 응답이 항상 `toMember()`의 별도 호출이나 DB 재조회를 거치는 것은 아니다.
 
