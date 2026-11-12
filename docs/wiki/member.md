@@ -2,6 +2,8 @@
 
 [위키 시작](README.md) · 이전: [구조](architecture.md) · 다음: [세션 인증](authentication.md)
 
+민수가 처음 서비스를 사용하는 상황이다. 가입은 계정을 저장하는 작업이고 로그인은 그 계정으로 현재 세션을 인증하는 작업이다. 이 페이지는 가입 입력이 검증되고 닉네임·비밀번호 해시가 저장되는 과정을 더 자세히 설명한다. [코드 읽기](code-walkthrough.md)와 함께 보면 위치를 찾기 쉽다.
+
 회원 가입 성공만으로 로그인 처리하지 않는다. CSRF 검증에 필요한 익명 세션은 가입 전 토큰 조회에서 만들 수 있다. `POST /api/v1/members`의 `email`, `password`, 선택 `nickname`을 [MemberController.register](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/MemberController.java)가 받아 [MemberService.register](../../src/main/java/com/wooyongjeong/limitedsale/member/application/MemberService.java)로 전달한다. 변경 요청이므로 먼저 CSRF 토큰과 쿠키가 필요하다. 가입·로그인 DTO 전용 [MemberJson](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/request/MemberJson.java)이 중복·미지 필드, 잘못된 타입과 JSON 뒤의 추가 내용을 서비스 호출 전에 거절한다. 닉네임 생략·null은 허용한다.
 
 아래에서 클라이언트와 컨트롤러 사이만 HTTP다. 저장소와 DB 사이는 SQL이며, 각 삽입의 커밋 또는 롤백이 서비스 반환보다 먼저 끝난다.
@@ -10,32 +12,9 @@
 
 `saveAndFlush`는 INSERT를 DB에 보내 제약 위반을 확인하는 단계다. 커밋까지 완료됐다는 뜻은 아니다. `JpaMemberStore`의 `TransactionTemplate`이 콜백을 마치고 커밋한 뒤에야 `insert`가 정상 반환한다. 실패하면 롤백을 마친 뒤 바깥 `catch`에서 충돌을 변환한다. 그래서 다음 닉네임 후보는 실패한 트랜잭션을 재사용하지 않고 새 트랜잭션에서 저장할 수 있다.
 
-```mermaid
-sequenceDiagram
-    participant C as 클라이언트
-    participant M as MemberController / MemberService
-    participant S as JpaMemberStore
-    participant D as MySQL
-    C->>M: POST 회원 가입과 CSRF
-    M->>M: 검증 후 해시 1회, 삽입 TX 밖
-    opt 자동 닉네임
-        M->>S: 첫 빈 접미사 조회
-        S->>D: SELECT
-        D-->>S: 후보 번호
-    end
-    M->>S: insert
-    S->>D: REQUIRES_NEW 시작, saveAndFlush
-    alt 저장 성공
-        S->>D: commit
-        S-->>M: 성공
-        M-->>C: 201
-    else 유니크 충돌
-        S->>D: rollback
-        S-->>M: MemberConflict
-        Note over M: 자동 닉네임이면 재조회 후 재시도
-        M-->>C: 최종 성공 또는 오류
-    end
-```
+![회원 가입과 닉네임 충돌 처리](diagrams/member-1.svg)
+
+[Excalidraw 원본 편집](diagrams/member-1.excalidraw)
 
 [MemberInput](../../src/main/java/com/wooyongjeong/limitedsale/member/domain/MemberInput.java)은 이메일 앞뒤 공백을 제거하고 소문자로 바꾼다. 서비스는 정규화 후 254자 이내와 이메일 형식을 확인한다. 비밀번호는 공백 없는 출력 가능 ASCII 8~64자이며 문자 조합을 강제하지 않는다. 닉네임은 NFC 정규화 후 ASCII 공백을 정리하고 완성형 한글·영문·숫자·공백 1~12자를 허용한다. 비교 키는 소문자다. 비어 있으면 자동 생성한다.
 
@@ -53,20 +32,9 @@ sequenceDiagram
 
 마지막 행은 경쟁 상황의 예다. 충돌한 삽입은 롤백하고 다시 조회하므로 같은 후보를 무조건 재사용하지 않는다.
 
-```mermaid
-flowchart TD
-    A[해시 한 번 계산] --> B[빈 접미사 조회]
-    B --> C{"12자 이하?"}
-    C -- 아니요 --> N["재시도 여유가 있으면<br/>기본 이름 변경"]
-    N --> L{20회 소진인가}
-    C -- 예 --> T["새 TX에서 INSERT"]
-    T --> R{저장 결과}
-    R -- 성공 및 커밋 --> OK[201 응답]
-    R -- 닉네임 충돌·롤백 --> L
-    R -- 이메일 충돌 --> E[409 응답]
-    L -- 아니요 --> B
-    L -- 예 --> X[503 응답]
-```
+![자동 닉네임 생성과 재시도](diagrams/member-2.svg)
+
+[Excalidraw 원본 편집](diagrams/member-2.excalidraw)
 
 이 그림은 자동 닉네임 경로다. 수동 닉네임 충돌은 재시도하지 않고 409로 끝난다. 다른 DB 장애는 그대로 전파한다.
 

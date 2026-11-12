@@ -2,6 +2,8 @@
 
 [위키 시작](README.md) · 이전: [제품](products.md) · 다음: [데이터베이스](persistence.md)
 
+판매 이벤트는 제품에 기간·판매 가격·수량·사용자 한도를 붙인 것이다. 같은 제품이라도 이벤트마다 가격과 재고를 따로 가질 수 있다. 여기서는 관리자가 이벤트를 만들고 바꾸는 규칙과 사용자에게 보이는 상태를 설명한다. 실제 구매 시나리오는 [전체 흐름](purchase-flow.md)을 본다.
+
 판매 이벤트는 제품 하나의 이름과 판매 가격을 보관하고 판매 기간·전용 총수량·사용자 구매 한도를 소유한다. [SaleService](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java)는 제품을 [product.api](../../src/main/java/com/wooyongjeong/limitedsale/product/api/ProductQuery.java)로 확인한다. 제품 테이블을 직접 읽거나 제품 JPA 엔티티를 참조하지 않는다. 제품 변경은 시작 전에만 가능하며 새 제품명을 보관하되 판매 가격은 요청에서 명시하지 않으면 유지한다.
 
 현재 구현은 생성·부분 수정·삭제·중단·재개와 공개 목록·상세 및 주문을 위한 수량 점유다. [주문 유스케이스](orders.md)가 sale.api를 통해 점유한다. 구매 확정·해제는 후속 단계다. 품절 상태 검사는 테스트에서 DB 수량을 구성해 검증하며, 판매 이벤트 API 자체가 수량을 점유하거나 판매 완료로 바꾸지는 않는다.
@@ -12,27 +14,9 @@
 
 아래는 PATCH 성공 경로다. 컨트롤러와 서비스 사이는 Java 호출이며 MySQL 화살표는 별도 SQL이다. 스프링 트랜잭션 프록시가 커밋에 성공한 뒤 컨트롤러가 응답한다.
 
-```mermaid
-sequenceDiagram
-    participant C as 관리자 클라이언트
-    participant W as Security와 SaleController
-    participant A as SaleService
-    participant J as JpaSaleStore
-    participant D as MySQL
-    C->>W: PATCH, 세션·CSRF·version
-    W->>A: 입력 검증 후 patch
-    A->>J: 이벤트 행 쓰기 잠금
-    J->>D: SELECT FOR UPDATE
-    D-->>J: 잠금 획득과 이벤트 반환
-    A->>J: 현재 DB 시각 요청
-    J->>D: 별도 UTC 시각 SELECT
-    A->>A: 버전·시작 여부·병합한 조건 검사
-    A->>J: update
-    J->>D: UPDATE와 버전 증가, flush
-    A->>D: 트랜잭션 커밋
-    A-->>W: 갱신된 상세
-    W-->>C: 200
-```
+![관리자의 판매 이벤트 수정](diagrams/sales-1.svg)
+
+[Excalidraw 원본 편집](diagrams/sales-1.excalidraw)
 
 잠금 대기 중 시작 시각을 넘었을 수 있으므로 [JpaSaleStore.now](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/persistence/JpaSaleStore.java)는 잠금 반환 뒤 새 SQL로 시각을 읽는다. `SELECT FOR UPDATE`와 같은 문장의 NOW()를 쓰지 않는다. UTC 문자열을 Instant로 변환하므로 JDBC/JVM의 시각 타입 변환으로 DB 시각이 이동하지 않는다. 생성에는 잠글 기존 행이 없으며 제품 확인 후 DB 시각으로 미래 시작을 검사한다.
 
@@ -51,17 +35,9 @@ sequenceDiagram
 
 [Sale](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/Sale.java)의 상태는 아래 순서대로 처음 맞는 조건에서 결정한다. 상태 컬럼을 DB에 따로 저장하지 않는다. 필터 SQL도 같은 우선순위를 사용한다.
 
-```mermaid
-flowchart TD
-    A{"종료 시각 이상?"} -- 예 --> E[ENDED]
-    A -- 아니요 --> B{"중단 표시 있음?"}
-    B -- 예 --> S[STOPPED]
-    B -- 아니요 --> C{"시작 시각 전?"}
-    C -- 예 --> P[SCHEDULED]
-    C -- 아니요 --> D{"확정 수량 = 총수량?"}
-    D -- 예 --> O[SOLD_OUT]
-    D -- 아니요 --> N[OPEN]
-```
+![조회 시점의 판매 이벤트 상태 판정](diagrams/sales-2.svg)
+
+[Excalidraw 원본 편집](diagrams/sales-2.excalidraw)
 
 예를 들어 시작 전 중단 이벤트는 STOPPED이며 재개하면 SCHEDULED다. 판매 기간 안에 수량이 전부 점유됐어도 확정 수량이 총수량보다 적으면 OPEN이다. 이는 주문 성공을 보장하지 않는다. 수량 확보는 주문 유스케이스가 소유하는 트랜잭션에서 sale.api를 호출해 판정한다.
 

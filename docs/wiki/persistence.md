@@ -2,25 +2,15 @@
 
 [위키 시작](README.md) · 이전: [주문 생성과 수량 점유](orders.md) · 다음: [실행과 문제 해결](operations.md)
 
+HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어야 한다. 회원·주문·점유·결제 기록을 각각 어떤 테이블에 보관하고 어떤 FK·제약으로 연결하는지 설명한다. 한 주문이 만드는 행은 [구매 흐름의 저장 예](purchase-flow.md)에서 먼저 확인할 수 있다.
+
 판매 앱과 Mock PG는 각자 소유한 MySQL 스키마와 Flyway 이력을 사용한다. [판매 V1](../../src/main/resources/db/migration/V1__sales_schema.sql)은 회원·제품과 이후 판매·주문·결제용 테이블 및 FK·제약을 만든다. [Mock PG V1](../../mock-pg/src/main/resources/db/migration/V1__mock_pg_schema.sql)은 별도 `mock_payments`를 만든다. 서로 다른 스키마 사이 FK는 없다. 양쪽 V2는 enum 비교 규칙을 변경한다.
 
 아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·READY 결제·요청 결과도 현재 주문 생성에서 사용한다. 결제 실행과 복구는 후속 단계다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
 
-```mermaid
-flowchart LR
-    B["sale_buyer_quantities<br/>주문 생성에서 사용"] --> S["sales<br/>현재 사용"]
-    B --> M["members<br/>현재 사용"]
-    S --> P["products<br/>현재 사용"]
-    O["purchase_orders<br/>주문 생성에서 사용"] --> M
-    O --> S
-    O --> P
-    R["sale_reservations<br/>주문 생성에서 사용"] --> O
-    R -->|복합 FK| B
-    Y["payments<br/>주문 생성에서 사용"] --> O
-    Q["order_request_results"] --> M
-    Q --> O
-    PG["mock_payments<br/>별도 스키마"]
-```
+![판매 스키마의 외래 키 관계](diagrams/persistence-1.svg)
+
+[Excalidraw 원본 편집](diagrams/persistence-1.excalidraw)
 
 예를 들어 `sale_reservations`의 복합 FK는 `sale_buyer_quantities`의 `(sale_id, member_id)`를 참조한다. [판매 V4](../../src/main/resources/db/migration/V4__order_request_results.sql)의 `order_request_results`는 회원·주문에 FK를 둔다. 원본 요청 이벤트 ID에는 FK가 없으므로 없는 이벤트의 거절도 저장할 수 있다. CHECK는 성공에 주문 참조만, 거절에 사유만 허용한다. 요청 키는 회원별 유니크이며 UUID는 BINARY(16)이다.
 
@@ -28,13 +18,9 @@ flowchart LR
 
 두 앱의 버전은 별도 이력으로 관리한다. 다음 그림은 실행 순서를 나타내며, 같은 번호가 두 앱 사이의 의존성을 뜻하지 않는다.
 
-```mermaid
-flowchart LR
-    A[판매 V1 스키마] --> B[판매 V2 enum 비교]
-    B --> C[판매 V3 회원 닉네임]
-    C --> F[판매 V4 요청 결과]
-    D[Mock PG V1 스키마] --> E[Mock PG V2 enum 비교]
-```
+![판매 서버와 Mock PG의 마이그레이션](diagrams/persistence-2.svg)
+
+[Excalidraw 원본 편집](diagrams/persistence-2.excalidraw)
 
 예를 들어 이미 판매 V1과 V2를 적용한 DB는 다음 시작에서 V3과 V4를 순서대로 적용한다. 중단 시 복구 주의사항은 아래를 따른다. [판매 V2](../../src/main/resources/db/migration/V2__exact_enum_comparisons.sql)와 [Mock PG V2](../../mock-pg/src/main/resources/db/migration/V2__exact_enum_comparisons.sql)도 각각 확인할 수 있다.
 
@@ -48,13 +34,9 @@ flowchart LR
 
 다음은 기존 행과 신규 가입의 닉네임 경로다. 두 결과 모두 유니크 비교 키에 저장하지만 이름을 만드는 방법은 다르다.
 
-```mermaid
-flowchart LR
-    O[기존 회원 ID] --> V[V3의 41진법 인코딩]
-    V --> K[nickname과 nickname_key]
-    N[신규 회원 가입] --> R[무작위 기본 이름과 빈 접미사]
-    R --> K
-```
+![기존 회원과 신규 회원의 닉네임 경로](diagrams/persistence-3.svg)
+
+[Excalidraw 원본 편집](diagrams/persistence-3.excalidraw)
 
 | 변환 | 사용하는 곳 | 외부 응답에 해시 포함 |
 |---|---|---|

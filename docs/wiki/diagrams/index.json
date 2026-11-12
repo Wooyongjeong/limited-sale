@@ -1,0 +1,176 @@
+[
+  {
+    "id": "README-1",
+    "page": "README.md",
+    "title": "한정 수량 구매의 전체 흐름",
+    "status": "mixed"
+  },
+  {
+    "id": "architecture-1",
+    "page": "architecture.md",
+    "title": "판매 서버와 Mock PG의 실행 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "architecture-2",
+    "page": "architecture.md",
+    "title": "회원 저장: 코드 의존성과 실행 호출",
+    "status": "implemented"
+  },
+  {
+    "id": "architecture-3",
+    "page": "architecture.md",
+    "title": "하나의 주문, 세 도메인의 협력",
+    "status": "implemented"
+  },
+  {
+    "id": "authentication-1",
+    "page": "authentication.md",
+    "title": "세션 로그인부터 내 정보 조회·로그아웃까지",
+    "status": "implemented"
+  },
+  {
+    "id": "authentication-2",
+    "page": "authentication.md",
+    "title": "Redis 장애 중 공개 조회는 어떻게 이어가나",
+    "status": "implemented"
+  },
+  {
+    "id": "code-walkthrough-1",
+    "page": "code-walkthrough.md",
+    "title": "주문 커밋·롤백·중복 요청의 처리 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "code-walkthrough-2",
+    "page": "code-walkthrough.md",
+    "title": "HTTP 입력이 DB 기록과 응답이 되는 과정",
+    "status": "implemented"
+  },
+  {
+    "id": "failure-cases-1",
+    "page": "failure-cases.md",
+    "title": "마지막 한 개를 동시에 주문하면",
+    "status": "implemented"
+  },
+  {
+    "id": "failure-cases-2",
+    "page": "failure-cases.md",
+    "title": "결제 성공 응답을 잃었을 때의 복구",
+    "status": "planned"
+  },
+  {
+    "id": "failure-cases-3",
+    "page": "failure-cases.md",
+    "title": "결제 결과에 따른 점유 수량 처리",
+    "status": "planned"
+  },
+  {
+    "id": "http-contracts-1",
+    "page": "http-contracts.md",
+    "title": "외부 HTTP DTO와 내부 계약의 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "member-1",
+    "page": "member.md",
+    "title": "회원 가입과 닉네임 충돌 처리",
+    "status": "implemented"
+  },
+  {
+    "id": "member-2",
+    "page": "member.md",
+    "title": "자동 닉네임 생성과 재시도",
+    "status": "implemented"
+  },
+  {
+    "id": "operations-1",
+    "page": "operations.md",
+    "title": "HTTP 상태에서 확인할 코드 찾기",
+    "status": "implemented"
+  },
+  {
+    "id": "orders-1",
+    "page": "orders.md",
+    "title": "주문 생성의 한 트랜잭션",
+    "status": "implemented"
+  },
+  {
+    "id": "orders-2",
+    "page": "orders.md",
+    "title": "동일한 요청 키로 다시 주문하면",
+    "status": "implemented"
+  },
+  {
+    "id": "orders-3",
+    "page": "orders.md",
+    "title": "같은 키의 두 요청 중 하나만 커밋",
+    "status": "implemented"
+  },
+  {
+    "id": "persistence-1",
+    "page": "persistence.md",
+    "title": "판매 스키마의 외래 키 관계",
+    "status": "implemented"
+  },
+  {
+    "id": "persistence-2",
+    "page": "persistence.md",
+    "title": "판매 서버와 Mock PG의 마이그레이션",
+    "status": "implemented"
+  },
+  {
+    "id": "persistence-3",
+    "page": "persistence.md",
+    "title": "기존 회원과 신규 회원의 닉네임 경로",
+    "status": "implemented"
+  },
+  {
+    "id": "products-1",
+    "page": "products.md",
+    "title": "제품 등록 요청과 저장·응답",
+    "status": "implemented"
+  },
+  {
+    "id": "products-2",
+    "page": "products.md",
+    "title": "제품 조회와 관리자 등록의 권한 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "products-3",
+    "page": "products.md",
+    "title": "큰 페이지 offset의 조회 경로",
+    "status": "implemented"
+  },
+  {
+    "id": "purchase-flow-1",
+    "page": "purchase-flow.md",
+    "title": "민수가 로그인하고 새 CSRF 토큰을 받기까지",
+    "status": "implemented"
+  },
+  {
+    "id": "purchase-flow-2",
+    "page": "purchase-flow.md",
+    "title": "텀블러 3개 중 2개를 주문한 직후",
+    "status": "implemented"
+  },
+  {
+    "id": "purchase-flow-3",
+    "page": "purchase-flow.md",
+    "title": "Mock PG 결제 성공 후 구매 확정",
+    "status": "planned"
+  },
+  {
+    "id": "sales-1",
+    "page": "sales.md",
+    "title": "관리자의 판매 이벤트 수정",
+    "status": "implemented"
+  },
+  {
+    "id": "sales-2",
+    "page": "sales.md",
+    "title": "조회 시점의 판매 이벤트 상태 판정",
+    "status": "implemented"
+  }
+]
