@@ -29,6 +29,22 @@ class SaleTest {
     }
 
     @Test
+    void allocationUsesPeriodThenStopThenLimitThenStock() {
+        assertThat(sale(true, 10, 0).allocationDecision(START.minusNanos(1000), 1, 1))
+            .isEqualTo(AllocationDecision.SALE_OUTSIDE_PERIOD);
+        assertThat(sale(true, 10, 0).allocationDecision(START, 1, 1))
+            .isEqualTo(AllocationDecision.SALE_STOPPED);
+        assertThat(sale(false, 10, 0).allocationDecision(START, 1, 1))
+            .isEqualTo(AllocationDecision.PURCHASE_LIMIT_EXCEEDED);
+        assertThat(sale(false, 10, 0).allocationDecision(START, 0, 1))
+            .isEqualTo(AllocationDecision.SALE_SOLD_OUT);
+        assertThat(sale(false, 0, 0).allocationDecision(START, 0, 1))
+            .isEqualTo(AllocationDecision.ALLOCATED);
+        assertThat(sale(false, 0, 0).allocationDecision(END, 0, 1))
+            .isEqualTo(AllocationDecision.SALE_OUTSIDE_PERIOD);
+    }
+
+    @Test
     void metadataCanChangeAfterStartButTermsAndStaleVersionsCannot() {
         Sale original = sale(false, 0, 0);
         Sale edited = original.revise(terms("changed", START), "product", false, 3, END);

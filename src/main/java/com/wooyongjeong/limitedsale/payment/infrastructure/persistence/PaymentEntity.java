@@ -1,6 +1,14 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.persistence;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -9,7 +17,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "payments")
 public class PaymentEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false)
     private long orderId;
@@ -35,5 +44,15 @@ public class PaymentEntity {
     private Instant createdAt;
     @Column(nullable = false)
     private Instant updatedAt;
-    protected PaymentEntity() {}
+    protected PaymentEntity() {
+    }
+
+    PaymentEntity(long orderId, long amount, Instant time) {
+        this.orderId = orderId;
+        this.amount = amount;
+        pgKey = UUID.randomUUID();
+        status = PaymentStatus.READY;
+        createdAt = time;
+        updatedAt = time;
+    }
 }

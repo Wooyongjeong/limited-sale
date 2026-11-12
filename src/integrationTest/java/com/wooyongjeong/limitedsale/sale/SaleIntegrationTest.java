@@ -149,6 +149,25 @@ class SaleIntegrationTest {
     }
 
     @Test
+    void missingSaleOrderRequestIsStoredAndReplayed() throws Exception {
+        Client client = new Client();
+        client.login("sale-user@example.com");
+        String key = java.util.UUID.randomUUID().toString();
+        String body = "{\"saleId\":999999999,\"quantity\":1}";
+        var request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/orders"))
+            .header("Content-Type", "application/json")
+            .header("X-CSRF-TOKEN", client.token)
+            .header("Idempotency-Key", key)
+            .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        var first = client.http.send(request, HttpResponse.BodyHandlers.ofString());
+        var replay = client.http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(first.statusCode()).isEqualTo(404);
+        assertThat(JSON.readTree(first.body()).path("code").asText()).isEqualTo("SALE_NOT_FOUND");
+        assertThat(replay.body()).isEqualTo(first.body());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_request_results", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void dbClockUsesUtcWithoutJdbcTimezoneShift() {
         Instant before = Instant.parse(jdbc.queryForObject(
             "SELECT DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')", String.class));

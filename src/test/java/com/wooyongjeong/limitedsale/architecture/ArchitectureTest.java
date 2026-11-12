@@ -77,6 +77,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void orderApplicationDoesNotDependOnHibernate() {
+        JavaClasses classes = new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPackages("com.wooyongjeong.limitedsale.order");
+        noClasses().that().resideInAPackage("..order.application..")
+            .should().dependOnClassesThat().resideInAnyPackage("org.hibernate..", "jakarta.persistence..")
+            .check(classes);
+    }
+
+    @Test
     void violationsAreDetected() {
         ClassFileImporter importer = new ClassFileImporter();
         JavaClasses internalReference = importer.importClasses(

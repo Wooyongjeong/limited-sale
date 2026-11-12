@@ -81,6 +81,11 @@ public class SaleEntity {
         updatedAt = sale.updatedAt();
     }
 
+    void reserve(int quantity, Instant time) {
+        reservedQuantity += quantity;
+        updatedAt = time;
+    }
+
     private void setTerms(SaleTerms terms) {
         productId = terms.productId();
         name = terms.name();

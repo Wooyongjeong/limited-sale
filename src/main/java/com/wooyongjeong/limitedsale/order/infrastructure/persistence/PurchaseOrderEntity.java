@@ -1,6 +1,15 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
-import jakarta.persistence.*;
+import com.wooyongjeong.limitedsale.order.domain.OrderView;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -9,7 +18,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "purchase_orders")
 public class PurchaseOrderEntity {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @JdbcTypeCode(SqlTypes.BINARY)
     @Column(nullable = false, columnDefinition = "binary(16)")
@@ -53,5 +63,33 @@ public class PurchaseOrderEntity {
     private Instant createdAt;
     @Column(nullable = false)
     private Instant updatedAt;
-    protected PurchaseOrderEntity() {}
+    protected PurchaseOrderEntity() {
+    }
+
+    PurchaseOrderEntity(long memberId, UUID requestKey, long saleId, long productId, String productName,
+            long unitPrice, int quantity, Instant now, Instant expiresAt) {
+        publicId = UUID.randomUUID();
+        this.memberId = memberId;
+        this.requestKey = requestKey;
+        this.saleId = saleId;
+        this.productId = productId;
+        productNameSnapshot = productName;
+        this.unitPrice = unitPrice;
+        this.quantity = quantity;
+        totalAmount = Math.multiplyExact(unitPrice, quantity);
+        status = OrderStatus.AWAITING_PAYMENT;
+        this.expiresAt = expiresAt;
+        nextRecoveryAt = expiresAt;
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    long id() {
+        return id;
+    }
+
+    OrderView view() {
+        return new OrderView(publicId, saleId, productId,
+            productNameSnapshot, quantity, unitPrice, totalAmount, status.name(), createdAt, updatedAt, expiresAt);
+    }
 }
