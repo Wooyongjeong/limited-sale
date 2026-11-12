@@ -4,6 +4,22 @@ import java.time.Instant;
 
 public record Sale(long id, SaleTerms terms, String productNameSnapshot, int reservedQuantity,
         int soldQuantity, boolean stopped, long version, Instant createdAt, Instant updatedAt) {
+    public AllocationDecision allocationDecision(Instant now, int memberQuantity, int quantity) {
+        if (now.isBefore(terms.startsAt()) || !now.isBefore(terms.endsAt())) {
+            return AllocationDecision.SALE_OUTSIDE_PERIOD;
+        }
+        if (stopped) {
+            return AllocationDecision.SALE_STOPPED;
+        }
+        if (memberQuantity + quantity > terms.perMemberLimit()) {
+            return AllocationDecision.PURCHASE_LIMIT_EXCEEDED;
+        }
+        if (reservedQuantity + soldQuantity + quantity > terms.totalQuantity()) {
+            return AllocationDecision.SALE_SOLD_OUT;
+        }
+        return AllocationDecision.ALLOCATED;
+    }
+
     public SaleStatus statusAt(Instant now) {
         if (!now.isBefore(terms.endsAt())) {
             return SaleStatus.ENDED;

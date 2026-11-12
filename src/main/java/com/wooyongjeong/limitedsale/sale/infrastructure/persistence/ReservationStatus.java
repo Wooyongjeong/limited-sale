@@ -1,3 +1,7 @@
 package com.wooyongjeong.limitedsale.sale.infrastructure.persistence;
 
-public enum ReservationStatus { RESERVED, CONFIRMED, RELEASED }
+public enum ReservationStatus {
+    RESERVED,
+    CONFIRMED,
+    RELEASED
+}

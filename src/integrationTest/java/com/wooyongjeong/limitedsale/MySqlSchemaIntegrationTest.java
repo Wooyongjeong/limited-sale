@@ -80,7 +80,7 @@ class MySqlSchemaIntegrationTest {
             VALUES (UNHEX('21223344556677889900AABBCCDDEEFF'), 1000000000000000, 'PROCESSING',
             'SUCCESS', NOW(6), NOW(6))
             """);
-        assertThat(sales.migrate().migrationsExecuted).isEqualTo(2);
+        assertThat(sales.migrate().migrationsExecuted).isEqualTo(3);
         assertThat(pg.migrate().migrationsExecuted).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "
@@ -93,6 +93,32 @@ class MySqlSchemaIntegrationTest {
         assertThat(count("SELECT COUNT(*) FROM sales.members WHERE email='legacy@example.com' "
             + "AND password_hash='legacyhash' AND role='ADMIN'")).isEqualTo(1);
         sql("DELETE FROM sales.members WHERE email='legacy@example.com'");
+    }
+
+    @Test
+    void orderRequestResultsEnforceOutcomeAndPreserveMissingSaleId() throws Exception {
+        sql("INSERT INTO sales.order_request_results(member_id, request_key, sale_id, quantity, outcome, "
+            + "rejection_reason, created_at) VALUES (1, UNHEX('01010101010101010101010101010101'), "
+            + "999999, 1, 'REJECTED', 'SALE_NOT_FOUND', NOW(6))");
+        assertThat(count("SELECT COUNT(*) FROM sales.order_request_results WHERE sale_id=999999")).isEqualTo(1);
+        assertSqlErrors(1062, List.of("INSERT INTO sales.order_request_results(member_id, request_key, sale_id, "
+            + "quantity, outcome, rejection_reason, created_at) VALUES (1, "
+            + "UNHEX('01010101010101010101010101010101'), 999999, 1, 'REJECTED', 'SALE_NOT_FOUND', NOW(6))"));
+        assertSqlErrors(3819, List.of("INSERT INTO sales.order_request_results(member_id, request_key, sale_id, "
+            + "quantity, outcome, order_id, rejection_reason, created_at) VALUES (1, "
+            + "UNHEX('02020202020202020202020202020202'), 1, 1, 'CREATED', 1, 'SALE_NOT_FOUND', NOW(6))"));
+        assertSqlErrors(1452, List.of("INSERT INTO sales.order_request_results(member_id, request_key, sale_id, "
+            + "quantity, outcome, order_id, created_at) VALUES (1, "
+            + "UNHEX('03030303030303030303030303030303'), 1, 1, 'CREATED', 999999, NOW(6))",
+            "INSERT INTO sales.order_request_results(member_id, request_key, sale_id, quantity, outcome, "
+            + "rejection_reason, created_at) VALUES (999999, UNHEX('04040404040404040404040404040404'), "
+            + "1, 1, 'REJECTED', 'SALE_NOT_FOUND', NOW(6))"));
+        assertSqlErrors(3819, List.of("INSERT INTO sales.order_request_results(member_id, request_key, sale_id, "
+            + "quantity, outcome, rejection_reason, created_at) VALUES (1, "
+            + "UNHEX('05050505050505050505050505050505'), 1, 1, 'REJECTED', 'unknown', NOW(6))"));
+        assertThat(count("SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE "
+            + "TABLE_SCHEMA='sales' AND TABLE_NAME='order_request_results' AND COLUMN_NAME='request_key' "
+            + "AND DATA_TYPE='binary'")).isEqualTo(16);
     }
 
     @Test
@@ -133,7 +159,7 @@ class MySqlSchemaIntegrationTest {
         assertThat(pg.migrate().migrationsExecuted).isZero();
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(3);
+        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(4);
         assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(2);
     }
     @Test
