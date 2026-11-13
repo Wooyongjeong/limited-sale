@@ -85,4 +85,4 @@ orders.record(...)        이 요청 키의 성공 결과 저장
 | 도메인 간 api 경계를 지키나? | [ArchitectureTest](../../src/test/java/com/wooyongjeong/limitedsale/architecture/ArchitectureTest.java) |
 | 컨트롤러가 내부 모델을 응답으로 내보내나? | [HttpContractStructureTest](../../src/test/java/com/wooyongjeong/limitedsale/architecture/HttpContractStructureTest.java)와 실제 응답 매핑 |
 
-테스트가 존재한다는 것과 부하·장애의 모든 경우를 검증했다는 것은 다르다. Mock PG HTTP·복구 실행기의 코드는 아직 없으므로 그 부분은 [후속 설계](purchase-flow.md)를 읽는다.
+테스트가 존재한다는 것과 부하·장애의 모든 경우를 검증했다는 것은 다르다. Mock PG HTTP와 ADMIN 시나리오 설정 코드는 [Mock PG 페이지](mock-pg.md)에서 이어 읽는다. 판매 앱의 사용자 결제 연동·복구 실행기는 아직 없으므로 그 부분은 [후속 설계](purchase-flow.md)를 읽는다.

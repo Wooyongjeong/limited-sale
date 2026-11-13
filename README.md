@@ -1,6 +1,6 @@
 # 한정 수량 제품 판매 서비스
 
-회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회, 주문 생성·수량 점유·본인 주문 상세를 구현했다. 주문 생성 시 READY 결제 기록도 저장한다. Mock PG HTTP 연동·결제 실행·주문 확정·점유 해제·자동 만료 복구는 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회, 주문 생성·수량 점유·본인 주문 상세를 구현했다. 주문 생성 시 READY 결제 기록도 저장한다. Mock PG 결제·조회·종료와 키별 시나리오를 제공한다. 판매 앱의 사용자 결제 실행·주문 확정·점유 해제·자동 만료 복구는 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
 코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
 
@@ -20,6 +20,12 @@ ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제
 
 `GET /api/v1/sales?productId=1&status=SCHEDULED&page=0&size=20`과 `GET /api/v1/sales/{id}`는 공개 조회다. 수량은 총수량만 공개한다. PATCH는 조회한 version을 보내야 하며 충돌 시 409다. 시작 후에는 이름·설명만 수정할 수 있다. 중단·재개는 시작 전에도 가능하며 종료 후에는 거절한다. [전체 계약](docs/stages/01-6-sale-management-and-query.md)을 참고한다.
 
+## Mock PG 시나리오
+
+두 앱에 같은 `MOCK_PG_API_KEY`를 환경변수로 설정한다. 실제 비밀값은 저장소에 기록하지 않는다. PG의 `/api/v1/payments` 결제·조회·종료와 `/api/v1/simulations/{pgKey}` 설정 요청은 `X-Mock-PG-Key` 헤더가 필요하며 health는 공개한다. 판매 서버는 `MOCK_PG_BASE_URL`로 PG 주소를 받는다.
+
+local/test 환경에서 ADMIN 세션과 CSRF 토큰을 사용해 `PUT /api/v1/admin/orders/{orderId}/payment-simulation`에 `{"scenario":"DELAY","delaySeconds":10}`을 보내면 주문에 연결된 PG 키의 설정만 바뀌며 결제는 시작되지 않는다. `SUCCESS`, `DECLINE`, `DELAY`, `RESPONSE_LOSS`를 지원하며 지연값의 범위는 1~600초다. `DELAY`의 기본값은 10초, `RESPONSE_LOSS`는 5초이고 후자는 최초 응답만 지연해 클라이언트 타임아웃을 재현한다. 상세 계약은 [1-7-2 문서](docs/stages/01-7-2-mock-pg-http-and-scenarios.md)를 따른다.
+
 ## 준비와 실행
 
 Java 21, Docker Compose가 필요하다. Spring Boot 3.5.16, Gradle 8.14.3, MySQL 8.4.7, Redis 7.4를 사용한다. 시작 전 3306, 6379, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
@@ -35,7 +41,7 @@ java -version                          # 21 확인
 
 ```sh
 cp .env.example .env
-# .env의 세 비밀번호를 서로 다른 로컬 전용 값으로 변경한다.
+# .env의 세 비밀번호와 MOCK_PG_API_KEY를 서로 다른 로컬 전용 값으로 변경한다.
 # DB 이름·계정·비밀번호는 영문자, 숫자, 밑줄만 사용한다.
 set -a; source .env; set +a
 docker compose up -d

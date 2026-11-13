@@ -15,3 +15,36 @@ dependencies {
     runtimeOnly 'org.flywaydb:flyway-mysql'
     runtimeOnly 'com.mysql:mysql-connector-j'
 }
+
+dependencies {
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test') { useJUnitPlatform() }
+
+sourceSets {
+    integrationTest {
+        java.srcDir 'src/integrationTest/java'
+        resources.srcDir 'src/integrationTest/resources'
+        compileClasspath += sourceSets.main.output + sourceSets.test.runtimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+dependencies {
+    integrationTestImplementation 'org.testcontainers:mysql'
+    integrationTestImplementation 'org.testcontainers:junit-jupiter'
+}
+tasks.register('integrationTest', Test) {
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter test
+}
+tasks.named('check') { dependsOn tasks.named('integrationTest') }
+dependencies {
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+}

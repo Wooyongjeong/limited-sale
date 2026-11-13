@@ -172,5 +172,17 @@
     "page": "sales.md",
     "title": "조회 시점의 판매 이벤트 상태 판정",
     "status": "implemented"
+  },
+  {
+    "id": "mock-pg-1",
+    "page": "mock-pg.md",
+    "title": "관리자 시나리오 설정과 두 서버의 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "mock-pg-2",
+    "page": "mock-pg.md",
+    "title": "PG 처리 지연과 성공 응답 지연의 차이",
+    "status": "implemented"
   }
 ]
