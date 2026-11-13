@@ -55,4 +55,8 @@ public class PaymentEntity {
         createdAt = time;
         updatedAt = time;
     }
+
+    UUID pgKey() {
+        return pgKey;
+    }
 }

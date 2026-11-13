@@ -13,7 +13,7 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = OrderController.class)
+@RestControllerAdvice(assignableTypes = {OrderController.class, PaymentSimulationController.class})
 public class OrderExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(OrderExceptionHandler.class);
 

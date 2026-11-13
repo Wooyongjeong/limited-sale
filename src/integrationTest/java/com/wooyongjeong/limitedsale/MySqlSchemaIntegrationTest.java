@@ -81,7 +81,7 @@ class MySqlSchemaIntegrationTest {
             'SUCCESS', NOW(6), NOW(6))
             """);
         assertThat(sales.migrate().migrationsExecuted).isEqualTo(3);
-        assertThat(pg.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(pg.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "
             + "WHERE m.id=1 AND m.email='test@example.com' AND m.password_hash='hash' AND m.role='USER' "
@@ -160,7 +160,7 @@ class MySqlSchemaIntegrationTest {
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(4);
-        assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(2);
+        assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(3);
     }
     @Test
     void rejectsUniqueForeignKeyAndCheckViolations() {
@@ -452,7 +452,8 @@ class MySqlSchemaIntegrationTest {
         String url = db.getJdbcUrl().replace("/sales", "/pg") + "?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true";
         try (var context = new org.springframework.boot.builder.SpringApplicationBuilder(com.wooyongjeong.mockpg.MockPgApplication.class)
                 .web(org.springframework.boot.WebApplicationType.SERVLET)
-                .run("--server.port=0", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+                .run("--server.port=0", "--mock-pg.api-key=integration-test-key",
+                     "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
                      "--spring.datasource.url=" + url, "--spring.datasource.username=pg_user",
                      "--spring.datasource.password=test_password_pg", "--spring.flyway.enabled=false",
                      "--management.health.redis.enabled=false",
