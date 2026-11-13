@@ -6,7 +6,7 @@
 
 ## 로컬에서 흐름 확인
 
-Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트 README의 실행 안내](../../README.md)를 따른다. 개발 볼륨을 지우지 않는다. 판매 앱과 Mock PG의 `/actuator/health`를 각각 확인한다. Mock PG health는 결제 API 구현의 증거가 아니다.
+Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트 README의 실행 안내](../../README.md)를 따른다. 개발 볼륨을 지우지 않는다. 판매 앱과 Mock PG의 `/actuator/health`를 각각 확인한다. Mock PG는 health GET·HEAD만 공개한다. PG 업무 API에는 X-Mock-PG-Key가 필요하며 health 성공만으로 결제·장애 시나리오 검증을 대신하지 않는다.
 
 동작 확인은 별도 로컬 테스트 계정을 사용한다. 실제 자격 증명, 세션 쿠키, CSRF 토큰을 터미널 기록이나 공유 문서에 남기지 않는다.
 
@@ -53,3 +53,5 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 - 409 닉네임 충돌: 수동 입력 중복인지 자동 생성 경쟁인지 [회원 가입](member.md)의 비교 키와 트랜잭션 설명을 확인한다.
 - 400: 제품뿐 아니라 가입·로그인 입력 오류도 해당한다. `data`의 `field`·`reason`과 요청 경로를 먼저 보고 해당 컨트롤러·예외 처리기를 찾는다. 제품에 대한 유효한 ID가 DB에 없으면 404이며, 형식이 잘못된 ID는 400이다.
 - Flyway 실패: 실패 이력과 실제 스키마를 먼저 확인한다. 특히 V3 DDL 부분 적용은 [데이터베이스](persistence.md)의 주의사항을 따른다. Flyway의 MySQL 8.4 지원 경고는 [README](../../README.md)에 기록되어 있다.
+
+Mock PG 직접 실험과 판매 앱 ADMIN 설정 요청은 [Mock PG 안내](mock-pg.md)를 따른다. `MOCK_PG_API_KEY`가 비어 있으면 PG 시작이 실패한다. PG 거절 FAILED·200과 판매 앱 설정 전달 장애 503을 구분한다. 전체 Gradle build는 판매 앱과 mock-pg 하위 프로젝트의 단위·통합 검사를 포함한다.

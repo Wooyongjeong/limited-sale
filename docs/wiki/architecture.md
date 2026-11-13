@@ -4,13 +4,13 @@
 
 처음 읽는다면 [전체 구매 흐름](purchase-flow.md)을 먼저 본다. 이 페이지는 그 흐름을 서버·패키지·의존 관계로 나눠 설명한다. Java 인터페이스를 통한 내부 호출과 Mock PG HTTP 호출의 차이를 중심으로 읽으면 된다.
 
-판매 앱은 하나의 Spring Boot 프로세스 안에서 도메인 패키지를 나눈다. Mock PG는 별도 애플리케이션과 별도 DB 스키마를 갖지만 현재는 부트스트랩과 스키마만 있다. 아래 화살표는 현재 사용 중인 연결이다.
+판매 앱은 하나의 Spring Boot 프로세스 안에서 도메인 패키지를 나눈다. Mock PG는 별도 애플리케이션과 별도 DB 스키마를 갖지만 현재 결제·조회·종료·시나리오 설정 API를 제공한다. 아래 화살표는 현재 사용 중인 연결이다.
 
 ![판매 서버와 Mock PG의 실행 경계](diagrams/architecture-1.svg)
 
 [Excalidraw 원본 편집](diagrams/architecture-1.excalidraw)
 
-[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 현재 판매 앱에서 PG로 결제 HTTP 호출을 수행하지 않는다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 현재 주문 트랜잭션의 조합은 [주문 생성과 수량 점유](orders.md), 후속 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
+[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 판매 앱에서 PG로 시나리오 설정 HTTP는 전달하지만 사용자 결제를 실행하는 HTTP 연동은 아직 없다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 현재 주문 트랜잭션의 조합은 [주문 생성과 수량 점유](orders.md), 후속 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
 
 ## 요청이 지나는 경계
 
@@ -46,3 +46,5 @@
 [Excalidraw 원본 편집](diagrams/architecture-3.excalidraw)
 
 외부 요청·응답은 도메인별 presentation/request·response의 최상위 DTO다. 내부 api·domain 결과를 그대로 반환하지 않고 컨트롤러와 응답 DTO의 from 메서드에서 변환한다. [HTTP 계약과 내부 계약](http-contracts.md)에서 배치·변환 예와 구조 검사의 범위를 설명한다.
+
+현재 ADMIN 설정 전달과 PG 내부 처리 경계는 [Mock PG 페이지](mock-pg.md)를 본다. 설정 전달과 PG 결제는 서로 다른 API이며, 설정만으로 주문·결제 상태가 바뀌지는 않는다.

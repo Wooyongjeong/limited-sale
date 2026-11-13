@@ -44,8 +44,10 @@ HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어
 | `MemberEntity.toAuthenticationRecord()` | 로그인 검증용 내부 값 | HTTP 응답에는 포함하지 않음 |
 | `ProductEntity.toProduct()` | 제품 도메인 값 | 해당 없음 |
 
-회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문 생성과 수량 점유·READY 결제 기록·요청 결과는 Spring Data JPA 저장소를 사용한다. 주문 생성 시각은 이벤트·회원 수량 잠금 뒤 읽은 MySQL UTC 시각이다. Mock PG는 아직 별도 스키마와 매핑만 있고 결제 API는 없다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
+회원 시각은 DB의 `UTC_TIMESTAMP(6)`으로 생성하고 제품 시각은 애플리케이션 `Instant`를 마이크로초로 잘라 저장한다. Hibernate JDBC 시간대와 로컬 MySQL 연결은 UTC로 설정한다. 두 앱 DataSource는 READ COMMITTED다. 주문 생성과 수량 점유·READY 결제 기록·요청 결과는 Spring Data JPA 저장소를 사용한다. 주문 생성 시각은 이벤트·회원 수량 잠금 뒤 읽은 MySQL UTC 시각이다. Mock PG는 자체 API와 별도 V3 시나리오 설정 테이블을 사용한다. 설정만 저장된 키에는 결제 기록이 없을 수 있다. 제약은 테이블 간 모든 업무 일치나 동시성·복구를 혼자 보장하지 않는다.
 
 가입 성공 시 `MemberService`가 저장에 성공한 입력값으로 내부 `Member`를 구성하고 컨트롤러가 `MemberResponse`로 변환한다. 로그인은 `toAuthenticationRecord()`를 통해 조회한 엔티티를 변환한다. 모든 응답이 항상 `toMember()`의 별도 호출이나 DB 재조회를 거치는 것은 아니다.
 
 [스키마 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java)는 실제 MySQL의 마이그레이션·제약·매핑을 다룬다. [V3 테스트](../../src/test/java/db/nickmigration/MemberNicknameMigrationTest.java)와 [회원 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java)도 함께 본다. 전체 스키마 설계와 한계는 [1-2 문서](../stages/01-2-mysql-schema-and-boundaries.md)에 있다.
+
+[Mock PG V3](../../mock-pg/src/main/resources/db/migration/V3__scenario_settings.sql)는 `mock_scenario_settings`를 추가한다. 결제 시작 전 설정을 보관하므로 mock_payments를 부모로 하는 FK는 없다. 기존 결제의 시나리오는 기본 지연값과 함께 이행한다. PG는 같은 키의 설정 행을 먼저 잠그고 결제 행을 잠그며, 두 테이블은 같은 PG 트랜잭션에 참여한다. UUID가 이미 채워진 신규 설정은 `Persistable.isNew()`로 INSERT를 강제해, merge가 다른 요청의 설정을 덮어쓰는 것을 막는다. 판매 스키마와는 트랜잭션·FK를 공유하지 않는다.
