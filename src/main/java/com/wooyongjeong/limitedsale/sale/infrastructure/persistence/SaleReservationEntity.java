@@ -41,6 +41,15 @@ public class SaleReservationEntity {
     protected SaleReservationEntity() {
     }
 
+    void finish(long expectedSale, long expectedMember, int expectedQuantity, boolean confirmed, Instant time) {
+        if (saleId != expectedSale || memberId != expectedMember || quantity != expectedQuantity
+                || status != ReservationStatus.RESERVED) {
+            throw new IllegalStateException("Reservation does not match order");
+        }
+        status = confirmed ? ReservationStatus.CONFIRMED : ReservationStatus.RELEASED;
+        updatedAt = time;
+    }
+
     SaleReservationEntity(long orderId, long saleId, long memberId, int quantity, Instant time) {
         this.orderId = orderId;
         this.saleId = saleId;

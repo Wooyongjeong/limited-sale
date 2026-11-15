@@ -167,6 +167,17 @@ class OrderIntegrationTest {
     }
 
     @Test
+    void orderReadShowsPreparedPaymentWithoutStartingIt() throws Exception {
+        long saleId = sale(5, 4);
+        Client one = client("order1@example.com");
+        String orderId = data(one.order(UUID.randomUUID().toString(), saleId, 1)).path("orderId").asText();
+        var response = one.request("GET", "/api/v1/orders/" + orderId, null, null, null);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(data(response).path("paymentStatus").asText()).isEqualTo("READY");
+        assertThat(jdbc.queryForObject("SELECT status FROM payments", String.class)).isEqualTo("READY");
+    }
+
+    @Test
     void createsReservationsExhaustsStockAndReplaysCurrentOrder() throws Exception {
         long id = sale(5, 4);
         Client one = client("order1@example.com");
@@ -192,7 +203,7 @@ class OrderIntegrationTest {
         Set<String> fields = java.util.stream.StreamSupport.stream(
             java.util.Spliterators.spliteratorUnknownSize(view.fieldNames(), 0), false).collect(Collectors.toSet());
         assertThat(fields).containsExactlyInAnyOrder("orderId", "saleId", "productId", "productNameSnapshot",
-            "quantity", "unitPrice", "totalAmount", "status", "createdAt", "updatedAt", "expiresAt");
+            "quantity", "unitPrice", "totalAmount", "status", "createdAt", "updatedAt", "expiresAt", "paymentStatus");
         assertThat(one.order(UUID.randomUUID().toString(), id, 2).statusCode()).isEqualTo(201);
         assertThat(code(one.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("PURCHASE_LIMIT_EXCEEDED");
         assertThat(two.order(UUID.randomUUID().toString(), id, 1).statusCode()).isEqualTo(201);

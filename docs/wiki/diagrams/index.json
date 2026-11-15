@@ -3,7 +3,7 @@
     "id": "README-1",
     "page": "README.md",
     "title": "한정 수량 구매의 전체 흐름",
-    "status": "mixed"
+    "status": "implemented"
   },
   {
     "id": "architecture-1",
@@ -63,7 +63,7 @@
     "id": "failure-cases-3",
     "page": "failure-cases.md",
     "title": "결제 결과에 따른 점유 수량 처리",
-    "status": "planned"
+    "status": "implemented"
   },
   {
     "id": "http-contracts-1",
@@ -159,7 +159,7 @@
     "id": "purchase-flow-3",
     "page": "purchase-flow.md",
     "title": "Mock PG 결제 성공 후 구매 확정",
-    "status": "planned"
+    "status": "implemented"
   },
   {
     "id": "sales-1",
@@ -183,6 +183,12 @@
     "id": "mock-pg-2",
     "page": "mock-pg.md",
     "title": "PG 처리 지연과 성공 응답 지연의 차이",
+    "status": "implemented"
+  },
+  {
+    "id": "payments-1",
+    "page": "payments.md",
+    "title": "결제 요청의 트랜잭션 경계",
     "status": "implemented"
   }
 ]

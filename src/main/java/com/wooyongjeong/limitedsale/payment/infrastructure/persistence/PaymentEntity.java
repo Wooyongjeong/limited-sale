@@ -1,5 +1,7 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.persistence;
 
+import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
+import com.wooyongjeong.limitedsale.payment.domain.PaymentState;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -54,6 +56,29 @@ public class PaymentEntity {
         status = PaymentStatus.READY;
         createdAt = time;
         updatedAt = time;
+    }
+
+    PaymentDetails details() {
+        return new PaymentDetails(pgKey, amount, status.name());
+    }
+
+    void start(Instant now) {
+        if (status == PaymentStatus.READY) {
+            status = PaymentStatus.PROCESSING;
+            requestedAt = now;
+            updatedAt = now;
+        }
+    }
+
+    void record(String incoming, Instant now) {
+        PaymentState current = PaymentState.valueOf(status.name());
+        PaymentState next = current.apply(PaymentState.valueOf(incoming));
+        status = PaymentStatus.valueOf(next.name());
+        lastCheckedAt = now;
+        updatedAt = now;
+        if (!current.terminal() && next.terminal()) {
+            finalizedAt = now;
+        }
     }
 
     UUID pgKey() {

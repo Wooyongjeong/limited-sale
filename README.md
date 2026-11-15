@@ -74,3 +74,9 @@ curl -f http://localhost:8081/actuator/health
 Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 개발 DB를 초기화하지 않는다. `docker compose down`은 컨테이너를 중지하고 볼륨은 보존한다. Flyway는 스키마별 이력을 독립적으로 관리하며 적용된 마이그레이션 수정 대신 새 버전을 추가한다. 현재 Flyway는 MySQL 8.4 지원 경고를 출력하므로 실제 MySQL 검증 결과와 함께 확인해야 한다.
 
 의존성: [Spring Boot 3.5 관리 버전](https://docs.spring.io/spring-boot/3.5/appendix/dependency-versions/coordinates.html), [ArchUnit 사용 안내](https://www.archunit.org/userguide/html/000_Index.html), [Gradle Java 호환성](https://docs.gradle.org/current/userguide/compatibility.html).
+
+## 사용자 결제
+
+로그인 세션과 CSRF 토큰으로 `POST /api/v1/orders/{orderId}/payment`를 호출하며 본문은 보내지 않는다. 기본 PG 성공이면 200과 주문 CONFIRMED·paymentStatus SUCCEEDED를 반환한다. 결과 미확인은 202와 점유 유지, 명확한 거절·종료 확인된 만료는 409다. 재시도와 상세 GET의 차이는 [결제 위키](docs/wiki/payments.md)를 따른다.
+
+`limited-sale.payment.timeout` 기본 PT3S는 한 요청의 PG 통신 예산, `limited-sale.payment.retry-interval` 기본 PT10S는 영속 재조회 간격이다. 자동 복구 실행기는 아직 없으며 만료 후 사용자 결제 요청은 PG 종료 확인으로 진입한다.

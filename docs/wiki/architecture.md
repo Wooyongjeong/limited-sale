@@ -10,7 +10,7 @@
 
 [Excalidraw 원본 편집](diagrams/architecture-1.excalidraw)
 
-[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 판매 앱에서 PG로 시나리오 설정 HTTP는 전달하지만 사용자 결제를 실행하는 HTTP 연동은 아직 없다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 현재 주문 트랜잭션의 조합은 [주문 생성과 수량 점유](orders.md), 후속 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
+[판매 앱](../../src/main/java/com/wooyongjeong/limitedsale/LimitedSaleApplication.java)과 [Mock PG](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgApplication.java)는 각각 시작한다. 판매 앱은 시나리오 설정과 사용자 결제·조회·종료를 PG HTTP로 전달한다. HTTP 대기 중 DB 잠금을 유지하지 않는다. 판매 이벤트 관리·조회는 [판매 이벤트 페이지](sales.md)를 본다. 현재 주문 트랜잭션의 조합은 [주문 생성과 수량 점유](orders.md), 결제 경계는 [구조 설계](../architecture.md)에 기록되어 있다.
 
 ## 요청이 지나는 경계
 
