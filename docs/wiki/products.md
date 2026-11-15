@@ -4,7 +4,7 @@
 
 제품은 물건의 기본 정보이고, 판매 이벤트는 그 물건을 파는 조건이다. 예를 들어 기준 가격이 12,000원인 텀블러를 이벤트에서 10,000원에 3개만 팔 수 있다. 이 페이지는 제품 정보 등록·조회를 다룬다. 판매 가능 수량은 [이벤트](sales.md)와 [주문](orders.md)에서 다룬다.
 
-제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유는 [주문 생성](orders.md)에서 구현했고 확정은 후속 범위다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
+제품은 이름, 설명, 기준 가격을 가진다. 재고는 제품에 두지 않는다. 이벤트 전용 총수량은 [판매 이벤트](sales.md)가 소유하며 주문에 따른 점유는 [주문 생성](orders.md)에서 구현했고 확정은 [결제 흐름](payments.md)에서 반영한다. [ProductController](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/ProductController.java)는 HTTP를 받고 [ProductService](../../src/main/java/com/wooyongjeong/limitedsale/product/application/ProductService.java)는 공개 계약과 저장소를 연결한다.
 
 아래 클라이언트 요청은 HTTP다. 서비스와 저장소 사이는 메서드 호출이며 MySQL 화살표는 트랜잭션과 DB 접근을 나타낸다.
 

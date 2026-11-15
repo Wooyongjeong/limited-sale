@@ -6,7 +6,7 @@
 
 판매 이벤트는 제품 하나의 이름과 판매 가격을 보관하고 판매 기간·전용 총수량·사용자 구매 한도를 소유한다. [SaleService](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java)는 제품을 [product.api](../../src/main/java/com/wooyongjeong/limitedsale/product/api/ProductQuery.java)로 확인한다. 제품 테이블을 직접 읽거나 제품 JPA 엔티티를 참조하지 않는다. 제품 변경은 시작 전에만 가능하며 새 제품명을 보관하되 판매 가격은 요청에서 명시하지 않으면 유지한다.
 
-현재 구현은 생성·부분 수정·삭제·중단·재개와 공개 목록·상세 및 주문을 위한 수량 점유다. [주문 유스케이스](orders.md)가 sale.api를 통해 점유한다. 구매 확정·해제는 후속 단계다. 품절 상태 검사는 테스트에서 DB 수량을 구성해 검증하며, 판매 이벤트 API 자체가 수량을 점유하거나 판매 완료로 바꾸지는 않는다.
+현재 구현은 생성·부분 수정·삭제·중단·재개와 공개 목록·상세 및 주문을 위한 수량 점유다. [주문 유스케이스](orders.md)가 sale.api를 통해 점유한다. 구매 확정·해제도 [결제 흐름](payments.md)에서 같은 api를 통해 반영한다. 품절 상태 검사는 테스트에서 DB 수량을 구성해 검증하며, 판매 이벤트 API 자체가 수량을 점유하거나 판매 완료로 바꾸지는 않는다.
 
 ## 관리 요청과 트랜잭션
 

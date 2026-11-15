@@ -4,7 +4,7 @@
 
 주문 버튼을 누르는 순간 결제가 완료되는 것은 아니다. 먼저 다른 사람과 겹치지 않게 수량을 확보하고, 누가 무엇을 얼마에 주문했는지 저장한다. 여기서는 그 원자적 처리를 코드·DB 수준에서 설명한다. 수량 예시부터 보고 싶다면 [전체 구매 흐름](purchase-flow.md), 재시도가 궁금하면 [실패 사례](failure-cases.md)를 먼저 읽는다.
 
-주문 생성은 이벤트 재고와 사용자 구매 한도를 확보하고 결제 준비 기록까지 한 번에 저장한다. 같은 요청을 다시 보내도 주문이 늘어나지 않으며, 업무상 거절도 요청 키별로 보관한다. 이 페이지는 1-7-1 구현을 설명한다. 사용자 결제용 PG 호출·주문 확정·점유 해제·복구 실행기는 후속 단계다. PG 자체의 API와 ADMIN 시나리오 설정은 [1-7-2 구현](mock-pg.md)을 본다.
+주문 생성은 이벤트 재고와 사용자 구매 한도를 확보하고 결제 준비 기록까지 한 번에 저장한다. 같은 요청을 다시 보내도 주문이 늘어나지 않으며, 업무상 거절도 요청 키별로 보관한다. 이 페이지는 1-7-1 구현을 설명한다. 사용자 결제·주문 확정·점유 해제는 [1-7-3 결제 흐름](payments.md)으로 이어진다. 자동 복구 실행기는 후속 단계다. PG 자체의 API와 ADMIN 시나리오 설정은 [1-7-2 구현](mock-pg.md)을 본다.
 
 ## 요청에서 트랜잭션까지
 
@@ -66,6 +66,7 @@
     "unitPrice": 1000,
     "totalAmount": 2000,
     "status": "AWAITING_PAYMENT",
+    "paymentStatus": "READY",
     "createdAt": "2030-01-01T00:00:00Z",
     "updatedAt": "2030-01-01T00:00:00Z",
     "expiresAt": "2030-01-01T00:05:00Z"
@@ -76,4 +77,4 @@
 
 [OrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderIntegrationTest.java)는 실제 MySQL·Redis에서 재고 소진, 회원 한도 경쟁, 요청 키 경쟁, 거절 재생, 소유권과 엄격 입력을 검증한다. 단가 10억 원·수량 100만 개의 총액 1,000조 원이 주문·결제·응답에 정확히 유지되는지도 검사한다. 결제 INSERT에 DB 오류를 주입해 전체 롤백을 확인하며, 잠금 대기 SQL을 확인한 뒤 판매 종료·중단을 반영한다. 응답 유실 검사는 첫 HTTP 응답을 버리고 재요청하는 방식이다. 네트워크 단절 자체를 주입한 검사는 아니다. 정책 원문과 실행 근거는 [1-7-1 단계 문서](../stages/01-7-1-order-reservation.md)에 있다.
 
-주문 생성 본문은 [OrderRequest](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/request/OrderRequest.java)다. 내부 OrderView는 [OrderViewResponse](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/response/OrderViewResponse.java)로 변환한 후 공통 응답에 담는다. 타입 배치는 달라졌지만 위 JSON과 멱등성·상태 코드 계약은 같다.
+주문 생성 본문은 [OrderRequest](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/request/OrderRequest.java)다. 내부 OrderView는 [OrderViewResponse](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/response/OrderViewResponse.java)로 변환한 후 공통 응답에 담는다. 생성·조회에도 paymentStatus를 함께 반환하며 멱등성 계약은 유지한다.
