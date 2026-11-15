@@ -5,6 +5,7 @@ import com.wooyongjeong.limitedsale.order.domain.OrderRequestKeyCollision;
 import com.wooyongjeong.limitedsale.order.domain.OrderRequestOutcome;
 import com.wooyongjeong.limitedsale.order.domain.OrderStore;
 import com.wooyongjeong.limitedsale.order.domain.OrderView;
+import com.wooyongjeong.limitedsale.payment.api.PaymentOperations;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
@@ -16,10 +17,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JpaOrderStore implements OrderStore {
     private static final Set<String> REQUEST_KEYS = Set.of("uk_orders_request", "uk_order_request_results_member_key");
+    private final PaymentOperations payments;
     private final PurchaseOrderJpaRepository orders;
     private final OrderRequestResultJpaRepository results;
 
-    public JpaOrderStore(PurchaseOrderJpaRepository orders, OrderRequestResultJpaRepository results) {
+    public JpaOrderStore(PurchaseOrderJpaRepository orders, OrderRequestResultJpaRepository results,
+            PaymentOperations payments) {
+        this.payments = payments;
         this.orders = orders;
         this.results = results;
     }
@@ -54,12 +58,16 @@ public class JpaOrderStore implements OrderStore {
 
     @Override
     public Optional<OrderView> find(long memberId, UUID publicId) {
-        return orders.findByMemberIdAndPublicId(memberId, publicId).map(PurchaseOrderEntity::view);
+        return orders.findByMemberIdAndPublicId(memberId, publicId).map(this::view);
     }
 
     @Override
     public OrderView find(long orderId) {
-        return orders.findById(orderId).orElseThrow().view();
+        return view(orders.findById(orderId).orElseThrow());
+    }
+
+    private OrderView view(PurchaseOrderEntity order) {
+        return order.view().withPaymentStatus(payments.find(order.id()).status());
     }
 
     private RuntimeException classify(DataIntegrityViolationException failure) {

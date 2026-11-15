@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
 import com.wooyongjeong.limitedsale.order.domain.OrderView;
+import com.wooyongjeong.limitedsale.order.domain.PaymentOrder;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -88,8 +89,30 @@ public class PurchaseOrderEntity {
         return id;
     }
 
+    PaymentOrder paymentOrder() {
+        return new PaymentOrder(id, publicId, memberId, saleId, quantity, status.name(), expiresAt, nextRecoveryAt);
+    }
+
+    void pending(Instant now, Instant retryAt) {
+        if (status != OrderStatus.AWAITING_PAYMENT && status != OrderStatus.PAYMENT_PENDING) {
+            throw new IllegalStateException("Cannot start payment for a finalized order");
+        }
+        status = OrderStatus.PAYMENT_PENDING;
+        nextRecoveryAt = retryAt;
+        updatedAt = now;
+    }
+
+    void finish(String result, Instant now) {
+        if (status != OrderStatus.AWAITING_PAYMENT && status != OrderStatus.PAYMENT_PENDING) {
+            throw new IllegalStateException("Order already finalized");
+        }
+        status = OrderStatus.valueOf(result);
+        nextRecoveryAt = null;
+        updatedAt = now;
+    }
+
     OrderView view() {
         return new OrderView(publicId, saleId, productId,
-            productNameSnapshot, quantity, unitPrice, totalAmount, status.name(), createdAt, updatedAt, expiresAt);
+            productNameSnapshot, quantity, unitPrice, totalAmount, status.name(), createdAt, updatedAt, expiresAt, null);
     }
 }

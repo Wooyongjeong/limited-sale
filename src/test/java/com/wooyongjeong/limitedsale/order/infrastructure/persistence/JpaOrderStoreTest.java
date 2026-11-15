@@ -18,7 +18,8 @@ import static org.mockito.Mockito.when;
 class JpaOrderStoreTest {
     private final PurchaseOrderJpaRepository orders = mock(PurchaseOrderJpaRepository.class);
     private final OrderRequestResultJpaRepository results = mock(OrderRequestResultJpaRepository.class);
-    private final JpaOrderStore store = new JpaOrderStore(orders, results);
+    private final JpaOrderStore store = new JpaOrderStore(orders, results, org.mockito.Mockito.mock(
+            com.wooyongjeong.limitedsale.payment.api.PaymentOperations.class));
 
     @Test
     void onlyTheTwoRequestKeyConstraintsBecomeRequestKeyCollisions() {

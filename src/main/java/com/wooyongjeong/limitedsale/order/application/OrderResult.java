@@ -12,6 +12,10 @@ public record OrderResult(Kind kind, OrderView order) {
         PURCHASE_LIMIT_EXCEEDED,
         SALE_SOLD_OUT,
         IDEMPOTENCY_CONFLICT,
+        PAYMENT_SUCCEEDED,
+        PAYMENT_PENDING,
+        PAYMENT_DECLINED,
+        ORDER_EXPIRED,
         ORDER_NOT_FOUND
     }
 }

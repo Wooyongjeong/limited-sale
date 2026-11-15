@@ -5,6 +5,10 @@ import com.wooyongjeong.limitedsale.common.web.ResponseCode;
 public enum OrderResponseCode implements ResponseCode {
     ORDER_CREATED(201, "주문을 생성했습니다"),
     ORDER_FOUND(200, "주문을 조회했습니다"),
+    PAYMENT_SUCCEEDED(200, "결제를 완료했습니다"),
+    PAYMENT_PENDING(202, "결제 결과를 확인 중입니다"),
+    PAYMENT_DECLINED(409, "결제가 거절됐습니다"),
+    ORDER_EXPIRED(409, "주문이 만료됐습니다"),
     SALE_NOT_FOUND(404, "판매 이벤트를 찾을 수 없습니다"),
     ORDER_NOT_FOUND(404, "주문을 찾을 수 없습니다"),
     SALE_OUTSIDE_PERIOD(409, "판매 기간이 아닙니다"),

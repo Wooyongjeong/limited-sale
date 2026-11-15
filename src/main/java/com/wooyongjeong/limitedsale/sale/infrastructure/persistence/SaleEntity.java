@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.sale.infrastructure.persistence;
 
+import com.wooyongjeong.limitedsale.sale.domain.AllocationQuantities;
 import com.wooyongjeong.limitedsale.sale.domain.Sale;
 import com.wooyongjeong.limitedsale.sale.domain.SaleTerms;
 import jakarta.persistence.Column;
@@ -83,6 +84,13 @@ public class SaleEntity {
 
     void reserve(int quantity, Instant time) {
         reservedQuantity += quantity;
+        updatedAt = time;
+    }
+
+    void finish(int quantity, boolean confirmed, Instant time) {
+        var result = new AllocationQuantities(reservedQuantity, soldQuantity).finish(quantity, confirmed);
+        reservedQuantity = result.reserved();
+        soldQuantity = result.finalized();
         updatedAt = time;
     }
 

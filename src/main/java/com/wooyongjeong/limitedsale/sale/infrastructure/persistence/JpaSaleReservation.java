@@ -53,6 +53,16 @@ public class JpaSaleReservation implements SaleReservation {
     }
 
     @Override
+    public void finish(long orderId, long saleId, long memberId, int quantity, boolean confirmed, Instant time) {
+        SaleEntity sale = sales.findForUpdate(saleId).orElseThrow();
+        SaleBuyerQuantityEntity buyer = buyers.findForUpdate(saleId, memberId).orElseThrow();
+        SaleReservationEntity reservation = reservations.findForUpdate(orderId).orElseThrow();
+        reservation.finish(saleId, memberId, quantity, confirmed, time);
+        sale.finish(quantity, confirmed, time);
+        buyer.finish(quantity, confirmed, time);
+    }
+
+    @Override
     public void attach(long orderId, long saleId, long memberId, int quantity, Instant time) {
         reservations.save(new SaleReservationEntity(orderId, saleId, memberId, quantity, time));
     }
