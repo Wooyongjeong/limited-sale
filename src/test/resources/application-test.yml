@@ -13,3 +13,7 @@ management:
   health:
     redis:
       enabled: false
+
+limited-sale:
+  recovery:
+    enabled: false
