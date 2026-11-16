@@ -27,13 +27,28 @@ public class OrderPaymentService {
 
     @Transactional(propagation = Propagation.NEVER)
     public OrderResult pay(long memberId, UUID publicId) {
-        PaymentAttempt attempt = transaction.begin(memberId, publicId);
+        return execute(transaction.begin(memberId, publicId));
+    }
+
+    @Transactional(propagation = Propagation.NEVER)
+    public void recover(long orderId) {
+        PaymentAttempt attempt = transaction.beginRecovery(orderId);
+        if (attempt.token() != null) {
+            execute(attempt);
+        }
+    }
+
+    private OrderResult execute(PaymentAttempt attempt) {
         if (attempt.action() == PaymentAttempt.Action.NOT_FOUND) {
             return new OrderResult(OrderResult.Kind.ORDER_NOT_FOUND, null);
         }
-        if (attempt.action() == PaymentAttempt.Action.DONE || attempt.action() == PaymentAttempt.Action.WAIT) {
-            return transaction.finish(attempt.orderId());
+        if (attempt.action() == PaymentAttempt.Action.WAIT || attempt.token() == null) {
+            return transaction.current(attempt.orderId());
         }
+        if (attempt.action() == PaymentAttempt.Action.DONE) {
+            return transaction.finish(attempt.orderId(), attempt.token(), false);
+        }
+        boolean expiryCloseAttempted = attempt.action() == PaymentAttempt.Action.CLOSE;
         long started = System.nanoTime();
         GatewayResult result = switch (attempt.action()) {
             case CHARGE -> gateway.charge(attempt.payment(), budget);
@@ -44,14 +59,23 @@ public class OrderPaymentService {
         if (result == GatewayResult.MISSING) {
             Duration remaining = budget.minusNanos(Math.max(0, System.nanoTime() - started));
             if (!remaining.isNegative() && !remaining.isZero()) {
-                result = transaction.expired(attempt.orderId())
-                        ? gateway.close(attempt.payment(), remaining)
-                        : gateway.charge(attempt.payment(), remaining);
+                PaymentAttempt.Action action = transaction.afterMissing(attempt.orderId(), attempt.token());
+                remaining = budget.minusNanos(Math.max(0, System.nanoTime() - started));
+                if (remaining.isNegative() || remaining.isZero()) {
+                    result = GatewayResult.UNKNOWN;
+                } else {
+                    expiryCloseAttempted = action == PaymentAttempt.Action.CLOSE;
+                    result = switch (action) {
+                        case CHARGE -> gateway.charge(attempt.payment(), remaining);
+                        case CLOSE -> gateway.close(attempt.payment(), remaining);
+                        default -> GatewayResult.UNKNOWN;
+                    };
+                }
             } else {
                 result = GatewayResult.UNKNOWN;
             }
         }
-        transaction.record(attempt.orderId(), result);
-        return transaction.finish(attempt.orderId());
+        transaction.record(attempt.orderId(), attempt.token(), result);
+        return transaction.finish(attempt.orderId(), attempt.token(), expiryCloseAttempted);
     }
 }

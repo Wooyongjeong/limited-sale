@@ -57,6 +57,8 @@ public class PurchaseOrderEntity {
     private Instant leaseUntil;
     @Column(nullable = false)
     private boolean requiresReview;
+    @Column(nullable = true)
+    private Instant nextReviewWarningAt;
     @Version
     @Column(nullable = false)
     private long version;
@@ -90,7 +92,24 @@ public class PurchaseOrderEntity {
     }
 
     PaymentOrder paymentOrder() {
-        return new PaymentOrder(id, publicId, memberId, saleId, quantity, status.name(), expiresAt, nextRecoveryAt);
+        return new PaymentOrder(id, publicId, memberId, saleId, quantity, status.name(), expiresAt, nextRecoveryAt,
+            leaseToken, leaseUntil, requiresReview, nextReviewWarningAt);
+    }
+
+    void claim(UUID token, Instant until) {
+        leaseToken = token;
+        leaseUntil = until;
+    }
+
+    void reschedule(Instant next, boolean review, Instant nextWarning) {
+        nextRecoveryAt = next;
+        requiresReview = review;
+        nextReviewWarningAt = nextWarning;
+    }
+
+    void release() {
+        leaseToken = null;
+        leaseUntil = null;
     }
 
     void pending(Instant now, Instant retryAt) {
@@ -108,6 +127,9 @@ public class PurchaseOrderEntity {
         }
         status = OrderStatus.valueOf(result);
         nextRecoveryAt = null;
+        requiresReview = false;
+        nextReviewWarningAt = null;
+        release();
         updatedAt = now;
     }
 

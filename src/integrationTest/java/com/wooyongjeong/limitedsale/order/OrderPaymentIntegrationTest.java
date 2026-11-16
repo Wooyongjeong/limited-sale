@@ -23,11 +23,14 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OrderPaymentIntegrationTest {
     private static final MySQLContainer<?> SALES = new MySQLContainer<>("mysql:8.4.7")
             .withCommand("--log-bin-trust-function-creators=1");
-    private static final MySQLContainer<?> PG = new MySQLContainer<>("mysql:8.4.7");
+    private static final MySQLContainer<?> PG = new MySQLContainer<>("mysql:8.4.7")
+            .withUrlParam("connectionTimeZone", "UTC")
+            .withUrlParam("forceConnectionTimeZoneToSession", "true");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static ConfigurableApplicationContext pgContext;
@@ -52,7 +55,7 @@ class OrderPaymentIntegrationTest {
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
         pg = pgContext.getBean(JdbcTemplate.class);
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
-                "--spring.profiles.active=test", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
+                "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
                 "--MOCK_PG_API_KEY=test-secret",
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
                 "--MOCK_PG_BASE_URL=http://localhost:" + pgPort, "--spring.datasource.url=" + SALES.getJdbcUrl(),
@@ -192,6 +195,9 @@ class OrderPaymentIntegrationTest {
         } finally {
             sales.execute("DROP TRIGGER fail_payment_finish");
         }
+        assertThat(pay(f).statusCode()).isEqualTo(202);
+        sales.update("UPDATE purchase_orders SET lease_until=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
         assertThat(pay(f).statusCode()).isEqualTo(200);
         quantities(f, 0, 1);
     }
@@ -253,13 +259,450 @@ class OrderPaymentIntegrationTest {
         assertThat(pay(f).statusCode()).isEqualTo(200);
         quantities(f, 0, 1);
         long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order());
-        salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class)
-                .record(id, com.wooyongjeong.limitedsale.payment.api.GatewayResult.UNKNOWN);
+        assertThat(salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class)
+                .record(id, UUID.randomUUID(), com.wooyongjeong.limitedsale.payment.api.GatewayResult.UNKNOWN)).isFalse();
         assertThat(pay(f).statusCode()).isEqualTo(200);
         quantities(f, 0, 1);
         assertThat(sales.queryForObject("SELECT status FROM payments WHERE order_id=?", String.class, id))
                 .isEqualTo("SUCCEEDED");
         assertThat(pgCount(f)).isEqualTo(1);
+    }
+
+    @Test
+    void scheduledExpiryClosesAnUnrequestedOrder() throws Exception {
+        Fixture f = fixture();
+        expire(f);
+        sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)+INTERVAL 60 SECOND "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+        var scheduler = new com.wooyongjeong.limitedsale.order.application.OrderRecoveryScheduler(
+                salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class),
+                salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class), 20, 4);
+        try {
+            scheduler.poll();
+            long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
+            String status;
+            do {
+                status = sales.queryForObject("SELECT status FROM purchase_orders "
+                        + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", String.class, f.order());
+                if (!"EXPIRED".equals(status)) {
+                    Thread.sleep(50);
+                }
+            } while (!"EXPIRED".equals(status) && System.nanoTime() < deadline);
+            assertThat(status).isEqualTo("EXPIRED");
+            quantities(f, 0, 0);
+            assertThat(pgCount(f)).isEqualTo(1);
+            assertThat(pg.queryForObject("SELECT status FROM mock_payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))",
+                    String.class, f.key())).isEqualTo("CLOSED");
+        } finally {
+            scheduler.shutdown();
+        }
+    }
+
+    @Test
+    void recoveryRetainsStockDuringOutageAndConvergesAfterPgReturns() throws Exception {
+        Fixture f = fixture();
+        expire(f);
+        long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                Long.class, f.order());
+        sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+        var environment = (org.springframework.core.env.ConfigurableEnvironment) salesContext.getEnvironment();
+        var service = salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class);
+        environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("recoveryOutage",
+                java.util.Map.of("MOCK_PG_BASE_URL", "http://127.0.0.1:1")));
+        try {
+            service.recover(id);
+            quantities(f, 1, 0);
+            assertThat(sales.queryForObject("SELECT requires_review FROM purchase_orders WHERE id=?", Boolean.class, id))
+                    .isTrue();
+            var next = sales.queryForObject("SELECT next_recovery_at FROM purchase_orders WHERE id=?", java.sql.Timestamp.class, id);
+            var warning = sales.queryForObject("SELECT next_review_warning_at FROM purchase_orders WHERE id=?", java.sql.Timestamp.class, id);
+            service.recover(id);
+            assertThat(sales.queryForObject("SELECT next_recovery_at FROM purchase_orders WHERE id=?", java.sql.Timestamp.class, id))
+                    .isEqualTo(next);
+            sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+            service.recover(id);
+            assertThat(sales.queryForObject("SELECT next_review_warning_at FROM purchase_orders WHERE id=?", java.sql.Timestamp.class, id))
+                    .isEqualTo(warning);
+            sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND, "
+                    + "next_review_warning_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+            service.recover(id);
+            assertThat(sales.queryForObject("SELECT next_review_warning_at > UTC_TIMESTAMP(6) + INTERVAL 4 MINUTE "
+                    + "FROM purchase_orders WHERE id=?", Boolean.class, id)).isTrue();
+            assertThat(sales.queryForObject("SELECT next_recovery_at > UTC_TIMESTAMP(6) + INTERVAL 8 SECOND "
+                    + "FROM purchase_orders WHERE id=?", Boolean.class, id)).isTrue();
+            quantities(f, 1, 0);
+        } finally {
+            environment.getPropertySources().remove("recoveryOutage");
+        }
+        sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+        service.recover(id);
+        quantities(f, 0, 0);
+        assertThat(sales.queryForObject("SELECT status FROM purchase_orders WHERE id=?", String.class, id)).isEqualTo("EXPIRED");
+        assertThat(sales.queryForObject("SELECT requires_review FROM purchase_orders WHERE id=?", Boolean.class, id)).isFalse();
+        assertThat(sales.queryForObject("SELECT next_review_warning_at FROM purchase_orders WHERE id=?", java.sql.Timestamp.class, id))
+                .isNull();
+    }
+
+    @Test
+    void recoveryAppliesADeclineWithoutAnotherUserRequest() throws Exception {
+        Fixture f = fixture();
+        scenario(f, "DECLINE", null);
+        var gateway = salesContext.getBean(com.wooyongjeong.limitedsale.payment.api.PaymentGateway.class);
+        var payment = new com.wooyongjeong.limitedsale.payment.api.PaymentDetails(UUID.fromString(f.key()), 1000, "PROCESSING");
+        assertThat(gateway.charge(payment, java.time.Duration.ofSeconds(3)))
+                .isEqualTo(com.wooyongjeong.limitedsale.payment.api.GatewayResult.FAILED);
+        sales.update("UPDATE purchase_orders SET status='PAYMENT_PENDING', next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+        sales.update("UPDATE payments p JOIN purchase_orders o ON p.order_id=o.id SET p.status='PROCESSING', "
+                + "p.requested_at=UTC_TIMESTAMP(6) WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+        long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                Long.class, f.order());
+        salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class).recover(id);
+        assertThat(sales.queryForObject("SELECT status FROM purchase_orders WHERE id=?", String.class, id))
+                .isEqualTo("PAYMENT_FAILED");
+        quantities(f, 0, 0);
+        assertThat(pgCount(f)).isEqualTo(1);
+    }
+
+    @Test
+    void recoveryContinuesDelayedPaymentUntilItsFinalResult() throws Exception {
+        Fixture f = fixture();
+        scenario(f, "DELAY", 60);
+        assertThat(pay(f).statusCode()).isEqualTo(202);
+        long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                Long.class, f.order());
+        sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+        var service = salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class);
+        service.recover(id);
+        quantities(f, 1, 0);
+        assertThat(sales.queryForObject("SELECT next_recovery_at > UTC_TIMESTAMP(6) + INTERVAL 8 SECOND "
+                + "FROM purchase_orders WHERE id=?", Boolean.class, id)).isTrue();
+        pg.update("UPDATE mock_payments SET completion_due_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                + "WHERE pg_key=UNHEX(REPLACE(?, '-', ''))", f.key());
+        var nowFromJdbc = pg.queryForObject("SELECT UTC_TIMESTAMP(6)", java.sql.Timestamp.class).toInstant();
+        var dueAsUtc = java.time.Instant.parse(pg.queryForObject("SELECT DATE_FORMAT(completion_due_at, "
+                + "'%Y-%m-%dT%H:%i:%s.%fZ') FROM mock_payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))",
+                String.class, f.key()));
+        assertThat(nowFromJdbc).isAfter(dueAsUtc);
+        sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+        service.recover(id);
+        assertThat(pg.queryForObject("SELECT status FROM mock_payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))",
+                String.class, f.key())).isEqualTo("SUCCEEDED");
+        assertThat(sales.queryForObject("SELECT status FROM payments WHERE order_id=?", String.class, id))
+                .isEqualTo("SUCCEEDED");
+        quantities(f, 0, 1);
+        assertThat(pgCount(f)).isEqualTo(1);
+    }
+
+    @Test
+    void interruptedAttemptsConvergeAfterLeaseAndPgSuccessBoundaries() throws Exception {
+        Fixture afterLease = fixture();
+        Fixture afterPgSuccess = fixture();
+        var transaction = salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class);
+        var gateway = salesContext.getBean(com.wooyongjeong.limitedsale.payment.api.PaymentGateway.class);
+        for (Fixture f : java.util.List.of(afterLease, afterPgSuccess)) {
+            boolean sendCharge = f == afterPgSuccess;
+            var interrupted = new com.wooyongjeong.limitedsale.payment.api.PaymentGateway() {
+                @Override
+                public com.wooyongjeong.limitedsale.payment.api.GatewayResult charge(
+                        com.wooyongjeong.limitedsale.payment.api.PaymentDetails payment, java.time.Duration timeout) {
+                    if (sendCharge) {
+                        assertThat(gateway.charge(payment, timeout))
+                                .isEqualTo(com.wooyongjeong.limitedsale.payment.api.GatewayResult.SUCCEEDED);
+                    }
+                    throw new IllegalStateException("simulated interruption");
+                }
+
+                @Override
+                public com.wooyongjeong.limitedsale.payment.api.GatewayResult query(
+                        com.wooyongjeong.limitedsale.payment.api.PaymentDetails payment, java.time.Duration timeout) {
+                    return gateway.query(payment, timeout);
+                }
+
+                @Override
+                public com.wooyongjeong.limitedsale.payment.api.GatewayResult close(
+                        com.wooyongjeong.limitedsale.payment.api.PaymentDetails payment, java.time.Duration timeout) {
+                    return gateway.close(payment, timeout);
+                }
+            };
+            var service = new com.wooyongjeong.limitedsale.order.application.OrderPaymentService(
+                    transaction, interrupted, java.time.Duration.ofSeconds(3));
+            long member = sales.queryForObject("SELECT member_id FROM purchase_orders "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order());
+            assertThatThrownBy(() -> service.pay(member, UUID.fromString(f.order())))
+                    .isInstanceOf(IllegalStateException.class);
+            quantities(f, 1, 0);
+            assertThat(pgCount(f)).isEqualTo(sendCharge ? 1 : 0);
+            sales.update("UPDATE purchase_orders SET lease_until=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND, "
+                    + "next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+            long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                    Long.class, f.order());
+            salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class).recover(id);
+            quantities(f, 0, 1);
+            assertThat(pgCount(f)).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void restartedNodeRecoversPersistedLeaseAndPaymentBoundaries() throws Exception {
+        Fixture afterLease = fixture();
+        Fixture afterPgSuccess = fixture();
+        Fixture afterPaymentSaved = fixture();
+        Fixture underReview = fixture();
+        expire(underReview);
+        sales.update("UPDATE purchase_orders SET status='PAYMENT_PENDING', requires_review=true, "
+                + "next_review_warning_at=UTC_TIMESTAMP(6)+INTERVAL 5 MINUTE, "
+                + "next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", underReview.order());
+        var warning = sales.queryForObject("SELECT next_review_warning_at FROM purchase_orders "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", java.sql.Timestamp.class, underReview.order());
+        var gateway = salesContext.getBean(com.wooyongjeong.limitedsale.payment.api.PaymentGateway.class);
+        for (Fixture f : java.util.List.of(afterPgSuccess, afterPaymentSaved)) {
+            var details = new com.wooyongjeong.limitedsale.payment.api.PaymentDetails(UUID.fromString(f.key()), 1000, "PROCESSING");
+            assertThat(gateway.charge(details, java.time.Duration.ofSeconds(3)))
+                    .isEqualTo(com.wooyongjeong.limitedsale.payment.api.GatewayResult.SUCCEEDED);
+        }
+        for (Fixture f : java.util.List.of(afterLease, afterPgSuccess, afterPaymentSaved)) {
+            sales.update("UPDATE purchase_orders SET status='PAYMENT_PENDING', next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND, "
+                    + "lease_token=UUID_TO_BIN(UUID()), lease_until=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+            sales.update("UPDATE payments p JOIN purchase_orders o ON o.id=p.order_id SET p.status=?, "
+                    + "p.requested_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
+                    + "WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", f == afterPaymentSaved ? "SUCCEEDED" : "PROCESSING", f.order());
+        }
+        String[] arguments = {"--server.port=0", "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false",
+                "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate", "--MOCK_PG_API_KEY=test-secret",
+                "--MOCK_PG_BASE_URL=http://localhost:" + pgPort,
+                "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
+                "--spring.datasource.url=" + SALES.getJdbcUrl(), "--spring.datasource.username=" + SALES.getUsername(),
+                "--spring.datasource.password=" + SALES.getPassword(), "--spring.data.redis.host=" + REDIS.getHost(),
+                "--spring.data.redis.port=" + REDIS.getMappedPort(6379)};
+        try (var stopped = new SpringApplicationBuilder(LimitedSaleApplication.class).run(arguments)) {
+            assertThat(stopped.isActive()).isTrue();
+        }
+        try (var restarted = new SpringApplicationBuilder(LimitedSaleApplication.class).run(arguments)) {
+            var service = restarted.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class);
+            for (Fixture f : java.util.List.of(afterLease, afterPgSuccess, afterPaymentSaved)) {
+                long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                        Long.class, f.order());
+                service.recover(id);
+                quantities(f, 0, 1);
+                assertThat(pgCount(f)).isEqualTo(1);
+            }
+            var environment = (org.springframework.core.env.ConfigurableEnvironment) restarted.getEnvironment();
+            environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("restartOutage",
+                    java.util.Map.of("MOCK_PG_BASE_URL", "http://127.0.0.1:1")));
+            long reviewId = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                    Long.class, underReview.order());
+            try {
+                service.recover(reviewId);
+                quantities(underReview, 1, 0);
+                assertThat(sales.queryForObject("SELECT next_review_warning_at FROM purchase_orders WHERE id=?",
+                        java.sql.Timestamp.class, reviewId)).isEqualTo(warning);
+            } finally {
+                environment.getPropertySources().remove("restartOutage");
+            }
+            sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", reviewId);
+            service.recover(reviewId);
+            quantities(underReview, 0, 0);
+        }
+    }
+
+    @Test
+    void twoNodesClaimOnceAndRunDifferentOrdersInParallel() throws Exception {
+        sales.update("UPDATE purchase_orders SET lease_token=UUID_TO_BIN(UUID()), "
+                + "lease_until=UTC_TIMESTAMP(6)+INTERVAL 1 HOUR "
+                + "WHERE status IN ('AWAITING_PAYMENT', 'PAYMENT_PENDING')");
+        Fixture first = fixture();
+        Fixture second = fixture();
+        expire(first);
+        expire(second);
+        var entered = new java.util.concurrent.CountDownLatch(2);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var calls = new java.util.concurrent.ConcurrentHashMap<String, Integer>();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var httpWorkers = java.util.concurrent.Executors.newFixedThreadPool(4);
+        server.setExecutor(httpWorkers);
+        server.createContext("/api/v1/payments", exchange -> {
+            String[] parts = exchange.getRequestURI().getPath().split("/");
+            String key = parts[4];
+            calls.merge(key, 1, Integer::sum);
+            entered.countDown();
+            try {
+                release.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            String body = "{\"httpStatus\":200,\"code\":\"OK\",\"data\":{\"pgKey\":\"" + key
+                    + "\",\"amount\":1000,\"status\":\"CLOSED\",\"createdAt\":\"2026-01-01T00:00:00Z\","
+                    + "\"updatedAt\":\"2026-01-01T00:00:00Z\",\"finalizedAt\":\"2026-01-01T00:00:00Z\"},\"message\":\"ok\"}";
+            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        var environment = (org.springframework.core.env.ConfigurableEnvironment) salesContext.getEnvironment();
+        String url = "http://127.0.0.1:" + server.getAddress().getPort();
+        environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("parallelPg",
+                java.util.Map.of("MOCK_PG_BASE_URL", url)));
+        try (var node = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true",
+                "--spring.jpa.hibernate.ddl-auto=validate", "--MOCK_PG_API_KEY=test-secret", "--MOCK_PG_BASE_URL=" + url,
+                "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
+                "--spring.datasource.url=" + SALES.getJdbcUrl(), "--spring.datasource.username=" + SALES.getUsername(),
+                "--spring.datasource.password=" + SALES.getPassword(), "--spring.data.redis.host=" + REDIS.getHost(),
+                "--spring.data.redis.port=" + REDIS.getMappedPort(6379))) {
+            var scheduler1 = new com.wooyongjeong.limitedsale.order.application.OrderRecoveryScheduler(
+                    salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class),
+                    salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class), 20, 2);
+            var scheduler2 = new com.wooyongjeong.limitedsale.order.application.OrderRecoveryScheduler(
+                    node.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class),
+                    node.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class), 20, 2);
+            try {
+                scheduler1.poll();
+                scheduler2.poll();
+                assertThat(entered.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                assertThat(pay(first).statusCode()).isEqualTo(202);
+                assertThat(calls).containsEntry(first.key(), 1).containsEntry(second.key(), 1).hasSize(2);
+            } finally {
+                release.countDown();
+                scheduler1.shutdown();
+                scheduler2.shutdown();
+            }
+            quantities(first, 0, 0);
+            quantities(second, 0, 0);
+        } finally {
+            release.countDown();
+            environment.getPropertySources().remove("parallelPg");
+            server.stop(0);
+            httpWorkers.shutdownNow();
+        }
+    }
+
+    @Test
+    void recoveryCandidateQueryHasItsSupportingIndex() {
+        var columns = sales.queryForList("SELECT COLUMN_NAME FROM information_schema.statistics "
+                + "WHERE table_schema=DATABASE() AND table_name='purchase_orders' AND index_name='ix_orders_recovery' "
+                + "ORDER BY seq_in_index", String.class);
+        assertThat(columns).containsExactly("status", "next_recovery_at", "id");
+        var plan = sales.queryForList("EXPLAIN SELECT id FROM purchase_orders "
+                + "WHERE status IN ('AWAITING_PAYMENT', 'PAYMENT_PENDING') "
+                + "AND (next_recovery_at <= UTC_TIMESTAMP(6) OR "
+                + "(expires_at <= UTC_TIMESTAMP(6) AND requires_review = false)) "
+                + "AND (lease_until IS NULL OR lease_until <= UTC_TIMESTAMP(6)) "
+                + "ORDER BY next_recovery_at, id LIMIT 20 FOR UPDATE SKIP LOCKED");
+        assertThat(plan).hasSize(1);
+        assertThat(String.valueOf(plan.getFirst().get("possible_keys"))).contains("ix_orders_recovery");
+    }
+
+    @Test
+    void lockedCandidateDoesNotBlockAnotherDueOrder() throws Exception {
+        sales.update("UPDATE purchase_orders SET lease_token=UUID_TO_BIN(UUID()), "
+                + "lease_until=UTC_TIMESTAMP(6)+INTERVAL 1 HOUR "
+                + "WHERE status IN ('AWAITING_PAYMENT', 'PAYMENT_PENDING')");
+        Fixture blocked = fixture();
+        Fixture available = fixture();
+        expire(blocked);
+        expire(available);
+        var scheduler = new com.wooyongjeong.limitedsale.order.application.OrderRecoveryScheduler(
+                salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class),
+                salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentService.class), 20, 1);
+        try (var connection = sales.getDataSource().getConnection()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("SELECT id FROM purchase_orders "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', '')) FOR UPDATE")) {
+                lock.setString(1, blocked.order());
+                lock.executeQuery().close();
+            }
+            scheduler.poll();
+            long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+            String status;
+            do {
+                status = sales.queryForObject("SELECT status FROM purchase_orders "
+                        + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", String.class, available.order());
+                if (!"EXPIRED".equals(status)) {
+                    Thread.sleep(25);
+                }
+            } while (!"EXPIRED".equals(status) && System.nanoTime() < deadline);
+            assertThat(status).isEqualTo("EXPIRED");
+            quantities(available, 0, 0);
+            quantities(blocked, 1, 0);
+            connection.commit();
+        } finally {
+            scheduler.shutdown();
+        }
+    }
+
+    @Test
+    void databaseTimeIsReadAfterPaymentRowLockWait() throws Exception {
+        Fixture f = fixture();
+        sales.update("UPDATE purchase_orders SET expires_at=UTC_TIMESTAMP(6)+INTERVAL 2 SECOND "
+                + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
+        long paymentId = sales.queryForObject("SELECT p.id FROM payments p JOIN purchase_orders o ON p.order_id=o.id "
+                + "WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order());
+        try (var connection = sales.getDataSource().getConnection();
+                var pool = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("SELECT id FROM payments WHERE id=? FOR UPDATE")) {
+                lock.setLong(1, paymentId);
+                lock.executeQuery().close();
+            }
+            var result = pool.submit(() -> pay(f).statusCode());
+            Thread.sleep(2500);
+            connection.commit();
+            assertThat(result.get()).isEqualTo(409);
+        }
+        assertThat(pg.queryForObject("SELECT status FROM mock_payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))",
+                String.class, f.key())).isEqualTo("CLOSED");
+        quantities(f, 0, 0);
+    }
+
+    @Test
+    void finalizationRollsBackWhenLeaseExpiresDuringSaleLockWait() throws Exception {
+        Fixture f = fixture();
+        long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                Long.class, f.order());
+        UUID token = UUID.randomUUID();
+        sales.update("UPDATE purchase_orders SET status='PAYMENT_PENDING', lease_token=UNHEX(REPLACE(?, '-', '')), "
+                + "lease_until=UTC_TIMESTAMP(6)+INTERVAL 2 SECOND WHERE id=?", token.toString(), id);
+        sales.update("UPDATE payments SET status='SUCCEEDED' WHERE order_id=?", id);
+        var transaction = salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class);
+        try (var connection = sales.getDataSource().getConnection();
+                var pool = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            connection.setAutoCommit(false);
+            try (var lock = connection.prepareStatement("SELECT id FROM sales WHERE id=? FOR UPDATE")) {
+                lock.setLong(1, f.sale());
+                lock.executeQuery().close();
+            }
+            var result = pool.submit(() -> transaction.finish(id, token, false));
+            Thread.sleep(2500);
+            connection.commit();
+            assertThatThrownBy(result::get).hasCauseInstanceOf(IllegalStateException.class);
+        }
+        assertThat(sales.queryForObject("SELECT status FROM purchase_orders WHERE id=?", String.class, id))
+                .isEqualTo("PAYMENT_PENDING");
+        quantities(f, 1, 0);
+    }
+
+    @Test
+    void staleTokenCannotChangePaymentOrTheNewLeaseInMysql() throws Exception {
+        Fixture f = fixture();
+        UUID old = UUID.randomUUID();
+        UUID current = UUID.randomUUID();
+        sales.update("UPDATE purchase_orders SET lease_token=UNHEX(REPLACE(?, '-', '')), "
+                + "lease_until=UTC_TIMESTAMP(6)+INTERVAL 30 SECOND WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                current.toString(), f.order());
+        long id = sales.queryForObject("SELECT id FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+                Long.class, f.order());
+        var transaction = salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class);
+        assertThat(transaction.record(id, old, com.wooyongjeong.limitedsale.payment.api.GatewayResult.SUCCEEDED)).isFalse();
+        transaction.finish(id, old, false);
+        assertThat(sales.queryForObject("SELECT HEX(lease_token) FROM purchase_orders WHERE id=?", String.class, id))
+                .isEqualTo(current.toString().replace("-", "").toUpperCase());
+        assertThat(sales.queryForObject("SELECT status FROM payments WHERE order_id=?", String.class, id)).isEqualTo("READY");
+        quantities(f, 1, 0);
     }
 
     @Test
@@ -280,7 +723,7 @@ class OrderPaymentIntegrationTest {
     }
 
     @Test
-    void lateProcessingResponseCannotReverseAConfirmedClose() throws Exception {
+    void activeLeasePreventsExpiryFromStealingAnInFlightRequest() throws Exception {
         Fixture f = fixture();
         var receivedCharge = new java.util.concurrent.CountDownLatch(1);
         var releaseCharge = new java.util.concurrent.CountDownLatch(1);
@@ -317,11 +760,12 @@ class OrderPaymentIntegrationTest {
             var late = requests.submit(() -> pay(f).statusCode());
             assertThat(receivedCharge.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
             expire(f);
-            assertThat(pay(f).statusCode()).isEqualTo(409);
+            assertThat(pay(f).statusCode()).isEqualTo(202);
             releaseCharge.countDown();
-            assertThat(late.get()).isEqualTo(409);
-            quantities(f, 0, 0);
+            assertThat(late.get()).isEqualTo(202);
+            quantities(f, 1, 0);
             assertThat(pay(f).statusCode()).isEqualTo(409);
+            quantities(f, 0, 0);
             assertThat(sales.queryForObject("SELECT p.status FROM payments p JOIN purchase_orders o ON o.id=p.order_id WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", String.class, f.order())).isEqualTo("CLOSED");
         } finally {
             releaseCharge.countDown();
@@ -338,13 +782,13 @@ class OrderPaymentIntegrationTest {
         assertThat(pay(f).statusCode()).isEqualTo(202);
         assertThat(sales.queryForObject("SELECT TIMESTAMPDIFF(MICROSECOND, p.requested_at, o.next_recovery_at) "
                 + "FROM payments p JOIN purchase_orders o ON o.id=p.order_id "
-                + "WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order())).isEqualTo(10_000_000L);
+                + "WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order())).isBetween(10_000_000L, 15_000_000L);
         sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)+INTERVAL 60 SECOND "
                 + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", f.order());
         var before = sales.queryForObject("SELECT next_recovery_at FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))", java.sql.Timestamp.class, f.order());
         int originalPort = port;
         try (var second = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
-                "--spring.profiles.active=test", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
+                "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
                 "--MOCK_PG_API_KEY=test-secret", "--MOCK_PG_BASE_URL=http://localhost:" + pgPort,
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
                 "--spring.datasource.url=" + SALES.getJdbcUrl(), "--spring.datasource.username=" + SALES.getUsername(),

@@ -3,6 +3,7 @@ package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 import com.wooyongjeong.limitedsale.order.domain.PaymentOrder;
 import com.wooyongjeong.limitedsale.order.domain.PaymentOrderStore;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
@@ -31,6 +32,31 @@ public class JpaPaymentOrderStore implements PaymentOrderStore {
     @Override
     public Instant databaseTime() {
         return Instant.parse(orders.databaseTime());
+    }
+
+    @Override
+    public List<Long> candidates(int limit) {
+        return orders.candidates(limit);
+    }
+
+    @Override
+    public Optional<PaymentOrder> tryLock(long orderId) {
+        return orders.tryLock(orderId).map(PurchaseOrderEntity::paymentOrder);
+    }
+
+    @Override
+    public void claim(long orderId, UUID token, Instant until) {
+        orders.lockById(orderId).orElseThrow().claim(token, until);
+    }
+
+    @Override
+    public void reschedule(long orderId, Instant next, boolean review, Instant nextWarning) {
+        orders.lockById(orderId).orElseThrow().reschedule(next, review, nextWarning);
+    }
+
+    @Override
+    public void release(long orderId) {
+        orders.lockById(orderId).orElseThrow().release();
     }
 
     @Override

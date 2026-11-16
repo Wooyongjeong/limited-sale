@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
 import jakarta.persistence.LockModeType;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,16 @@ interface PurchaseOrderJpaRepository extends JpaRepository<PurchaseOrderEntity, 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from PurchaseOrderEntity o where o.id = :id")
     Optional<PurchaseOrderEntity> lockById(@Param("id") long id);
+
+    @Query(value = "select id from purchase_orders where status in ('AWAITING_PAYMENT', 'PAYMENT_PENDING') "
+            + "and (next_recovery_at <= UTC_TIMESTAMP(6) "
+            + "or (expires_at <= UTC_TIMESTAMP(6) and requires_review = false)) "
+            + "and (lease_until is null or lease_until <= UTC_TIMESTAMP(6)) "
+            + "order by next_recovery_at, id limit :limit for update skip locked", nativeQuery = true)
+    List<Long> candidates(@Param("limit") int limit);
+
+    @Query(value = "select * from purchase_orders where id = :id for update skip locked", nativeQuery = true)
+    Optional<PurchaseOrderEntity> tryLock(@Param("id") long id);
 
     @Query(value = "select DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')", nativeQuery = true)
     String databaseTime();
