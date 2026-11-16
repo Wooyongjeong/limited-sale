@@ -1,6 +1,6 @@
 # 한정 수량 제품 판매 서비스
 
-회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회, 주문 생성·수량 점유·본인 주문 상세를 구현했다. 주문 생성 시 READY 결제 기록도 저장한다. Mock PG 결제·조회·종료와 키별 시나리오를 제공한다. 판매 앱의 사용자 결제 실행·주문 확정·점유 해제·자동 만료 복구는 이후 단계 범위다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
+회원가입·관리자 초기화와 Redis 세션 인증, 제품 등록·조회, 판매 이벤트 관리·조회, 주문 생성·수량 점유·본인 주문 상세를 구현했다. 주문 생성 시 READY 결제 기록도 저장한다. Mock PG 결제·조회·종료와 키별 시나리오를 제공한다. 판매 앱 사용자 결제·주문 확정·점유 해제와 DB 기반 자동 복구도 구현했다. [기획](docs/project-plan.md), [구조](docs/architecture.md), [스키마 설계](docs/stages/01-2-mysql-schema-and-boundaries.md)를 참고한다.
 
 코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
 
@@ -79,4 +79,10 @@ Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 
 
 로그인 세션과 CSRF 토큰으로 `POST /api/v1/orders/{orderId}/payment`를 호출하며 본문은 보내지 않는다. 기본 PG 성공이면 200과 주문 CONFIRMED·paymentStatus SUCCEEDED를 반환한다. 결과 미확인은 202와 점유 유지, 명확한 거절·종료 확인된 만료는 409다. 재시도와 상세 GET의 차이는 [결제 위키](docs/wiki/payments.md)를 따른다.
 
-`limited-sale.payment.timeout` 기본 PT3S는 한 요청의 PG 통신 예산, `limited-sale.payment.retry-interval` 기본 PT10S는 영속 재조회 간격이다. 자동 복구 실행기는 아직 없으며 만료 후 사용자 결제 요청은 PG 종료 확인으로 진입한다.
+`limited-sale.payment.timeout` 기본 PT3S는 한 요청의 PG 통신 예산, `limited-sale.payment.retry-interval` 기본 PT10S는 영속 재조회 간격이다. 자동 복구와 사용자 결제 요청은 같은 주문별 임대를 사용하며 만료 후 PG 종료 확인으로 진입한다.
+
+## 자동 복구와 작업 임대
+
+기본 자동 복구는 켜져 있다. `limited-sale.recovery.enabled=false`로 중지할 수 있다. 실행 간격 `interval=PT1S`, 회당 `batch-size=20`, 서버당 `concurrency=4`, 임대 `lease-duration=PT30S`, 반복 경고 `warning-interval=PT5M`이며 모두 `limited-sale.recovery` 아래 설정이다. 실행 대기열에 임대를 쌓지 않고 실행 직전에 취득한다.
+
+미요청 주문을 만료 전 임의 결제하지 않는다. 만료 후 PG 결과를 모르면 점유 유지·운영 확인 표시·기본 10초 재시도이며 강제 실패나 자동 재고 반환은 없다. 종료·재시작과 오래된 토큰 차단은 [복구 위키](docs/wiki/recovery.md)를 본다.

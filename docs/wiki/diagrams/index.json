@@ -57,7 +57,7 @@
     "id": "failure-cases-2",
     "page": "failure-cases.md",
     "title": "결제 성공 응답을 잃었을 때의 복구",
-    "status": "planned"
+    "status": "implemented"
   },
   {
     "id": "failure-cases-3",
@@ -189,6 +189,12 @@
     "id": "payments-1",
     "page": "payments.md",
     "title": "결제 요청의 트랜잭션 경계",
+    "status": "implemented"
+  },
+  {
+    "id": "recovery-1",
+    "page": "recovery.md",
+    "title": "자동 복구와 공유 임대",
     "status": "implemented"
   }
 ]

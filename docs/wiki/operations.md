@@ -15,7 +15,7 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 3. 같은 방식으로 `POST /api/v1/sessions`에 이메일과 비밀번호를 보내 로그인한다. 응답 쿠키로 교체하고 `GET /api/v1/csrf`를 다시 호출한다.
 4. `GET /api/v1/members/me`와 공개 `GET /api/v1/products`를 확인한다. 제품 생성은 별도로 초기화한 ADMIN 세션과 새 CSRF 토큰을 사용한다.
 
-진행 중인 판매 이벤트가 있으면 로그인 세션·새 CSRF 토큰과 UUID `Idempotency-Key`로 `POST /api/v1/orders`에 `{"saleId":1,"quantity":1}`을 보낸다. 생성된 UUID로 `GET /api/v1/orders/{orderId}`를 조회할 수 있다. 키를 유지한 재시도와 새 구매 시도의 차이는 [주문 페이지](orders.md)를 따른다. 현재는 결제 실행과 자동 만료 정리가 없으므로 대기 주문은 수량을 계속 점유한다.
+진행 중인 판매 이벤트가 있으면 로그인 세션·새 CSRF 토큰과 UUID `Idempotency-Key`로 `POST /api/v1/orders`에 `{"saleId":1,"quantity":1}`을 보낸다. 생성된 UUID로 `GET /api/v1/orders/{orderId}`를 조회할 수 있다. 키를 유지한 재시도와 새 구매 시도의 차이는 [주문 페이지](orders.md)를 따른다. 결제 요청은 별도 POST로 실행한다. 자동 복구는 만료 후 PG 종료를 확인하며 PG 결과 미확인 중에는 점유를 유지한다.
 
 ## 검사와 한계
 

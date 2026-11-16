@@ -6,7 +6,7 @@ HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어
 
 판매 앱과 Mock PG는 각자 소유한 MySQL 스키마와 Flyway 이력을 사용한다. [판매 V1](../../src/main/resources/db/migration/V1__sales_schema.sql)은 회원·제품과 이후 판매·주문·결제용 테이블 및 FK·제약을 만든다. [Mock PG V1](../../mock-pg/src/main/resources/db/migration/V1__mock_pg_schema.sql)은 별도 `mock_payments`를 만든다. 서로 다른 스키마 사이 FK는 없다. 양쪽 V2는 enum 비교 규칙을 변경한다.
 
-아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·READY 결제·요청 결과도 현재 주문 생성에서 사용한다. 결제 실행·결과 저장·주문과 수량 마무리에도 사용하며 자동 복구는 후속 단계다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
+아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·READY 결제·요청 결과도 현재 주문 생성에서 사용한다. 결제 실행·결과 저장·주문과 수량 마무리에도 사용하며 자동 복구도 구현했다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
 
 ![판매 스키마의 외래 키 관계](diagrams/persistence-1.svg)
 
@@ -51,3 +51,5 @@ HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어
 [스키마 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java)는 실제 MySQL의 마이그레이션·제약·매핑을 다룬다. [V3 테스트](../../src/test/java/db/nickmigration/MemberNicknameMigrationTest.java)와 [회원 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java)도 함께 본다. 전체 스키마 설계와 한계는 [1-2 문서](../stages/01-2-mysql-schema-and-boundaries.md)에 있다.
 
 [Mock PG V3](../../mock-pg/src/main/resources/db/migration/V3__scenario_settings.sql)는 `mock_scenario_settings`를 추가한다. 결제 시작 전 설정을 보관하므로 mock_payments를 부모로 하는 FK는 없다. 기존 결제의 시나리오는 기본 지연값과 함께 이행한다. PG는 같은 키의 설정 행을 먼저 잠그고 결제 행을 잠그며, 두 테이블은 같은 PG 트랜잭션에 참여한다. UUID가 이미 채워진 신규 설정은 `Persistable.isNew()`로 INSERT를 강제해, merge가 다른 요청의 설정을 덮어쓰는 것을 막는다. 판매 스키마와는 트랜잭션·FK를 공유하지 않는다.
+
+[V5](../../src/main/resources/db/migration/V5__order_recovery_warning.sql)는 주문에 next_review_warning_at을 추가한다. 임대·예약·운영 확인 표시는 [자동 복구](recovery.md)를 따른다.
