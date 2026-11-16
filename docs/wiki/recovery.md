@@ -41,7 +41,7 @@
 
 ## 장애가 오래 지속되면
 
-5분 이후에도 결과를 확인할 수 없으면 requires_review와 next_review_warning_at을 저장하고 점유를 유지한다. 기본 10초마다 재확인하며 최초 운영 확인 전환과 이후 기본 5분 간격에 경고 로그를 남긴다. 주문이 최종 정리되면 표시·경고 예약·복구 예약·임대가 해제된다.
+5분 이후에도 결과를 확인할 수 없으면 requires_review와 next_review_warning_at을 저장하고 점유를 유지한다. 기본 10초마다 재확인하며 최초 운영 확인 전환과 이후 기본 5분 간격에 경고 로그를 남긴다. 경고는 표시·다음 경고 시각을 저장한 트랜잭션의 커밋이 성공한 뒤에 출력한다. 임대 만료나 DB 오류로 롤백된 작업은 경고를 출력하지 않아 저장되지 않은 전환을 운영 확인 대상으로 알리지 않는다. 주문이 최종 정리되면 표시·경고 예약·복구 예약·임대가 해제된다.
 
 관리자 수동 처리 API와 외부 알림은 없다. 무한 재시도 횟수 소진으로 실패를 만들어 재고를 돌려주는 기능도 없다. PG가 복구되면 다음 작업이 최종 결과를 확인한다. DB 장애는 정상 실패 결과로 바꾸지 않고 로그에 남긴다. 한 작업의 예외가 다른 주문 실행을 막지 않으며 남은 임대는 만료 뒤 회수한다.
 
@@ -71,3 +71,5 @@ next_recovery_at·lease_token·lease_until·requires_review는 주문 테이블�
 5. [PurchaseOrderJpaRepository](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/PurchaseOrderJpaRepository.java)는 SKIP LOCKED 후보·실행 잠금과 DB 시각 쿼리를 제공한다.
 
 [실제 MySQL·HTTP 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderPaymentIntegrationTest.java)는 다중 인스턴스, 오래된 토큰, 잠금 대기 중 만료, 장애 중 점유 유지, PG 복구 후 수렴을 검사한다. 중단 경계는 예외·DB 트리거 주입과 앱 인스턴스 종료·재시작으로 검증했다. OS 프로세스 강제 종료는 실행하지 않았다. 5분 경고·10초 간격 검사는 격리 DB의 예정 시각 조정도 사용했으며 실제 5분 이상 장기 장애 실험은 하지 않았다. 상세 근거는 [1-7-4 문서](../stages/01-7-4-order-recovery-and-leases.md)에 남긴다.
+
+[경고 커밋 회귀 검사](../../src/test/java/com/wooyongjeong/limitedsale/order/application/RecoveryWarningCommitTest.java)는 임대 만료로 롤백되면 경고가 남지 않고, 커밋이 완료된 경우에만 한 번 출력되는지 확인한다. 이 로그 전달 자체는 영속 메시지 전송이 아니므로 DB 커밋 직후 프로세스가 중단되는 경우까지 로그 출력을 보장하지 않는다.

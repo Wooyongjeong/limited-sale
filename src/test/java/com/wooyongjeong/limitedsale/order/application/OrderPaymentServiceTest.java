@@ -70,7 +70,9 @@ class OrderPaymentServiceTest {
         verify(gateway).charge(any(), remaining.capture());
         assertThat(remaining.getValue()).isPositive().isLessThan(Duration.ofMillis(950));
         verify(transaction).record(7, idToken, GatewayResult.SUCCEEDED);
-    }    @Test
+    }
+
+    @Test
     void databaseDelayConsumesTheSharedCommunicationBudget() {
         var token = UUID.randomUUID();
         var transaction = mock(OrderPaymentTransaction.class);

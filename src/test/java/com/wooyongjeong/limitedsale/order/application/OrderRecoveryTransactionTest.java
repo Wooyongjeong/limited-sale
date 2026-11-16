@@ -11,7 +11,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,6 +34,16 @@ class OrderRecoveryTransactionTest {
     private final OrderPaymentTransaction transaction = new OrderPaymentTransaction(orders, views, payments, sales,
             Duration.ofSeconds(10), Duration.ofSeconds(30), Duration.ofMinutes(5));
     private final Instant now = Instant.parse("2026-01-01T00:00:00Z");
+
+    @BeforeEach
+    void beginSynchronization() {
+        TransactionSynchronizationManager.initSynchronization();
+    }
+
+    @AfterEach
+    void clearSynchronization() {
+        TransactionSynchronizationManager.clearSynchronization();
+    }
 
     @Test
     void expiredOwnerCannotRecordOrReleaseTheNewOwnerLease() {
