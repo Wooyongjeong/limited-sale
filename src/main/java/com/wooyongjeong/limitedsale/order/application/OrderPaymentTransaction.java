@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class OrderPaymentTransaction {
@@ -145,7 +147,14 @@ public class OrderPaymentTransaction {
                 boolean review = order.requiresReview() || !now.isBefore(order.expiresAt());
                 Instant warning = order.nextReviewWarningAt();
                 if (review && (warning == null || !now.isBefore(warning))) {
-                    log.warn("Order {} requires payment review; recovery will retry", order.publicId());
+                    UUID publicId = order.publicId();
+                    // Only report the persisted transition; a later lease check or flush can still roll it back.
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            log.warn("Order {} requires payment review; recovery will retry", publicId);
+                        }
+                    });
                     warning = now.plus(warningInterval);
                 }
                 Instant next = now.plus(retryInterval);
