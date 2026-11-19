@@ -1,6 +1,6 @@
 # 실행과 문제 해결
 
-[위키 시작](README.md) · 이전: [데이터베이스](persistence.md) · 다음: [구조](architecture.md)
+[위키 시작](README.md) · 이전: [데이터베이스](persistence.md)
 
 요청이 기대와 다르게 동작하면 먼저 HTTP 상태와 응답 code를 확인한다. 첫 실행이라면 [주문까지 따라 하기](first-order.md)를 사용하고, 이 페이지에서는 실행 명령·테스트·오류를 추적할 코드를 찾아본다.
 
