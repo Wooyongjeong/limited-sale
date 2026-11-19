@@ -1,6 +1,8 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.persistence;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -13,4 +15,6 @@ interface PaymentJpaRepository extends JpaRepository<PaymentEntity, Long> {
     Optional<PaymentEntity> lockByOrderId(@Param("orderId") long orderId);
 
     Optional<PaymentEntity> findByOrderId(long orderId);
+
+    List<PaymentEntity> findByOrderIdIn(Collection<Long> orderIds);
 }

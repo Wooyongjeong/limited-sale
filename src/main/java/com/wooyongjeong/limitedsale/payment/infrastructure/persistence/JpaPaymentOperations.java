@@ -3,6 +3,11 @@ package com.wooyongjeong.limitedsale.payment.infrastructure.persistence;
 import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
 import com.wooyongjeong.limitedsale.payment.api.PaymentOperations;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +24,16 @@ public class JpaPaymentOperations implements PaymentOperations {
     @Override
     public PaymentDetails find(long orderId) {
         return payments.findByOrderId(orderId).orElseThrow().details();
+    }
+
+    @Override
+    public Map<Long, String> statuses(Collection<Long> orderIds) {
+        Map<Long, String> statuses = payments.findByOrderIdIn(orderIds).stream()
+            .collect(Collectors.toUnmodifiableMap(PaymentEntity::orderId, payment -> payment.details().status()));
+        if (statuses.size() != Set.copyOf(orderIds).size()) {
+            throw new NoSuchElementException("Payment is missing for a requested order");
+        }
+        return statuses;
     }
 
     @Override

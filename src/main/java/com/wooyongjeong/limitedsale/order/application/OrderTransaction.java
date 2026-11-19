@@ -62,6 +62,13 @@ public class OrderTransaction {
             .orElseGet(() -> new OrderResult(OrderResult.Kind.ORDER_NOT_FOUND, null));
     }
 
+    @Transactional(readOnly = true)
+    public OrderPage list(long memberId, int page, int size) {
+        var result = orders.list(memberId, page, size);
+        long total = result.total();
+        return new OrderPage(result.items(), page, size, total, total / size + (total % size == 0 ? 0 : 1));
+    }
+
     private OrderResult replay(OrderRequestOutcome existing, long saleId, int quantity) {
         if (existing.saleId() != saleId || existing.quantity() != quantity) {
             return new OrderResult(OrderResult.Kind.IDEMPOTENCY_CONFLICT, null);

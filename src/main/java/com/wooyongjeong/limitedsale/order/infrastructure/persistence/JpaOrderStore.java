@@ -7,11 +7,15 @@ import com.wooyongjeong.limitedsale.order.domain.OrderStore;
 import com.wooyongjeong.limitedsale.order.domain.OrderView;
 import com.wooyongjeong.limitedsale.payment.api.PaymentOperations;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -64,6 +68,20 @@ public class JpaOrderStore implements OrderStore {
     @Override
     public OrderView find(long orderId) {
         return view(orders.findById(orderId).orElseThrow());
+    }
+
+    @Override
+    public Results list(long memberId, int page, int size) {
+        long total = orders.countByMemberId(memberId);
+        var request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+        // Spring Data cannot apply an offset above Integer.MAX_VALUE, so a page past the last order returns here.
+        if (request.getOffset() >= total) {
+            return new Results(List.of(), total);
+        }
+        var entities = orders.findByMemberId(memberId, request);
+        Map<Long, String> statuses = payments.statuses(entities.stream().map(PurchaseOrderEntity::id).toList());
+        return new Results(entities.stream()
+            .map(order -> order.view().withPaymentStatus(statuses.get(order.id()))).toList(), total);
     }
 
     private OrderView view(PurchaseOrderEntity order) {

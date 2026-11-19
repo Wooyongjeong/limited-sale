@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
@@ -11,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -170,6 +172,29 @@ class OrderPaymentIntegrationTest {
         assertThat(JSON.readTree(result.body()).path("data").isNull()).isTrue();
         quantities(expired, 0, 0);
         assertThat(pg.queryForObject("SELECT status FROM mock_payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))", String.class, expired.key())).isEqualTo("CLOSED");
+    }
+
+    @Test
+    void orderListMatchesDetailAfterPaymentSuccessAndDecline() throws Exception {
+        Fixture succeeded = fixture();
+        assertThat(pay(succeeded).statusCode()).isEqualTo(200);
+        Fixture declined = fixture();
+        scenario(declined, "DECLINE", null);
+        assertThat(pay(declined).statusCode()).isEqualTo(409);
+        Client client = declined.client();
+        JsonNode items = JSON.readTree(client.request("GET", "/api/v1/orders", null, null).body())
+                .path("data").path("items");
+        assertThat(items.get(0).path("orderId").asText()).isEqualTo(declined.order());
+        assertThat(items.get(1).path("orderId").asText()).isEqualTo(succeeded.order());
+        for (JsonNode item : List.of(items.get(0), items.get(1))) {
+            JsonNode detail = JSON.readTree(client.request("GET", "/api/v1/orders/" + item.path("orderId").asText(),
+                    null, null).body()).path("data");
+            assertThat(item).isEqualTo(detail);
+        }
+        assertThat(items.get(0).path("status").asText()).isEqualTo("PAYMENT_FAILED");
+        assertThat(items.get(0).path("paymentStatus").asText()).isEqualTo("FAILED");
+        assertThat(items.get(1).path("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(items.get(1).path("paymentStatus").asText()).isEqualTo("SUCCEEDED");
     }
 
     @Test

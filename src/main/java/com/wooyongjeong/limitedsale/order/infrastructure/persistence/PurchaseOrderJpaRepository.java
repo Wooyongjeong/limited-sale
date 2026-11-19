@@ -4,6 +4,7 @@ import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -34,4 +35,8 @@ interface PurchaseOrderJpaRepository extends JpaRepository<PurchaseOrderEntity, 
     Optional<PurchaseOrderEntity> findByPublicId(UUID publicId);
 
     Optional<PurchaseOrderEntity> findByMemberIdAndPublicId(long memberId, UUID publicId);
+
+    long countByMemberId(long memberId);
+
+    List<PurchaseOrderEntity> findByMemberId(long memberId, Pageable pageable);
 }

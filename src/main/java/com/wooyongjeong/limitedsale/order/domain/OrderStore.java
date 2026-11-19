@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.domain;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -12,4 +13,11 @@ public interface OrderStore {
         OrderRejection rejection, Instant now);
     Optional<OrderView> find(long memberId, UUID publicId);
     OrderView find(long orderId);
+    Results list(long memberId, int page, int size);
+
+    record Results(List<OrderView> items, long total) {
+        public Results {
+            items = List.copyOf(items);
+        }
+    }
 }
