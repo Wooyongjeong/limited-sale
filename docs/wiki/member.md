@@ -1,6 +1,6 @@
 # 회원 가입과 관리자 초기화
 
-[위키 시작](README.md) · 이전: [구조](architecture.md) · 다음: [세션 인증](authentication.md)
+[위키 시작](README.md) · 이전: [HTTP 계약](http-contracts.md) · 다음: [세션 인증](authentication.md)
 
 민수가 처음 서비스를 사용하는 상황이다. 가입은 계정을 저장하는 작업이고 로그인은 그 계정으로 현재 세션을 인증하는 작업이다. 이 페이지는 가입 입력이 검증되고 닉네임·비밀번호 해시가 저장되는 과정을 더 자세히 설명한다. [코드 읽기](code-walkthrough.md)와 함께 보면 위치를 찾기 쉽다.
 

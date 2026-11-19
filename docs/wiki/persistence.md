@@ -1,12 +1,12 @@
 # 데이터베이스와 마이그레이션
 
-[위키 시작](README.md) · 이전: [주문 생성과 수량 점유](orders.md) · 다음: [실행과 문제 해결](operations.md)
+[위키 시작](README.md) · 이전: [Mock PG](mock-pg.md) · 다음: [실행과 문제 해결](operations.md)
 
 HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어야 한다. 회원·주문·점유·결제 기록을 각각 어떤 테이블에 보관하고 어떤 FK·제약으로 연결하는지 설명한다. 한 주문이 만드는 행은 [구매 흐름의 저장 예](purchase-flow.md)에서 먼저 확인할 수 있다.
 
 판매 앱과 Mock PG는 각자 소유한 MySQL 스키마와 Flyway 이력을 사용한다. [판매 V1](../../src/main/resources/db/migration/V1__sales_schema.sql)은 회원·제품과 이후 판매·주문·결제용 테이블 및 FK·제약을 만든다. [Mock PG V1](../../mock-pg/src/main/resources/db/migration/V1__mock_pg_schema.sql)은 별도 `mock_payments`를 만든다. 서로 다른 스키마 사이 FK는 없다. 양쪽 V2는 enum 비교 규칙을 변경한다.
 
-아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·READY 결제·요청 결과도 현재 주문 생성에서 사용한다. 결제 실행·결과 저장·주문과 수량 마무리에도 사용하며 자동 복구도 구현했다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
+아래 화살표는 자식 테이블에서 실제 FK가 참조하는 부모 테이블을 가리킨다. `members`·`products`·`sales`는 현재 회원·제품·판매 이벤트 기능에서 사용한다. 주문·회원별 수량·주문별 점유·결제·요청 결과는 주문 생성, 결제, 자동 복구에서 사용한다. Mock PG는 별도 스키마이므로 선으로 연결하지 않았다. 관계와 제약의 전체 정의는 [판매 V1 SQL](../../src/main/resources/db/migration/V1__sales_schema.sql)을 확인한다.
 
 ![판매 스키마의 외래 키 관계](diagrams/persistence-1.svg)
 

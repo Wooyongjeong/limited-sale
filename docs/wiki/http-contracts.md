@@ -1,6 +1,6 @@
 # HTTP 요청·응답과 내부 계약
 
-[위키 시작](README.md) · [구조와 경계](architecture.md)
+[위키 시작](README.md) · 이전: [구조와 경계](architecture.md) · 다음: [회원 가입](member.md)
 
 같은 주문을 표현해도 클라이언트가 보내는 값, 서버 내부에서 전달하는 값, DB에 저장하는 값은 역할이 다르다. 이 페이지는 Request·Response·내부 api 계약을 분리하는 이유를 설명한다. Entity와의 차이는 [코드 읽기](code-walkthrough.md)를 함께 본다.
 

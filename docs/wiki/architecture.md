@@ -1,6 +1,6 @@
 # 구조와 경계
 
-[위키 시작](README.md) · 다음: [회원 가입](member.md)
+[위키 시작](README.md) · 이전: [로컬에서 따라 하기](first-order.md) · 다음: [HTTP 계약](http-contracts.md)
 
 처음 읽는다면 [전체 구매 흐름](purchase-flow.md)을 먼저 본다. 이 페이지는 그 흐름을 서버·패키지·의존 관계로 나눠 설명한다. Java 인터페이스를 통한 내부 호출과 Mock PG HTTP 호출의 차이를 중심으로 읽으면 된다.
 
