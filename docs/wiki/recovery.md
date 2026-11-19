@@ -70,6 +70,12 @@ next_recovery_at·lease_token·lease_until·requires_review는 주문 테이블�
 4. [OrderPaymentService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderPaymentService.java)는 사용자·복구 진입을 공통 결제 처리로 연결하고 트랜잭션 밖에서 PG를 호출한다.
 5. [PurchaseOrderJpaRepository](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/PurchaseOrderJpaRepository.java)는 SKIP LOCKED 후보·실행 잠금과 DB 시각 쿼리를 제공한다.
 
-[실제 MySQL·HTTP 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderPaymentIntegrationTest.java)는 다중 인스턴스, 오래된 토큰, 잠금 대기 중 만료, 장애 중 점유 유지, PG 복구 후 수렴을 검사한다. 중단 경계는 예외·DB 트리거 주입과 앱 인스턴스 종료·재시작으로 검증했다. OS 프로세스 강제 종료는 실행하지 않았다. 5분 경고·10초 간격 검사는 격리 DB의 예정 시각 조정도 사용했으며 실제 5분 이상 장기 장애 실험은 하지 않았다. 상세 근거는 [1-7-4 문서](../stages/01-7-4-order-recovery-and-leases.md)에 남긴다.
+[실제 MySQL·HTTP 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderPaymentIntegrationTest.java)는 다중 인스턴스, 오래된 토큰, 잠금 대기 중 만료, 장애 중 점유 유지, PG 복구 후 수렴을 검사한다. 중단 경계는 예외·DB 트리거 주입과 앱 인스턴스 종료·재시작으로 검증한다. 이 테스트는 OS 프로세스를 강제 종료하지 않는다. 5분 경고·10초 간격 검사는 격리 DB의 예정 시각 조정도 사용한다. 상세 근거는 [1-7-4 문서](../stages/01-7-4-order-recovery-and-leases.md)에 남긴다.
+
+## 실제 프로세스 종료와 장기 장애 실험
+
+[1-7-5 회귀 실험](../stages/01-7-5-order-payment-recovery-regression.md)은 시각을 조작하지 않고 실제 프로세스로 같은 복구를 확인했다. 판매 JVM 2개와 별도 Mock PG를 띄우고, 세 경계에서 판매 JVM 하나에 SIGKILL을 보냈다. 경계는 임대 커밋 직후, PG가 성공을 저장한 뒤 판매 서버가 응답을 받기 전, 판매 결제를 저장한 뒤 주문을 마무리하기 전이다. 경계마다 3회씩 9회 모두 종료 후 30~32초에 주문이 확정됐다. 30초는 임대 기본 유효 시간이다.
+
+PG를 실제로 660초 중단한 실험에서는 서버가 점유를 유지했다. 만료 뒤 운영 확인 경고를 5분 간격으로 2건 남겼고, PG를 다시 시작하자 약 10초 뒤 주문이 확정됐다. 실행 방법은 [실행과 문제 해결](operations.md)에 있다.
 
 [경고 커밋 회귀 검사](../../src/test/java/com/wooyongjeong/limitedsale/order/application/RecoveryWarningCommitTest.java)는 임대 만료로 롤백되면 경고가 남지 않고, 커밋이 완료된 경우에만 한 번 출력되는지 확인한다. 이 로그 전달 자체는 영속 메시지 전송이 아니므로 DB 커밋 직후 프로세스가 중단되는 경우까지 로그 출력을 보장하지 않는다.

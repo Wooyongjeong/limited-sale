@@ -19,7 +19,7 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 ## 검사와 한계
 
-`./gradlew test`는 단위·구조 검사를 실행한다. `./gradlew integrationTest`는 격리된 Testcontainers MySQL과 필요한 Redis를 사용한다. `./gradlew clean build`는 두 검사를 포함하며 Docker가 필요하다. 전체 환경과 명령은 [README](../../README.md)를 따른다. 개발 DB를 초기화해 통합 테스트를 대체하지 않는다.
+`./gradlew test`는 단위·구조 검사를 실행한다. `./gradlew integrationTest`는 격리된 Testcontainers MySQL과 필요한 Redis를 사용한다. `./gradlew clean build`는 두 검사를 포함하며 Docker가 필요하다. `check`는 `tools/order-regression`의 Python 검증기 테스트도 실행하므로 Python 3.9 이상이 필요하다. 전체 환경과 명령은 [README](../../README.md)를 따른다. 개발 DB를 초기화해 통합 테스트를 대체하지 않는다.
 
 [회원 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java)는 가입과 충돌·재시도를, [세션 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java)는 세션과 제한·장애를, [제품 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java)는 제품 HTTP 계약을 다룬다. [스키마 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java)와 [구조 테스트](../../src/test/java/com/wooyongjeong/limitedsale/architecture/ArchitectureTest.java)는 각각 MySQL 제약과 패키지 경계를 검사한다. 테스트 코드가 있다는 사실과 이번 변경에서 실행해 통과했다는 사실은 다르다.
 
@@ -35,7 +35,21 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 | 주문 MySQL·HTTP 통합 | [OrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderIntegrationTest.java) | 원자적 점유·요청 키 경쟁·거절 재생·롤백·소유권 |
 | HTTP 및 Redis 통합 | [SessionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java), [ProductIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java) | 세션, 권한, 제품 계약, 장애 |
 
-현재 노출된 Actuator 엔드포인트 설정은 health다. Prometheus·Grafana·부하 및 장애 실험은 [전체 계획](../project-plan.md)의 향후 범위이며 이미 구축된 관측 체계로 간주하지 않는다.
+현재 노출된 Actuator 엔드포인트 설정은 health다. Prometheus·Grafana 관측과 k6 부하 실험은 [전체 계획](../project-plan.md)의 향후 범위이며 이미 구축된 관측 체계로 간주하지 않는다.
+
+## 정합성·장애 회귀 실험 실행
+
+실제 동시 요청, 프로세스 강제 종료, PG 장기 중단을 재현하는 실험은 `./gradlew clean build`와 별도로 실행한다. 실험 도구는 전용 MySQL·Redis 컨테이너, 판매 JVM 2개, Mock PG를 직접 만들고, 끝나면 자신이 만든 자원만 정리한다. 개발 DB와 실행 중인 서버는 사용하지 않는다.
+
+1. 현재 소스로 실행 JAR을 만든다: `./gradlew bootJar :mock-pg:bootJar`
+2. `JAVA_HOME`을 Java 21로 지정한다.
+3. 출력 디렉터리를 새 경로로 정하고 전체 실험을 실행한다. macOS에서는 `caffeinate`로 잠자기를 막는다.
+
+```sh
+caffeinate -ims python3 -B tools/order-regression/run_all.py --output /tmp/order-regression-RUN
+```
+
+전체 실행은 깨어 있는 시간 기준 약 35분 걸린다. 실패·누락·기한 초과가 있으면 0이 아닌 코드로 종료한다. 잠자기 등으로 벽시계와 단조시계가 5초 넘게 어긋나도 실패한다. 개별 실행과 감사 명령은 [실험 도구 안내](../../tools/order-regression/README.md)를 따른다. 결과는 처리량이나 지연 성능을 뜻하지 않는다. 부하 생성기와 서버가 같은 컴퓨터의 CPU와 메모리를 공유하기 때문이다.
 
 ## 증상에서 코드 찾기
 
