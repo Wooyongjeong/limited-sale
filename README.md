@@ -157,3 +157,15 @@ docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroo
 ```
 
 로드 밸런서를 거친 1·2 인스턴스 실험은 `tools/order-regression/run_balanced.py`이며 [실험 도구 안내](tools/order-regression/README.md)를 따른다. 대조 SQL 검증은 `./gradlew integrationTest`의 `ReconciliationSqlIntegrationTest`가 정합 DB와 의도적으로 깨뜨린 DB로 실행한다.
+
+## 기준 부하 실험 (1-11)
+
+k6 시나리오 [tests/load/baseline-order.js](tests/load/baseline-order.js)를 한 명령으로 준비·실행·수집·대조한다. 판매 앱 2개, Caddy, Mock PG, 전용 MySQL·Redis를 실행마다 새로 만들고 자기 자원만 정리한다. 개발 컨테이너와 DB는 건드리지 않는다. k6(v1 이상)와 Docker, Java 21(`JAVA_HOME`)이 필요하다.
+
+```sh
+./gradlew bootJar :mock-pg:bootJar
+caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario baseline --runs 3 --output /tmp/load-baseline
+caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario under-demand --runs 1 --output /tmp/load-baseline
+```
+
+`baseline`은 사용자 10,000명·재고 1,000, `under-demand`는 사용자 800명·재고 1,000이며 둘 다 동시 VU 500이다. 통과 기준을 하나라도 어기면 종료 코드가 0이 아니다. 비밀값(세션 쿠키·CSRF)은 0600 임시 파일로만 k6에 넘기고 실행 후 지운다. 결과 형식과 커밋 대상은 [실험 도구 안내](tools/order-regression/README.md)를 따른다.
