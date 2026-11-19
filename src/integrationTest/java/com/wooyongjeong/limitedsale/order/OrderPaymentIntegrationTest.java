@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
+import com.wooyongjeong.limitedsale.order.presentation.OrderResponseCode;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.mockpg.MockPgApplication;
 import java.net.CookieManager;
@@ -24,6 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -146,7 +148,7 @@ class OrderPaymentIntegrationTest {
     void successFinalizesOnceAndReplaysWithoutCallingPg() throws Exception {
         Fixture f = fixture();
         var first = pay(f);
-        assertThat(first.statusCode()).isEqualTo(200);
+        assertCode(first, OrderResponseCode.PAYMENT_SUCCEEDED);
         assertThat(JSON.readTree(first.body()).path("data").path("status").asText()).isEqualTo("CONFIRMED");
         assertThat(JSON.readTree(first.body()).path("data").path("paymentStatus").asText()).isEqualTo("SUCCEEDED");
         quantities(f, 0, 1);
@@ -662,6 +664,26 @@ class OrderPaymentIntegrationTest {
     }
 
     @Test
+    void candidateBatchIsCappedAndTakesTheEarliestDueOrdersFirst() throws Exception {
+        sales.update("UPDATE purchase_orders SET lease_token=UUID_TO_BIN(UUID()), "
+                + "lease_until=UTC_TIMESTAMP(6)+INTERVAL 1 HOUR "
+                + "WHERE status IN ('AWAITING_PAYMENT', 'PAYMENT_PENDING')");
+        Fixture[] due = {fixture(), fixture(), fixture()};
+        long[] ids = new long[due.length];
+        for (int i = 0; i < due.length; i++) {
+            sales.update("UPDATE purchase_orders SET next_recovery_at=UTC_TIMESTAMP(6)-INTERVAL ? MINUTE "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", 3 - i, due[i].order());
+            ids[i] = sales.queryForObject("SELECT id FROM purchase_orders "
+                    + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, due[i].order());
+        }
+        var transaction = salesContext.getBean(
+                com.wooyongjeong.limitedsale.order.application.OrderPaymentTransaction.class);
+        assertThat(transaction.candidates(2)).containsExactly(ids[0], ids[1]);
+        assertThat(transaction.candidates(1)).containsExactly(ids[0]);
+        assertThat(transaction.candidates(20)).containsExactly(ids[0], ids[1], ids[2]);
+    }
+
+    @Test
     void databaseTimeIsReadAfterPaymentRowLockWait() throws Exception {
         Fixture f = fixture();
         sales.update("UPDATE purchase_orders SET expires_at=UTC_TIMESTAMP(6)+INTERVAL 2 SECOND "
@@ -849,7 +871,7 @@ class OrderPaymentIntegrationTest {
         assertThat(f.client().request("POST", path, "{\"amount\":1}", f.client().token).statusCode()).isEqualTo(400);
         Client admin = new Client();
         admin.login("admin-sim@example.com");
-        assertThat(admin.request("POST", path, null, admin.token).statusCode()).isEqualTo(404);
+        assertCode(admin.request("POST", path, null, admin.token), OrderResponseCode.ORDER_NOT_FOUND);
         var get = f.client().request("GET", "/api/v1/orders/" + f.order(), null, null);
         assertThat(JSON.readTree(get.body()).path("data").path("paymentStatus").asText()).isEqualTo("READY");
         assertThat(pgCount(f)).isZero();
