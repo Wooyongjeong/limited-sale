@@ -78,3 +78,25 @@
 [OrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderIntegrationTest.java)는 실제 MySQL·Redis에서 재고 소진, 회원 한도 경쟁, 요청 키 경쟁, 거절 재생, 소유권과 엄격 입력을 검증한다. 단가 10억 원·수량 100만 개의 총액 1,000조 원이 주문·결제·응답에 정확히 유지되는지도 검사한다. 결제 INSERT에 DB 오류를 주입해 전체 롤백을 확인하며, 잠금 대기 SQL을 확인한 뒤 판매 종료·중단을 반영한다. 응답 유실 검사는 첫 HTTP 응답을 버리고 재요청하는 방식이다. 네트워크 단절 자체를 주입한 검사는 아니다. 정책 원문과 실행 근거는 [1-7-1 단계 문서](../stages/01-7-1-order-reservation.md)에 있다.
 
 주문 생성 본문은 [OrderRequest](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/request/OrderRequest.java)다. 내부 OrderView는 [OrderViewResponse](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/response/OrderViewResponse.java)로 변환한 후 공통 응답에 담는다. 생성·조회에도 paymentStatus를 함께 반환하며 멱등성 계약은 유지한다.
+
+## 내 주문 목록
+
+`GET /api/v1/orders?page=0&size=20`은 로그인한 회원의 주문만 최신순으로 반환한다. 정렬 기준은 생성 시각이 아니라 내부 주문 ID 내림차순이다. 생성 시각은 같은 값이 생길 수 있고, ID 순서는 `INDEX(member_id, id)`를 그대로 쓴다. 미로그인 요청은 401이다.
+
+`page`는 0 이상, `size`는 1~100이고 기본값은 0과 20이다. 잘못된 값은 공개 판매 목록과 같은 400 본문을 반환한다. 주문이 없거나 마지막 페이지를 넘으면 빈 목록 200이다. 필터는 없다.
+
+```json
+{
+    "items": [{"orderId": "e54c9df2-73ef-4a12-93c2-d4bb6a3e7591", "status": "CONFIRMED", "paymentStatus": "SUCCEEDED", "...": "상세와 같은 필드"}],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+}
+```
+
+항목은 상세 응답과 같은 필드다. 결제 대기·확인 중·확정·실패·만료 주문이 모두 나온다. 가격은 주문에 저장한 판매 가격과 총액이며, 이벤트 가격이 나중에 바뀌어도 그대로다. 품절·기간 외 같은 업무 거절은 주문을 만들지 않았으므로 목록에 없다. 같은 키 재시도로만 그 결과를 다시 확인한다.
+
+같은 키 재시도는 목록에 주문을 늘리지 않는다. [OrderTransaction.create](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderTransaction.java)가 요청 키 결과를 판매 기간 판정보다 먼저 읽기 때문이다. 판매가 끝난 뒤 같은 키로 다시 보내도 200과 기존 주문이 돌아온다. 새 키라면 `SALE_OUTSIDE_PERIOD`다.
+
+[JpaOrderStore.list](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/JpaOrderStore.java)는 회원의 주문 수를 센 뒤 한 페이지를 읽는다. 결제 상태는 `payment.api`의 `PaymentOperations.statuses`로 페이지 전체를 한 번에 읽는다. 주문마다 결제를 따로 읽지 않는다. 오프셋이 주문 수 이상이면 페이지 조회 없이 빈 목록을 반환한다. READ COMMITTED이므로 복구 작업이 동시에 상태를 바꾸면 총수와 항목이 같은 순간의 값이 아닐 수 있다. 정책 원문은 [1-8 단계 문서](../stages/01-8-order-result-query.md)에 있다.

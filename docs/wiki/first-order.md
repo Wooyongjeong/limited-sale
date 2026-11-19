@@ -165,6 +165,12 @@ GET {{baseUrl}}/api/v1/orders/{{orderId}}
 
 이번에는 같은 키로 quantity를 바꿔 보내면 409 IDEMPOTENCY_CONFLICT가 나와야 한다. 현재 주문 수량을 바꾸는 기능이 아니기 때문이다. 처음 quantity가 1이었으면 2로 바꾸는 식으로 확인한다.
 
+```http
+GET {{baseUrl}}/api/v1/orders
+```
+
+내 주문 목록에는 방금 만든 주문 하나만 나온다. 재전송과 409 충돌은 주문을 늘리지 않았다.
+
 ## 6. 결제를 요청하고 구매 완료 확인하기
 
 주문을 만든 뒤 기본 5분 안에 아래 요청을 보낸다. 로그인 후 새로 받은 CSRF 토큰과 같은 세션 쿠키를 사용하고 본문은 비워 둔다. 기본 SUCCESS 시나리오이면 200, data.status는 CONFIRMED, data.paymentStatus는 SUCCEEDED다.

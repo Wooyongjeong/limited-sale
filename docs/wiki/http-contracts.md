@@ -24,6 +24,7 @@
 | 판매 생성·수정 | `SaleRequest` | `SaleDetails` | `SaleDetailsResponse` |
 | 판매 목록 | 페이지·필터 쿼리 | `SalePage` | `SalePageResponse`와 `SaleListItemResponse` |
 | 주문 생성 | `OrderRequest`와 요청 키 헤더 | `OrderView` | `OrderViewResponse` |
+| 내 주문 목록 | page·size 쿼리 | `OrderPage` | `OrderPageResponse`와 `OrderViewResponse` |
 | 필드 검증 오류 | 해당 요청 | 내부 오류 상세 | 공통 `FieldErrorResponse` 목록 |
 
 `api` 패키지는 도메인 간 Java 호출 계약이다. 예를 들어 `ProductQuery`가 반환하는 `ProductDetails`는 HTTP DTO가 아니다. [ProductDetailsResponse.from](../../src/main/java/com/wooyongjeong/limitedsale/product/presentation/response/ProductDetailsResponse.java)이 필요한 필드를 옮긴다. 페이지 응답도 내부 항목을 각 응답 DTO로 변환한다.
