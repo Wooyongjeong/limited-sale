@@ -6,6 +6,7 @@ import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.product.api.ProductQuery;
+import com.wooyongjeong.limitedsale.product.presentation.code.ProductResponseCode;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
@@ -26,6 +27,7 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ProductIntegrationTest {
@@ -131,7 +133,7 @@ class ProductIntegrationTest {
         anonymous.csrf();
         assertThat(anonymous.request("POST", path, valid, anonymous.token).statusCode()).isEqualTo(401);
         var response = admin.request("POST", path, valid, admin.token);
-        assertThat(response.statusCode()).isEqualTo(201);
+        assertCode(response, ProductResponseCode.PRODUCT_CREATED);
         JsonNode created = data(response);
         assertThat(fields(created)).containsExactlyInAnyOrder("productId", "name", "description", "basePrice",
             "createdAt", "updatedAt");
@@ -141,6 +143,7 @@ class ProductIntegrationTest {
         assertThat(Instant.parse(created.path("createdAt").asText())).isEqualTo(
             Instant.parse(created.path("updatedAt").asText()));
         assertThat(data(anonymous.request("GET", "/api/v1/products/" + id, null, null))).isEqualTo(created);
+        assertCode(anonymous.request("GET", "/api/v1/products/" + id, null, null), ProductResponseCode.PRODUCT_FOUND);
         assertThat(context.getBean(ProductQuery.class).find(id).orElseThrow().name()).isEqualTo("제품  이름");
         var duplicate = admin.request("POST", path, valid, admin.token);
         assertThat(duplicate.statusCode()).isEqualTo(201);
@@ -184,6 +187,7 @@ class ProductIntegrationTest {
         invalidField(anonymous.request("GET", "/api/v1/products?size=abc", null, null), "size");
         invalidField(anonymous.request("GET", "/api/v1/products/0", null, null), "productId");
         invalidField(anonymous.request("GET", "/api/v1/products/invalid", null, null), "productId");
+        assertCode(anonymous.request("GET", "/api/v1/products", null, null), ProductResponseCode.PRODUCTS_FOUND);
         JsonNode listing = data(anonymous.request("GET", "/api/v1/products", null, null));
         assertThat(fields(listing)).containsExactlyInAnyOrder("items", "page", "size", "totalElements", "totalPages");
         assertThat(listing.path("page").asInt()).isZero();
@@ -209,8 +213,8 @@ class ProductIntegrationTest {
             assertThat(anonymous.request("GET", "/api/v1/products/" + invalid, null, null).statusCode())
                 .as(invalid).isEqualTo(400);
         }
-        assertThat(anonymous.request("GET", "/api/v1/products/9223372036854775807", null, null).statusCode())
-            .isEqualTo(404);
+        assertCode(anonymous.request("GET", "/api/v1/products/9223372036854775807", null, null),
+            ProductResponseCode.PRODUCT_NOT_FOUND);
     }
 
     @Test

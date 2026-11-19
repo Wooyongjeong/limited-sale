@@ -6,6 +6,7 @@ import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.member.domain.LoginAttemptLimit;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.RedisLoginAttemptLimit;
+import com.wooyongjeong.limitedsale.member.presentation.code.AuthenticationResponseCode;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.sale.api.SaleCommand;
 import com.wooyongjeong.limitedsale.sale.api.SaleCreation;
@@ -41,6 +42,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -119,7 +121,7 @@ class SessionIntegrationTest {
 
         void csrf(int port) throws Exception {
             var response = request(port, "GET", "/api/v1/csrf", null, false);
-            assertThat(response.statusCode()).isEqualTo(200);
+            assertCode(response, AuthenticationResponseCode.CSRF_TOKEN_ISSUED);
             token = JSON.readTree(response.body()).path("data").path("token").asText();
             assertThat(JSON.readTree(response.body()).path("data").path("headerName").asText())
                 .isEqualTo("X-CSRF-TOKEN");
@@ -166,7 +168,7 @@ class SessionIntegrationTest {
             .statusCode()).isEqualTo(201);
         client.email = "strict@example.com";
         for (int i = 0; i < 4; i++) {
-            assertThat(client.login(port1, "wrongpass").statusCode()).isEqualTo(401);
+            assertCode(client.login(port1, "wrongpass"), AuthenticationResponseCode.INVALID_CREDENTIALS);
         }
         String login = "{\"email\":\"strict@example.com\",\"password\":\"password\"}";
         for (String body : List.of(login + " garbage", login + " {}", login + " true",
@@ -178,9 +180,10 @@ class SessionIntegrationTest {
             assertThat(response.statusCode()).as(body).isEqualTo(400);
             assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
             assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
-            assertThat(client.request(port1, "GET", "/api/v1/members/me", null, false).statusCode()).isEqualTo(401);
+            assertCode(client.request(port1, "GET", "/api/v1/members/me", null, false),
+            AuthenticationResponseCode.AUTHENTICATION_REQUIRED);
         }
-        assertThat(client.login(port1, "password").statusCode()).isEqualTo(200);
+        assertCode(client.login(port1, "password"), AuthenticationResponseCode.LOGIN_SUCCEEDED);
     }
 
     @Test
@@ -193,7 +196,8 @@ class SessionIntegrationTest {
             .header("Accept", "application/xml").header("X-CSRF-TOKEN", client.token).DELETE().build();
         var response = client.http.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(406);
-        assertThat(client.request(port2, "GET", "/api/v1/members/me", null, false).statusCode()).isEqualTo(200);
+        assertCode(client.request(port2, "GET", "/api/v1/members/me", null, false),
+            AuthenticationResponseCode.MEMBER_RETRIEVED);
     }
 
     @Test
@@ -218,7 +222,8 @@ class SessionIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(406);
         assertThat(client.cookies.getCookieStore().getCookies().toString()).isEqualTo(loggedInCookie);
         assertThat(client.request(port2, "GET", "/api/v1/members/me", null, false).statusCode()).isEqualTo(200);
-        assertThat(client.request(port1, "DELETE", "/api/v1/sessions/current", null, true).statusCode()).isEqualTo(200);
+        assertCode(client.request(port1, "DELETE", "/api/v1/sessions/current", null, true),
+            AuthenticationResponseCode.LOGOUT_SUCCEEDED);
 
         Client limited = new Client();
         limited.email = "xml-limit@example.com";
@@ -232,7 +237,7 @@ class SessionIntegrationTest {
             .header("X-CSRF-TOKEN", limited.token).POST(HttpRequest.BodyPublishers.ofString(
                 "{\"email\":\"xml-limit@example.com\",\"password\":\"password\"}")).build();
         assertThat(limited.http.send(limitedLogin, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(406);
-        assertThat(limited.login(port1, "wrongpass").statusCode()).isEqualTo(429);
+        assertCode(limited.login(port1, "wrongpass"), AuthenticationResponseCode.LOGIN_RATE_LIMITED);
     }
 
     @Test
@@ -251,7 +256,8 @@ class SessionIntegrationTest {
         JsonNode data = JSON.readTree(me.body()).path("data");
         assertThat(data.path("email").asText()).isEqualTo("session@example.com");
         assertThat(data.has("id")).isFalse();
-        assertThat(a.request(port2, "DELETE", "/api/v1/sessions/current", null, true).statusCode()).isEqualTo(403);
+        assertCode(a.request(port2, "DELETE", "/api/v1/sessions/current", null, true),
+            AuthenticationResponseCode.CSRF_INVALID);
         b.csrf(port2);
         assertThat(b.login(port2, "password").statusCode()).isEqualTo(200);
         a.csrf(port2);

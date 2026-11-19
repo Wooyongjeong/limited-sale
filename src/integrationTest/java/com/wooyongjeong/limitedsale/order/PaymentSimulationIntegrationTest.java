@@ -3,6 +3,7 @@ package com.wooyongjeong.limitedsale.order;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
+import com.wooyongjeong.limitedsale.order.presentation.SimulationResponseCode;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.mockpg.MockPgApplication;
 import java.net.CookieManager;
@@ -22,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PaymentSimulationIntegrationTest {
@@ -109,7 +111,7 @@ class PaymentSimulationIntegrationTest {
         admin.login("admin-sim@example.com");
         assertThat(admin.request("PUT", path, "{\"scenario\":\"DELAY\"}", null).statusCode()).isEqualTo(403);
         var result = admin.request("PUT", path, "{\"scenario\":\"DELAY\"}", admin.token);
-        assertThat(result.statusCode()).isEqualTo(200);
+        assertCode(result, SimulationResponseCode.SIMULATION_CONFIGURED);
         assertThat(result.body()).contains(orderId.toString(), "DELAY").doesNotContain(paymentKey.toString(), "pgKey");
         assertThat(pg.queryForObject("SELECT COUNT(*) FROM mock_payments", Integer.class)).isZero();
         assertThat(sales.queryForObject("SELECT status FROM payments WHERE pg_key=UNHEX(REPLACE(?, '-', ''))",
@@ -135,9 +137,11 @@ class PaymentSimulationIntegrationTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{\"pgKey\":\"" + paymentKey + "\",\"amount\":1000}"))
                 .build();
         assertThat(HttpClient.newHttpClient().send(charge, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(202);
-        assertThat(admin.request("PUT", path, "{\"scenario\":\"SUCCESS\"}", admin.token).statusCode()).isEqualTo(409);
+        assertCode(admin.request("PUT", path, "{\"scenario\":\"SUCCESS\"}", admin.token),
+                SimulationResponseCode.SIMULATION_CONFLICT);
         pgContext.close();
-        assertThat(admin.request("PUT", path, "{\"scenario\":\"SUCCESS\"}", admin.token).statusCode()).isEqualTo(503);
+        assertCode(admin.request("PUT", path, "{\"scenario\":\"SUCCESS\"}", admin.token),
+                SimulationResponseCode.SIMULATION_UNAVAILABLE);
     }
 
     @Test

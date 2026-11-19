@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
+import com.wooyongjeong.limitedsale.order.presentation.OrderResponseCode;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
@@ -33,6 +34,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OrderIntegrationTest {
@@ -337,7 +339,7 @@ class OrderIntegrationTest {
         var first = one.order(key, id, 2);
         Instant after = Instant.parse(jdbc.queryForObject(
             "SELECT DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')", String.class));
-        assertThat(first.statusCode()).isEqualTo(201);
+        assertCode(first, OrderResponseCode.ORDER_CREATED);
         var view = data(first);
         Instant created = Instant.parse(view.path("createdAt").asText());
         assertThat(created).isBetween(before, after);
@@ -377,8 +379,8 @@ class OrderIntegrationTest {
         assertThat(data(one.order(key, id, 2)).path("orderId").asText()).isEqualTo(view.path("orderId").asText());
         assertThat(one.request("GET", "/api/v1/orders/" + view.path("orderId").asText(), null, null, null).statusCode())
             .isEqualTo(200);
-        assertThat(two.request("GET", "/api/v1/orders/" + view.path("orderId").asText(), null, null, null).statusCode())
-            .isEqualTo(404);
+        assertCode(two.request("GET", "/api/v1/orders/" + view.path("orderId").asText(), null, null, null),
+            OrderResponseCode.ORDER_NOT_FOUND);
     }
 
     @Test

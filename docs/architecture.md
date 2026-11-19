@@ -153,11 +153,13 @@ docs/
 
 | 제공 도메인 | 공개 인터페이스 기본안 | 책임 |
 |---|---|---|
-| member | MemberRegistration, MemberAuthentication, MemberQuery | 계정 생성·인증·회원 정보 |
+| member | MemberIdentity | 인증된 회원의 내부 ID. 가입·인증 유스케이스는 `member.application`·보안 어댑터가 맡고 다른 도메인이 호출하지 않는다 |
 | product | ProductCommand, ProductQuery | 제품 등록·정보 조회 |
 | sale | SaleCommand, SaleQuery, SaleReservation | 이벤트 관리·조회, 판매 수량·사용자 한도 점유·확정·해제 |
-| order | OrderCommand, OrderQuery | 주문 생성·결제 요청 조합·주문 결과 조회 |
-| payment | PaymentCommand, PaymentQuery, PaymentRecovery | PG 요청·결과 조회·종료·결제 상태 복구 |
+| order | OrderLookup | 공개 주문 ID로 내부 주문 ID 조회. 주문 생성·결제·조회는 외부 도메인이 쓰지 않아 `order.application`이 맡는다 |
+| payment | PaymentGateway, PaymentOperations, PaymentPreparation, PaymentSimulation | PG 요청·조회·종료, 결제 기록 잠금·상태 기록, 결제 준비, 시뮬레이션 설정 |
+
+위 표는 1-12에서 구현된 `api` 패키지와 대조해 맞췄다. 초안의 MemberRegistration·MemberAuthentication·MemberQuery·OrderCommand·OrderQuery·PaymentCommand·PaymentQuery·PaymentRecovery는 만들지 않았다. 다른 도메인이 호출할 필요가 없는 유스케이스에는 공개 인터페이스를 두지 않는다는 위 원칙에 따랐다.
 
 계약 타입은 불변 데이터로 만들고 JPA 엔티티, Spring Data `Page`, HTTP 응답 객체, Redis·Kafka 타입을 노출하지 않는다. 다른 도메인의 ID를 `common`으로 모으지 않는다. 공개 계약에는 식별값을 전달하고 각 도메인 내부에서 자신의 값 객체로 변환한다.
 
