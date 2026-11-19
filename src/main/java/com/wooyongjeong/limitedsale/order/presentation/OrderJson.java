@@ -25,6 +25,30 @@ final class OrderJson {
         });
     }
 
+    static int pageNumber(String input, String field) {
+        long value;
+        try {
+            if (!input.matches("[0-9]+")) {
+                throw new NumberFormatException();
+            }
+            value = Long.parseLong(input);
+        } catch (NumberFormatException exception) {
+            throw new InvalidOrderInput(field, "0 이상의 정수를 입력하세요");
+        }
+        if (value > Integer.MAX_VALUE) {
+            throw new InvalidOrderInput(field, "정수 범위를 초과했습니다");
+        }
+        return (int) value;
+    }
+
+    static int pageSize(String input) {
+        int value = pageNumber(input, "size");
+        if (value < 1 || value > 100) {
+            throw new InvalidOrderInput("size", "페이지 크기는 1~100이어야 합니다");
+        }
+        return value;
+    }
+
     static UUID uuid(String input, String field) {
         if (input == null || !input.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
             throw new InvalidOrderInput(field, "UUID 형식을 확인하세요");

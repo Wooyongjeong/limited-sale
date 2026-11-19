@@ -23,4 +23,8 @@ public class OrderService {
     public OrderResult find(long memberId, UUID publicId) {
         return transaction.find(memberId, publicId);
     }
+
+    public OrderPage list(long memberId, int page, int size) {
+        return transaction.list(memberId, page, size);
+    }
 }

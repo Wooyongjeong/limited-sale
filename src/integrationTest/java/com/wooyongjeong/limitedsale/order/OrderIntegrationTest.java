@@ -13,6 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.sql.Connection;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -150,6 +151,20 @@ class OrderIntegrationTest {
             return request("POST", "/api/v1/orders", "{\"saleId\":" + saleId + ",\"quantity\":" + quantity + "}",
                 token, key);
         }
+
+        HttpResponse<String> list(String query) throws Exception {
+            return request("GET", "/api/v1/orders" + query, null, null, null);
+        }
+
+        JsonNode detail(String orderId) throws Exception {
+            return data(request("GET", "/api/v1/orders/" + orderId, null, null, null));
+        }
+    }
+
+    private static List<String> orderIds(JsonNode page) {
+        List<String> ids = new ArrayList<>();
+        page.path("items").forEach(item -> ids.add(item.path("orderId").asText()));
+        return ids;
     }
 
     private static JsonNode data(HttpResponse<String> response) throws Exception {
@@ -175,6 +190,140 @@ class OrderIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(data(response).path("paymentStatus").asText()).isEqualTo("READY");
         assertThat(jdbc.queryForObject("SELECT status FROM payments", String.class)).isEqualTo("READY");
+    }
+
+    @Test
+    void orderListShowsOnlyOwnOrdersNewestFirstAcrossPages() throws Exception {
+        long id = sale(10, 10);
+        assertThat(new Client().list("").statusCode()).isEqualTo(401);
+        Client one = client("order1@example.com");
+        Client two = client("order2@example.com");
+        List<String> created = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            created.add(data(one.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText());
+        }
+        String other = data(two.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText();
+        jdbc.update("UPDATE purchase_orders SET status='EXPIRED' WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+            created.get(0));
+        jdbc.update("UPDATE purchase_orders SET status='PAYMENT_PENDING' WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
+            created.get(1));
+        List<String> newestFirst = List.of(created.get(2), created.get(1), created.get(0));
+
+        var response = one.list("");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(code(response)).isEqualTo("ORDERS_FOUND");
+        JsonNode page = data(response);
+        assertThat(orderIds(page)).containsExactlyElementsOf(newestFirst);
+        assertThat(page.path("page").asInt()).isZero();
+        assertThat(page.path("size").asInt()).isEqualTo(20);
+        assertThat(page.path("totalElements").asLong()).isEqualTo(3);
+        assertThat(page.path("totalPages").asLong()).isEqualTo(1);
+        for (JsonNode item : page.path("items")) {
+            assertThat(item).isEqualTo(one.detail(item.path("orderId").asText()));
+        }
+        assertThat(page.path("items").findValuesAsText("status"))
+            .containsExactly("AWAITING_PAYMENT", "PAYMENT_PENDING", "EXPIRED");
+        assertThat(orderIds(data(two.list("")))).containsExactly(other);
+
+        JsonNode first = data(one.list("?page=0&size=2"));
+        assertThat(orderIds(first)).containsExactlyElementsOf(newestFirst.subList(0, 2));
+        assertThat(first.path("size").asInt()).isEqualTo(2);
+        assertThat(first.path("totalPages").asLong()).isEqualTo(2);
+        JsonNode second = data(one.list("?page=1&size=2"));
+        assertThat(orderIds(second)).containsExactly(created.get(0));
+        assertThat(second.path("page").asInt()).isEqualTo(1);
+        assertThat(orderIds(data(one.list("?size=1")))).containsExactly(created.get(2));
+        assertThat(data(one.list("?size=1")).path("totalPages").asLong()).isEqualTo(3);
+        assertThat(orderIds(data(one.list("?size=100")))).containsExactlyElementsOf(newestFirst);
+        for (String query : List.of("?page=2&size=2", "?page=2147483647&size=100")) {
+            var past = one.list(query);
+            assertThat(past.statusCode()).as(query).isEqualTo(200);
+            assertThat(orderIds(data(past))).as(query).isEmpty();
+            assertThat(data(past).path("totalElements").asLong()).as(query).isEqualTo(3);
+        }
+    }
+
+    @Test
+    void orderListRejectsInvalidPagingLikeSaleList() throws Exception {
+        Client one = client("order1@example.com");
+        for (String query : List.of("?page=-1", "?page=abc", "?page=1.0", "?page=+1", "?page=2147483648",
+                "?page=99999999999999999999", "?size=0", "?size=101", "?size=-1", "?size=abc",
+                "?size=2147483648", "?page=-1&size=0")) {
+            var orders = one.list(query);
+            var sales = one.request("GET", "/api/v1/sales" + query, null, null, null);
+            assertThat(orders.statusCode()).as(query).isEqualTo(400);
+            assertThat(code(orders)).as(query).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(orders.body())).as(query).isEqualTo(JSON.readTree(sales.body()));
+        }
+        assertThat(data(one.list("?size=101")).get(0).path("field").asText()).isEqualTo("size");
+        assertThat(data(one.list("?page=-1&size=0")).get(0).path("field").asText()).isEqualTo("page");
+    }
+
+    @Test
+    void orderListReturnsPriceStoredOnTheOrder() throws Exception {
+        long id = sale(5, 5);
+        jdbc.update("UPDATE sales SET unit_price=2500 WHERE id=?", id);
+        Client c = client("order1@example.com");
+        assertThat(c.order(UUID.randomUUID().toString(), id, 2).statusCode()).isEqualTo(201);
+        jdbc.update("UPDATE sales SET unit_price=7000 WHERE id=?", id);
+        JsonNode item = data(c.list("")).path("items").get(0);
+        assertThat(jdbc.queryForObject("SELECT base_price FROM products WHERE id=?", Long.class, product))
+            .isEqualTo(1000);
+        assertThat(item.path("unitPrice").asLong()).isEqualTo(2500);
+        assertThat(item.path("totalAmount").asLong()).isEqualTo(5000);
+    }
+
+    @Test
+    void retryAfterSaleEndReturnsExistingOrderAndListsItOnce() throws Exception {
+        long id = sale(5, 5);
+        Client c = client("order1@example.com");
+        String key = UUID.randomUUID().toString();
+        var created = c.order(key, id, 1);
+        assertThat(created.statusCode()).isEqualTo(201);
+        jdbc.update("UPDATE sales SET starts_at=UTC_TIMESTAMP(6)-INTERVAL 2 HOUR, "
+            + "ends_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE id=?", id);
+        assertThat(code(c.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("SALE_OUTSIDE_PERIOD");
+        var retry = c.order(key, id, 1);
+        assertThat(retry.statusCode()).isEqualTo(200);
+        assertThat(code(retry)).isEqualTo("ORDER_FOUND");
+        String orderId = data(created).path("orderId").asText();
+        assertThat(data(retry).path("orderId").asText()).isEqualTo(orderId);
+        JsonNode page = data(c.list(""));
+        assertThat(orderIds(page)).containsExactly(orderId);
+        assertThat(page.path("totalElements").asLong()).isEqualTo(1);
+    }
+
+    @Test
+    void retryAfterDiscardedResponseListsOneOrder() throws Exception {
+        long id = sale(5, 5);
+        Client c = client("order1@example.com");
+        String key = UUID.randomUUID().toString();
+        c.order(key, id, 2);
+        var retry = c.order(key, id, 2);
+        assertThat(retry.statusCode()).isEqualTo(200);
+        JsonNode page = data(c.list(""));
+        assertThat(orderIds(page)).containsExactly(data(retry).path("orderId").asText());
+        assertThat(page.path("totalElements").asLong()).isEqualTo(1);
+        assertThat(page.path("items").get(0).path("quantity").asInt()).isEqualTo(2);
+    }
+
+    @Test
+    void businessRejectedRequestsAreNotListed() throws Exception {
+        long id = sale(1, 1);
+        Client c = client("order1@example.com");
+        jdbc.update("UPDATE sales SET is_stopped=1 WHERE id=?", id);
+        assertThat(code(c.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("SALE_STOPPED");
+        assertThat(code(c.order(UUID.randomUUID().toString(), 999999, 1))).isEqualTo("SALE_NOT_FOUND");
+        var empty = c.list("");
+        assertThat(empty.statusCode()).isEqualTo(200);
+        assertThat(orderIds(data(empty))).isEmpty();
+        assertThat(data(empty).path("totalElements").asLong()).isZero();
+        assertThat(data(empty).path("totalPages").asLong()).isZero();
+        jdbc.update("UPDATE sales SET is_stopped=0 WHERE id=?", id);
+        String orderId = data(c.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText();
+        assertThat(code(c.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("PURCHASE_LIMIT_EXCEEDED");
+        assertThat(count("order_request_results")).isEqualTo(4);
+        assertThat(orderIds(data(c.list("")))).containsExactly(orderId);
     }
 
     @Test

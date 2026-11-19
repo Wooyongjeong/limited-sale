@@ -7,6 +7,7 @@ import com.wooyongjeong.limitedsale.order.application.OrderResult;
 import com.wooyongjeong.limitedsale.order.application.OrderService;
 import com.wooyongjeong.limitedsale.order.presentation.request.OrderRequest;
 import com.wooyongjeong.limitedsale.order.presentation.request.PaymentRequest;
+import com.wooyongjeong.limitedsale.order.presentation.response.OrderPageResponse;
 import com.wooyongjeong.limitedsale.order.presentation.response.OrderViewResponse;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -42,6 +44,14 @@ public class OrderController {
     public ResponseEntity<ApiResponse<?>> get(Authentication authentication, @PathVariable String id) {
         return response(orders.find(((MemberIdentity) authentication.getPrincipal()).id(),
             OrderJson.uuid(id, "orderId")));
+    }
+
+    @GetMapping(path = "/api/v1/orders", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<OrderPageResponse> list(Authentication authentication,
+            @RequestParam(required = false) String page, @RequestParam(required = false) String size) {
+        return ApiResponse.of(OrderResponseCode.ORDERS_FOUND, OrderPageResponse.from(orders.list(
+            ((MemberIdentity) authentication.getPrincipal()).id(),
+            page == null ? 0 : OrderJson.pageNumber(page, "page"), size == null ? 20 : OrderJson.pageSize(size))));
     }
 
     @PostMapping(path = "/api/v1/orders/{id}/payment", produces = MediaType.APPLICATION_JSON_VALUE)

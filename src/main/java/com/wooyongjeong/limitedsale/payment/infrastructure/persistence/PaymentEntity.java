@@ -81,6 +81,10 @@ public class PaymentEntity {
         }
     }
 
+    long orderId() {
+        return orderId;
+    }
+
     UUID pgKey() {
         return pgKey;
     }

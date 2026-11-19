@@ -5,6 +5,7 @@ import com.wooyongjeong.limitedsale.common.web.ResponseCode;
 public enum OrderResponseCode implements ResponseCode {
     ORDER_CREATED(201, "주문을 생성했습니다"),
     ORDER_FOUND(200, "주문을 조회했습니다"),
+    ORDERS_FOUND(200, "주문 목록을 조회했습니다"),
     PAYMENT_SUCCEEDED(200, "결제를 완료했습니다"),
     PAYMENT_PENDING(202, "결제 결과를 확인 중입니다"),
     PAYMENT_DECLINED(409, "결제가 거절됐습니다"),
