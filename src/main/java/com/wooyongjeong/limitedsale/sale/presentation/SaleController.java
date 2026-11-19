@@ -69,7 +69,7 @@ public class SaleController {
 
     @PostMapping(path = "/api/v1/admin/sales/{id}/stop", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<SaleDetailsResponse> stop(@PathVariable String id) {
-        return ApiResponse.of(SaleResponseCode.SALE_STOPPED,
+        return ApiResponse.of(SaleResponseCode.SALE_STOP_COMPLETED,
             SaleDetailsResponse.from(command.stop(SaleJson.id(id, "saleId"))));
     }
 

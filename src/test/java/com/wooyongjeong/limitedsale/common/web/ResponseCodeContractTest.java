@@ -15,11 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ResponseCodeContractTest {
     private static final Set<Integer> DOCUMENTED_STATUSES =
         Set.of(200, 201, 202, 400, 401, 403, 404, 409, 415, 429, 500, 503);
-    /**
-     * The same string means a 200 success for stopping a sale and a 409 rejection for ordering from a stopped
-     * sale. The pairing is pinned here so a new collision fails; see docs/stages/01-12-followup-verification.md.
-     */
-    private static final Set<String> KNOWN_CROSS_ENUM_COLLISIONS = Set.of("SALE_STOPPED");
 
     private static List<Class<?>> responseCodeEnums() throws ClassNotFoundException {
         var scanner = new ClassPathScanningCandidateComponentProvider(false) {
@@ -50,7 +45,7 @@ class ResponseCodeContractTest {
 
     @Test
     void codesAreStableUpperSnakeNamesWithDocumentedStatusesAndMessages() throws Exception {
-        Map<String, Integer> statusByCode = new HashMap<>();
+        Map<String, String> meaningByCode = new HashMap<>();
         for (Class<?> type : responseCodeEnums()) {
             for (Object constant : type.getEnumConstants()) {
                 var code = (ResponseCode) constant;
@@ -58,11 +53,10 @@ class ResponseCodeContractTest {
                 assertThat(code.code()).as(where).isEqualTo(((Enum<?>) constant).name()).matches("[A-Z][A-Z0-9_]*");
                 assertThat(DOCUMENTED_STATUSES).as(where + " status").contains(code.httpStatus());
                 assertThat(code.message()).as(where + " message").isNotBlank();
-                Integer previous = statusByCode.putIfAbsent(code.code(), code.httpStatus());
-                if (previous != null && !KNOWN_CROSS_ENUM_COLLISIONS.contains(code.code())) {
-                    assertThat(code.httpStatus()).as(where + " must keep the status of the same code elsewhere")
-                        .isEqualTo(previous);
-                }
+                String meaning = code.httpStatus() + " " + code.message();
+                assertThat(meaningByCode.putIfAbsent(code.code(), meaning)).as(where
+                    + " may repeat a code of another enum only with the same status and message")
+                    .isIn(null, meaning);
             }
         }
     }
