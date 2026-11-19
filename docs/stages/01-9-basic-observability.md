@@ -1,6 +1,6 @@
 # 1-9 기본 관측 구성
 
-상태: 정책 확정·구현 완료, 실제 의존성 빌드 대기. 사용자가 "1-9 부터 1-11까지도 마찬가지로 정책 협의들 너가 생각하는 추천안으로 확정하고 개발 및 테스트"하라고 지시해 주 에이전트 추천안으로 확정하고 구현을 시작했다.
+상태: 정책 확정·구현·독립 검증·위키 갱신 완료. 사용자가 "1-9 부터 1-11까지도 마찬가지로 정책 협의들 너가 생각하는 추천안으로 확정하고 개발 및 테스트"하라고 지시해 주 에이전트 추천안으로 확정하고 구현을 시작했다.
 
 [1단계 정책](01-mysql-order.md), [전체 기획의 관측 항목](../project-plan.md)을 따른다. 이 문서는 1-9의 새 합의를 우선한다.
 
@@ -41,14 +41,29 @@
 - 격리된 MySQL·Redis로 앱을 실제로 띄우고 Prometheus가 판매 앱을 수집한다. Grafana API로 대시보드가 프로비저닝되고, 실제 요청이 Prometheus 질의 결과에 반영된다.
 - MySQL 스냅샷 스크립트가 격리된 MySQL에서 잠금·쿼리 요약을 출력한다.
 
-## 차단 사항
+## 구현 중 정한 세부 사항
 
-이 작업 환경에서 Maven Central(`repo.maven.apache.org`)에 접속할 수 없다. 새 의존성 `micrometer-registry-prometheus`의 Spring Boot 3.5.16 관리 버전(1.15.12)을 내려받지 못했다. 워커는 캐시에 있던 Micrometer 1.17.2로 임시 대체해 전체 빌드와 실제 실행을 검증했지만, 프로젝트 규칙상 관리 버전과 다른 조합은 완료 근거로 쓰지 않는다. 네트워크가 허용된 환경에서 `./gradlew clean build`가 통과해야 머지한다.
+- PG 클라이언트는 `RestClient`가 아니라 `java.net.http.HttpClient`다. 클라이언트를 바꾸지 않고 `HttpPaymentGateway`가 `http.client.requests` 타이머를 직접 기록한다. 시간 초과와 연결 실패는 `status=IO_ERROR`다.
+- 관리 포트를 분리하면 공개 포트에서 Actuator가 사라진다. 기존 사용처를 위해 `PublicHealthController`가 공개 `/actuator/health`에 상태만 돌려준다.
+- 관리 포트도 앱의 보안 필터 체인을 쓰므로 `EndpointRequest.to("health", "prometheus")`를 허용한다. 이 규칙은 관리 포트에만 맞는다.
+- 지표 이름은 `order.creation.results`, `order.payment.results`, `order.unfinished`, `order.requires.review`다. 결과 라벨은 `OrderResult.Kind` 소문자다. 모든 결과를 0으로 미리 등록한다.
+- Grafana 기본 관리자 계정은 그대로 두고 README에 첫 로그인 때 바꾸라고 적었다.
+- 1-10 이후 두 번째 인스턴스의 관리 포트는 8092이고 Prometheus가 8090·8092를 모두 수집한다.
+
+## 검증 결과
+
+Sonnet high 워커가 구현했고, 주 에이전트가 diff를 리뷰하고 빌드를 다시 실행했다.
+
+- 처음에는 작업 환경의 Mac 라우팅 표에서 Cloudflare 대역(104.18/16, 104.19/16, 172.64/13)이 닿지 않는 게이트웨이로 향해 Maven Central에 접속하지 못했다. 사용자가 경로를 지운 뒤 관리 버전 의존성(Micrometer 1.15.12, prometheus-metrics 1.3.10)을 받았다.
+- 관리 버전으로 `./gradlew clean build` 성공. 판매 앱 단위 94개, 통합 132개(관측 통합 9개 포함), Mock PG 11개·15개 모두 실패·오류·건너뜀 0개.
+- 관측 통합 테스트는 실제 HTTP로 관리 포트 지표, 공개 포트 비노출, 결과별 업무 카운터 증가, 게이지와 DB 값 일치, ID 라벨 부재, 401·403을 포함한 요청 ID를 검사한다.
+- 워커가 임시 대체 버전 JAR로 격리 환경에서 실제 실행을 확인했다. Prometheus 대상이 up이었고, Grafana 대시보드가 프로비저닝됐으며, 대시보드 질의 29개가 모두 성공했다. 업무 카운터는 보낸 요청 수와 일치했다. 관리 버전 JAR로는 1-11 공식 측정에서 두 인스턴스의 관리 포트 지표를 수집했다.
+- `python3 scripts/check-wiki-diagrams.py`와 `git diff --check` 통과.
 
 ## 체크리스트
 
 - [x] 미정 사항 확정과 범위·완료 기준 기록
 - [x] 사용자로부터 구현 시작 지시 받음
-- [ ] 워커 구현과 검증 결과 수령
-- [ ] 주 에이전트 독립 검증과 코드리뷰
-- [ ] 위키 갱신과 검증
+- [x] 워커 구현과 검증 결과 수령
+- [x] 주 에이전트 독립 검증과 코드리뷰
+- [x] 위키 갱신과 검증
