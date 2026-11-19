@@ -234,7 +234,7 @@ class SaleIntegrationTest {
         assertCode(admin.request("PATCH", path + "/" + id, "{\"version\":0,\"name\":\"stale\"}", admin.token),
             SaleResponseCode.SALE_VERSION_CONFLICT);
         var stopResponse = admin.request("POST", path + "/" + id + "/stop", null, admin.token);
-        assertCode(stopResponse, SaleResponseCode.SALE_STOPPED);
+        assertCode(stopResponse, SaleResponseCode.SALE_STOP_COMPLETED);
         JsonNode stopped = data(stopResponse);
         assertThat(stopped.path("status").asText()).isEqualTo("STOPPED");
         assertThat(data(admin.request("POST", path + "/" + id + "/stop", null, admin.token))).isEqualTo(stopped);

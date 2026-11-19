@@ -27,7 +27,7 @@
 
 - 확인한 것. 모든 api 타입이 `java.time`·`java.util` 외에 아무것도 가져오지 않고 다른 도메인 타입을 참조하지 않는다. 공개 값은 record 또는 불변 목록(`List.copyOf`)이다. Spring Data `Page`, JPA, HTTP 타입은 없다.
 - 불일치 1, 수정함. [1-1 계약](01-contracts.md)과 [구조 문서](../architecture.md)가 초안 이름(MemberRegistration, MemberAuthentication, MemberQuery, OrderCommand, OrderQuery, PaymentCommand, PaymentQuery, PaymentRecovery)을 공개 계약으로 적었지만 구현되지 않았다. 구현된 것은 member `MemberIdentity`, order `OrderLookup`, payment `PaymentGateway`·`PaymentOperations`·`PaymentPreparation`·`PaymentSimulation`이다. 다른 도메인이 호출하지 않는 유스케이스에는 api를 두지 않는다는 기존 원칙과 일치하므로 두 문서의 표를 구현에 맞췄다.
-- 불일치 2, 후속 과제. 같은 코드 문자열 `SALE_STOPPED`가 이벤트 중단 성공(200, `SaleResponseCode`)과 중단된 이벤트에 대한 주문 거절(409, `OrderResponseCode`)에 함께 쓰인다. HTTP 상태와 경로로는 구분되지만 코드만 보는 클라이언트는 구분할 수 없다. 주문 거절 코드는 `order_request_results`에 보관되어 재전송 응답이 되므로 이름을 바꾸는 것은 정책 결정이다. `ResponseCodeContractTest`가 이 하나만 허용 목록으로 고정해 새로운 충돌을 막는다. 사용자 결정이 필요하다.
+- 불일치 2, 수정함. 같은 코드 문자열 `SALE_STOPPED`가 이벤트 중단 성공(200, `SaleResponseCode`)과 중단된 이벤트에 대한 주문 거절(409, `OrderResponseCode`)에 함께 쓰였다. HTTP 상태와 경로로는 구분되지만 코드만 보는 클라이언트는 구분할 수 없다. 사용자가 이름을 바꾸라고 지시해 관리자 중단 성공 코드만 `SALE_STOP_COMPLETED`로 바꿨다(메시지는 그대로). 주문 거절 코드는 저장된 거절 결과가 아니라 도메인 거절 사유(`OrderRejection`)를 DB에 저장하므로 바꿔도 마이그레이션이 필요 없다. 그래도 위키·k6·테스트가 쓰는 클라이언트 계약이어서 그대로 두고, 호출자가 하나뿐인 관리자 쪽을 바꿨다. API 계약 변경은 이 한 줄이며 별도 변경 이력 문서는 없다. `ResponseCodeContractTest`는 허용 목록을 없앴다. 다른 열거형에서 같은 코드가 반복되면 상태와 메시지가 같을 때만 통과하므로 `SALE_NOT_FOUND`·`PRODUCT_NOT_FOUND`처럼 의미가 같은 반복은 허용하고 `SALE_STOPPED`처럼 의미가 다른 충돌은 실패한다.
 - 불일치 3, 후속 과제. `OrderResponseCode`와 `SimulationResponseCode`가 계약 문서가 말하는 `presentation.code` 패키지가 아니라 `order.presentation`에 있다. 파일 이동과 위키 링크 수정이 따르는 리팩터링이어서 이번에는 옮기지 않았다.
 - 불일치 4, 후속 과제. [구조 문서](../architecture.md)의 "디렉터리 제안" 트리(`ProductView`, `OrderCommand`, `OrderResult` 등)와 호출 예시가 구현과 다르다. 제안 문서로 남겨 두었고 이번에 고치지 않았다.
 - 관찰. `SaleDetails.status`, `PaymentDetails.status`는 문자열이다. 문서가 정한 값 집합과 어긋나는 구현은 찾지 못했다.
@@ -48,13 +48,12 @@
 ## 검증 결과
 
 - 변경한 테스트를 포함해 Java 21 `./gradlew clean build`를 실행했다. Maven Central에 연결되어 `--offline` 없이 실행했고 3분 49초에 `BUILD SUCCESSFUL`이었다. XML 결과는 판매 앱 단위 96개·통합 133개, Mock PG 단위 11개·통합 15개로 총 255개이며 실패·오류·건너뜀은 모두 0개다(이전 1-11은 94·132·11·15).
-- 새 테스트가 실제로 잡는지 확인했다. `ResponseCodeContractTest`는 허용 목록을 비우면 `SALE_STOPPED` 충돌로 실패한다. `ArchitectureTest`의 위반 fixture는 `org.springframework` 타입을 가진 api 클래스를 거절한다.
+- 새 테스트가 실제로 잡는지 확인했다. `ResponseCodeContractTest`는 관리자 중단 코드를 `SALE_STOPPED`로 되돌리면 충돌로 실패한다. `ArchitectureTest`의 위반 fixture는 `org.springframework` 타입을 가진 api 클래스를 거절한다.
 - `python3 scripts/check-wiki-diagrams.py`, `git diff --check`를 실행했다.
 - 위키는 사용자에게 보이는 사실이 바뀌지 않아 갱신하지 않았다.
 
 ## 남은 것
 
-- `SALE_STOPPED` 코드 충돌의 처리 방향(이름 변경 여부)은 사용자 결정이 필요하다.
 - 응답 코드 열거형 두 개를 `presentation.code`로 옮길지, 계약 문서를 현재 위치에 맞출지 정해야 한다.
 - 구조 문서의 디렉터리 제안 트리와 호출 예시를 현재 구현에 맞춰 정리해야 한다.
 

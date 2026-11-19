@@ -6,7 +6,7 @@ public enum SaleResponseCode implements ResponseCode {
     SALE_CREATED(201, "판매 이벤트를 생성했습니다"),
     SALE_UPDATED(200, "판매 이벤트를 수정했습니다"),
     SALE_DELETED(200, "판매 이벤트를 삭제했습니다"),
-    SALE_STOPPED(200, "판매 이벤트를 중단했습니다"),
+    SALE_STOP_COMPLETED(200, "판매 이벤트를 중단했습니다"),
     SALE_RESUMED(200, "판매 이벤트를 재개했습니다"),
     SALE_FOUND(200, "판매 이벤트를 조회했습니다"),
     SALES_FOUND(200, "판매 이벤트 목록을 조회했습니다"),
