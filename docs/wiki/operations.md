@@ -17,6 +17,27 @@ Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 진행 중인 판매 이벤트가 있으면 로그인 세션·새 CSRF 토큰과 UUID `Idempotency-Key`로 `POST /api/v1/orders`에 `{"saleId":1,"quantity":1}`을 보낸다. 생성된 UUID로 `GET /api/v1/orders/{orderId}`를 조회할 수 있다. 키를 유지한 재시도와 새 구매 시도의 차이는 [주문 페이지](orders.md)를 따른다. 결제 요청은 별도 POST로 실행한다. 자동 복구는 만료 후 PG 종료를 확인하며 PG 결과 미확인 중에는 점유를 유지한다.
 
+## 지표와 요청 ID로 보기
+
+판매 앱의 지표는 공개 포트가 아니라 관리 포트(기본 `127.0.0.1:8090`)의 `/actuator/prometheus`에서 나온다. 공개 포트에는 `/actuator/health`의 상태만 있다. 관리 포트를 따로 둔 이유는 지표를 공개 API 보안 규칙과 섞지 않고 로컬 수집기만 읽게 하려는 것이다. 두 번째 인스턴스는 `MANAGEMENT_SERVER_PORT=8092`처럼 다른 포트를 준다.
+
+`docker compose --profile monitoring up -d prometheus grafana`로 Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)를 띄운다. Prometheus는 `host.docker.internal:8090`과 `8092`를 5초마다 읽는다. Grafana의 `limited-sale-overview` 대시보드는 파일로 준비되며 로그인 없이 볼 수 있다. 설정은 [prometheus.yml](../../infra/prometheus/prometheus.yml)과 [대시보드 JSON](../../infra/grafana/dashboards/limited-sale.json)이다.
+
+| 보고 싶은 것 | 지표 |
+|---|---|
+| 요청 수, 오류, 지연 백분위 | `http_server_requests_seconds` (상태·URI 템플릿 라벨) |
+| 업무 거절과 시스템 오류 | `order_creation_results_total{result}`, `order_payment_results_total{result}`와 5xx 비율 |
+| 결과를 모르는 주문이 쌓이는지 | `order_unfinished`, `order_requires_review` |
+| PG 응답 지연·실패 | `http_client_requests_seconds` (`status=IO_ERROR`는 시간 초과·연결 실패) |
+| 커넥션 풀 고갈 | `hikaricp_connections_active`, `_pending`, `_acquire_seconds` |
+| JVM | 힙, GC, 스레드 |
+
+업무 카운터의 라벨은 결과 하나뿐이다. 회원·주문·요청 ID를 라벨로 쓰면 시계열 수가 사용자 수만큼 늘기 때문이다. 미완료·확인 필요 주문 수는 스크레이프할 때마다 DB를 읽지 않고, [OrderBacklogGauges](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderBacklogGauges.java)가 기본 10초마다 센다. 마지막 집계가 실패하면 값은 NaN이 되어 오래된 숫자를 보여 주지 않는다.
+
+모든 요청에는 `X-Request-Id`가 붙는다. 클라이언트 값이 영문·숫자·`-`·`_` 1~64자면 그대로 쓰고, 아니면 새 UUID로 바꾼다. 같은 값이 응답 헤더와 콘솔 로그의 `[요청ID]` 자리에 남는다. [RequestIdFilter](../../src/main/java/com/wooyongjeong/limitedsale/common/observation/RequestIdFilter.java)가 보안 필터보다 먼저 돌기 때문에 401·403 응답에도 붙는다. 클라이언트가 응답 헤더 값을 알려 주면 서버 로그에서 그 요청을 찾을 수 있다.
+
+MySQL 잠금과 느린 쿼리는 `scripts/mysql-observe.sh`로 본다. `performance_schema`의 쿼리 요약 상위 항목, 현재 잠금 대기, InnoDB 행 잠금 대기 횟수·시간, 데드락 수를 출력한다. 실험 전후에 한 번씩 찍어 차이를 비교한다. 비밀번호는 `MYSQL_PWD`로만 받고 출력하지 않는다. 정합성은 지표가 아니라 [대조 SQL](../../tools/reconciliation/reconcile.sql)로 판정한다.
+
 ## 검사와 한계
 
 `./gradlew test`는 단위·구조 검사를 실행한다. `./gradlew integrationTest`는 격리된 Testcontainers MySQL과 필요한 Redis를 사용한다. `./gradlew clean build`는 두 검사를 포함하며 Docker가 필요하다. `check`는 `tools/order-regression`의 Python 검증기 테스트도 실행하므로 Python 3.9 이상이 필요하다. 전체 환경과 명령은 [README](../../README.md)를 따른다. 개발 DB를 초기화해 통합 테스트를 대체하지 않는다.

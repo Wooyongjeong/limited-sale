@@ -83,6 +83,38 @@ Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 
 
 `limited-sale.payment.timeout` 기본 PT3S는 한 요청의 PG 통신 예산, `limited-sale.payment.retry-interval` 기본 PT10S는 영속 재조회 간격이다. 자동 복구와 사용자 결제 요청은 같은 주문별 임대를 사용하며 만료 후 PG 종료 확인으로 진입한다.
 
+## 관측 (1-9)
+
+판매 앱은 Actuator 관리 서버를 공개 API와 다른 포트에서 연다. 기본 `127.0.0.1:8090`이며 `MANAGEMENT_SERVER_ADDRESS`, `MANAGEMENT_SERVER_PORT`로 바꾼다. 여기서는 `health`와 `prometheus`만 노출하고, 공개 포트(`8080`)는 `/actuator/health`의 상태만 돌려주며 지표는 내지 않는다. 같은 PC에서 판매 앱을 여러 개 띄우면 인스턴스마다 다른 관리 포트를 준다.
+
+```sh
+curl -s http://127.0.0.1:8090/actuator/prometheus | head   # HTTP, JVM, Hikari, 주문·결제 지표
+curl -i -H 'X-Request-Id: demo-1' http://localhost:8080/api/v1/products   # 응답 헤더에 같은 값
+```
+
+모든 요청에 `X-Request-Id`가 붙는다. 영문·숫자·`-`·`_` 1~64자면 그대로 쓰고, 아니면 새 UUID로 바꾼다. 응답 헤더로 돌려주고 콘솔 로그 `[요청ID]`에 남는다. 업무 지표는 `order_creation_results_total{result}`, `order_payment_results_total{result}`, `order_unfinished`, `order_requires_review`이며 라벨에 회원·주문·요청 ID를 쓰지 않는다. 미완료·확인 필요 주문 수는 `limited-sale.observability.backlog-interval`(기본 `PT10S`)마다 DB에서 센다.
+
+Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)는 `monitoring` 프로필로만 뜬다. 기본 `docker compose up`은 MySQL·Redis만 띄운다. 판매 앱을 먼저 실행한 뒤 시작한다. Prometheus는 `host.docker.internal:8090`을 5초마다 읽으므로 앱이 `127.0.0.1`에 묶여 있어도 Docker Desktop에서 수집된다. Linux는 `extra_hosts`의 `host-gateway`가 같은 이름을 연결한다. 다른 관리 포트를 쓰면 `infra/prometheus/prometheus.yml`의 대상 주소를 맞춘다.
+
+```sh
+docker compose --profile monitoring up -d prometheus grafana
+# 포트 충돌 시 PROMETHEUS_PORT, GRAFANA_PORT 환경변수로 바꾼다. 모두 선택 값이다.
+open http://127.0.0.1:3000/d/limited-sale-overview   # 익명 Viewer, 로그인 불필요
+docker compose --profile monitoring down              # 볼륨은 보존한다
+```
+
+Grafana는 로컬 전용이며 익명 접근을 Viewer로만 허용한다. 데이터 소스와 대시보드(`infra/grafana/dashboards/limited-sale.json`)는 파일로 프로비저닝하고 저장소에 비밀번호는 없다. 관리자 계정은 Grafana 기본값이므로 필요하면 첫 로그인에서 바꾼다.
+
+MySQL 잠금·쿼리 스냅샷은 부하 실험 전후에 저장해 차이를 본다. 계정은 `performance_schema` 조회와 `PROCESS` 권한이 필요하다. 비밀번호는 옵션이 아니라 `MYSQL_PWD`(없으면 `MYSQL_ROOT_PASSWORD`)에서만 읽고 출력하지 않는다. 호스트에 `mysql` 클라이언트가 없으면 `--container <이름>`으로 컨테이너 안 클라이언트를 쓴다.
+
+```sh
+set -a; source .env; set +a
+scripts/mysql-observe.sh --user root > before.txt   # 호스트·포트는 --host, --port
+# ... 부하 실험 ...
+scripts/mysql-observe.sh --user root > after.txt
+diff before.txt after.txt
+```
+
 ## 자동 복구와 작업 임대
 
 기본 자동 복구는 켜져 있다. `limited-sale.recovery.enabled=false`로 중지할 수 있다. 실행 간격 `interval=PT1S`, 회당 `batch-size=20`, 서버당 `concurrency=4`, 임대 `lease-duration=PT30S`, 반복 경고 `warning-interval=PT5M`이며 모두 `limited-sale.recovery` 아래 설정이다. 실행 대기열에 임대를 쌓지 않고 실행 직전에 취득한다.
@@ -100,7 +132,7 @@ docker compose --profile multi-instance up -d    # mysql, redis, load-balancer
 ./scripts/prepare-local-db.sh
 java -jar mock-pg/build/libs/mock-pg-0.0.1-SNAPSHOT.jar                         # 터미널 1
 SERVER_PORT=8080 java -jar build/libs/limited-sale-0.0.1-SNAPSHOT.jar           # 터미널 2
-SERVER_PORT=8082 java -jar build/libs/limited-sale-0.0.1-SNAPSHOT.jar           # 터미널 3
+SERVER_PORT=8082 MANAGEMENT_SERVER_PORT=8092 java -jar build/libs/limited-sale-0.0.1-SNAPSHOT.jar  # 터미널 3
 curl -f http://127.0.0.1:8000/actuator/health                                   # 로드 밸런서 경유
 ```
 

@@ -6,6 +6,7 @@ import com.wooyongjeong.limitedsale.member.presentation.code.AuthenticationRespo
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +42,8 @@ public class SecurityConfiguration {
             .authorizeHttpRequests(auth -> auth
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers("/actuator/health", "/api/v1/csrf").permitAll()
+                // Matches only on the management port, so the public port never serves or opens /actuator/prometheus.
+                .requestMatchers(EndpointRequest.to("health", "prometheus")).permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*",
                     "/api/v1/sales", "/api/v1/sales/*").permitAll()

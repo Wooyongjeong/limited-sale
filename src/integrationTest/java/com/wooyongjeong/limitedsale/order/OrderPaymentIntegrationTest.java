@@ -451,7 +451,8 @@ class OrderPaymentIntegrationTest {
                 }
             };
             var service = new com.wooyongjeong.limitedsale.order.application.OrderPaymentService(
-                    transaction, interrupted, java.time.Duration.ofSeconds(3));
+                    transaction, interrupted, salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderMetrics.class),
+                    java.time.Duration.ofSeconds(3));
             long member = sales.queryForObject("SELECT member_id FROM purchase_orders "
                     + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order());
             assertThatThrownBy(() -> service.pay(member, UUID.fromString(f.order())))

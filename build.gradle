@@ -23,6 +23,7 @@ dependencies {
     implementation 'org.springframework.session:spring-session-data-redis'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.80'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.flywaydb:flyway-mysql'
