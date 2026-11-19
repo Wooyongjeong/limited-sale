@@ -10,6 +10,8 @@ spring:
       ddl-auto: none
 
 management:
+  server:
+    port: 0
   health:
     redis:
       enabled: false

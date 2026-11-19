@@ -149,7 +149,9 @@ class Isolated:
         self.container('redis', 'redis:7.4-alpine', 6379)
         self.wait_mysql('sales')
         self.wait_mysql('pg')
-        self.ports.update({name: reserve_port() for name in ('pg', *self.instances)})
+        # Each sales instance needs its own management port; the default is fixed and would collide.
+        self.ports.update({name: reserve_port() for name in
+                           ('pg', *self.instances, *(f'{name}_management' for name in self.instances))})
         env = inherited_environment(os.environ)
         env.update({'MYSQL_PASSWORD': self.password, 'MYSQL_USER': 'root', 'MYSQL_DATABASE': 'limited_sale',
                     'MYSQL_PORT': str(self.ports['sales']), 'REDIS_PORT': str(self.ports['redis']),
@@ -220,7 +222,8 @@ class Isolated:
         return logs.stdout, logs.stderr
 
     def start_sales(self, name, log_name=None):
-        env = self.sales_env | {'SERVER_PORT': str(self.ports[name])}
+        env = self.sales_env | {'SERVER_PORT': str(self.ports[name]),
+                                'MANAGEMENT_SERVER_PORT': str(self.ports[name + '_management'])}
         if hasattr(self, 'sales_proxy'):
             env['MOCK_PG_BASE_URL'] = self.sales_proxy
         if name == 'sales1' and hasattr(self, 'sales1_proxy'):

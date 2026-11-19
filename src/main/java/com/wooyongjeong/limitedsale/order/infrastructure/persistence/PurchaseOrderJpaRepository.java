@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +38,10 @@ interface PurchaseOrderJpaRepository extends JpaRepository<PurchaseOrderEntity, 
     Optional<PurchaseOrderEntity> findByMemberIdAndPublicId(long memberId, UUID publicId);
 
     long countByMemberId(long memberId);
+
+    long countByStatusIn(Collection<OrderStatus> statuses);
+
+    long countByStatusInAndRequiresReviewTrue(Collection<OrderStatus> statuses);
 
     List<PurchaseOrderEntity> findByMemberId(long memberId, Pageable pageable);
 }

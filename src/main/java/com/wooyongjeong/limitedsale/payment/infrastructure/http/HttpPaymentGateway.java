@@ -7,6 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.payment.api.GatewayResult;
 import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
 import com.wooyongjeong.limitedsale.payment.api.PaymentGateway;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.binder.http.Outcome;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -28,10 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class HttpPaymentGateway implements PaymentGateway {
     private final Environment environment;
     private final ObjectMapper mapper;
+    private final MeterRegistry registry;
     private final HttpClient client = HttpClient.newHttpClient();
 
-    public HttpPaymentGateway(Environment environment, ObjectMapper mapper) {
+    public HttpPaymentGateway(Environment environment, ObjectMapper mapper, MeterRegistry registry) {
         this.environment = environment;
+        this.registry = registry;
         this.mapper = mapper.copy().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
@@ -68,16 +73,11 @@ public class HttpPaymentGateway implements PaymentGateway {
             }
             HttpRequest request = builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                     : HttpRequest.BodyPublishers.ofString(body)).build();
-            var responseFuture = client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
             HttpResponse<String> response;
             try {
-                response = responseFuture.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+                response = exchange(request, timeout, path.replace(payment.key().toString(), "{pgKey}"));
             } catch (TimeoutException failure) {
-                responseFuture.cancel(true);
                 return GatewayResult.UNKNOWN;
-            } catch (InterruptedException failure) {
-                responseFuture.cancel(true);
-                throw failure;
             }
             JsonNode json = mapper.readTree(response.body());
             if (json == null || !json.isObject() || !json.path("httpStatus").isIntegralNumber()
@@ -125,6 +125,35 @@ public class HttpPaymentGateway implements PaymentGateway {
             return GatewayResult.UNKNOWN;
         } catch (IOException | IllegalArgumentException | DateTimeParseException | ExecutionException failure) {
             return GatewayResult.UNKNOWN;
+        }
+    }
+
+    /** Sends the request and records Spring's standard {@code http.client.requests} timer for the exchange. */
+    private HttpResponse<String> exchange(HttpRequest request, Duration timeout, String uriTemplate)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        long started = System.nanoTime();
+        var responseFuture = client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        String status = "IO_ERROR";
+        Outcome outcome = Outcome.UNKNOWN;
+        Throwable error = null;
+        try {
+            HttpResponse<String> response = responseFuture.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            status = Integer.toString(response.statusCode());
+            outcome = Outcome.forStatus(response.statusCode());
+            return response;
+        } catch (TimeoutException | InterruptedException failure) {
+            responseFuture.cancel(true);
+            error = failure;
+            throw failure;
+        } catch (ExecutionException failure) {
+            error = failure.getCause();
+            throw failure;
+        } finally {
+            Timer.builder("http.client.requests").description("Outgoing PG HTTP requests")
+                    .tag("client.name", request.uri().getHost()).tag("method", request.method())
+                    .tag("uri", uriTemplate).tag("status", status).tag("outcome", outcome.name())
+                    .tag("exception", error == null ? "none" : error.getClass().getSimpleName())
+                    .register(registry).record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
         }
     }
 }

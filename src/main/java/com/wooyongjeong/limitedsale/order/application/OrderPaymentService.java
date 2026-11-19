@@ -14,8 +14,9 @@ public class OrderPaymentService {
     private final OrderPaymentTransaction transaction;
     private final PaymentGateway gateway;
     private final Duration budget;
+    private final OrderMetrics metrics;
 
-    public OrderPaymentService(OrderPaymentTransaction transaction, PaymentGateway gateway,
+    public OrderPaymentService(OrderPaymentTransaction transaction, PaymentGateway gateway, OrderMetrics metrics,
             @Value("${limited-sale.payment.timeout:PT3S}") Duration budget) {
         if (budget.isZero() || budget.isNegative()) {
             throw new IllegalArgumentException("Payment timeout must be positive");
@@ -23,11 +24,14 @@ public class OrderPaymentService {
         this.transaction = transaction;
         this.gateway = gateway;
         this.budget = budget;
+        this.metrics = metrics;
     }
 
     @Transactional(propagation = Propagation.NEVER)
     public OrderResult pay(long memberId, UUID publicId) {
-        return execute(transaction.begin(memberId, publicId));
+        OrderResult result = execute(transaction.begin(memberId, publicId));
+        metrics.payment(result.kind());
+        return result;
     }
 
     @Transactional(propagation = Propagation.NEVER)

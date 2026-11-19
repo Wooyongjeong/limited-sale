@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: limited-sale
+    metrics_path: /actuator/prometheus
+    static_configs:
+      # Management ports on the host: 8090 is the default, 8092 the second instance behind the load balancer.
+      # A target that is not running shows as down and does not affect the other.
+      - targets: ["host.docker.internal:8090", "host.docker.internal:8092"]
