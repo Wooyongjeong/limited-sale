@@ -71,6 +71,8 @@ curl -f http://localhost:8081/actuator/health
 ./gradlew clean build                # 두 테스트 모두 포함, Docker 필수
 ```
 
+`check`는 `tools/order-regression`의 Python 검증기 테스트도 실행하므로 Python 3.9 이상이 필요하다. 실제 프로세스 종료와 PG 장기 중단을 포함한 정합성 실험은 별도 명령이며 [실험 도구 안내](tools/order-regression/README.md)를 따른다.
+
 Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 개발 DB를 초기화하지 않는다. `docker compose down`은 컨테이너를 중지하고 볼륨은 보존한다. Flyway는 스키마별 이력을 독립적으로 관리하며 적용된 마이그레이션 수정 대신 새 버전을 추가한다. 현재 Flyway는 MySQL 8.4 지원 경고를 출력하므로 실제 MySQL 검증 결과와 함께 확인해야 한다.
 
 의존성: [Spring Boot 3.5 관리 버전](https://docs.spring.io/spring-boot/3.5/appendix/dependency-versions/coordinates.html), [ArchUnit 사용 안내](https://www.archunit.org/userguide/html/000_Index.html), [Gradle Java 호환성](https://docs.gradle.org/current/userguide/compatibility.html).
