@@ -67,3 +67,11 @@ tasks.register('initAdmin', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.wooyongjeong.limitedsale.member.infrastructure.AdminInitializer'
 }
+
+// The snapshot verifier is deliberately independent of application and PG database access.
+tasks.register('orderRegressionVerifierTest', Exec) {
+    group = 'verification'
+    description = 'Checks the order regression snapshot verifier with corrupted fixtures.'
+    commandLine 'python3', '-B', '-m', 'unittest', 'discover', '-s', 'tools/order-regression', '-v'
+}
+tasks.named('check') { dependsOn tasks.named('orderRegressionVerifierTest') }
