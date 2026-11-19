@@ -60,6 +60,7 @@ tasks.register('integrationTest', Test) {
     classpath = sourceSets.integrationTest.runtimeClasspath
     useJUnitPlatform()
     shouldRunAfter test
+    inputs.file('tools/reconciliation/reconcile.sql')
 }
 tasks.named('check') { dependsOn tasks.named('integrationTest') }
 

@@ -1,4 +1,5 @@
 """Disposable, explicitly owned infrastructure for the regression runner."""
+import base64
 import contextlib
 from datetime import datetime, timezone
 import hashlib
@@ -45,8 +46,14 @@ def reserve_port():
         return sock.getsockname()[1]
 
 
+LB_IMAGE = 'caddy:2.11.2-alpine'
+LB_UPSTREAM_HOST = 'host.docker.internal'
+
+
 class Isolated:
-    def __init__(self, output):
+    def __init__(self, output, instances=('sales1', 'sales2'), load_balancer=False):
+        self.instances = tuple(instances)
+        self.load_balancer = load_balancer
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.source_sha256 = {p.name: file_hash(p) for p in sorted((ROOT / 'tools/order-regression').iterdir())
                               if p.is_file() and p.suffix in ('.py', '.java')}
@@ -67,7 +74,7 @@ class Isolated:
     def _interrupt(_signum, _frame):
         raise KeyboardInterrupt()
 
-    def container(self, suffix, image, internal_port, env=None):
+    def container(self, suffix, image, internal_port, env=None, options=(), args=()):
         name = self.run_id + '-' + suffix
         # Pass ephemeral credentials through a private temporary env file, never argv or logs.
         with tempfile.NamedTemporaryFile(mode='w', dir=self.output, delete=False) as envfile:
@@ -77,7 +84,7 @@ class Isolated:
             envfile.flush()
             try:
                 cid = command('docker', 'run', '-d', '--name', name, '--label', f'run={self.run_id}',
-                              '--env-file', envfile.name, '-p', f'127.0.0.1::{internal_port}', image)
+                              '--env-file', envfile.name, '-p', f'127.0.0.1::{internal_port}', *options, image, *args)
                 self.containers.append(cid)
                 info = json.loads(command('docker', 'inspect', cid))[0]
                 self.volumes.extend(item['Name'] for item in info.get('Mounts', []) if item['Type'] == 'volume')
@@ -125,7 +132,7 @@ class Isolated:
     def health(self, port, child):
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
-            if child.poll() is not None:
+            if child is not None and child.poll() is not None:
                 raise RuntimeError(f'process {child.pid} exited {child.returncode}')
             try:
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/actuator/health', timeout=1) as response:
@@ -142,7 +149,7 @@ class Isolated:
         self.container('redis', 'redis:7.4-alpine', 6379)
         self.wait_mysql('sales')
         self.wait_mysql('pg')
-        self.ports.update({name: reserve_port() for name in ('pg', 'sales1', 'sales2')})
+        self.ports.update({name: reserve_port() for name in ('pg', *self.instances)})
         env = inherited_environment(os.environ)
         env.update({'MYSQL_PASSWORD': self.password, 'MYSQL_USER': 'root', 'MYSQL_DATABASE': 'limited_sale',
                     'MYSQL_PORT': str(self.ports['sales']), 'REDIS_PORT': str(self.ports['redis']),
@@ -158,9 +165,11 @@ class Isolated:
         jar = str(ROOT / 'build/libs/limited-sale-0.0.1-SNAPSHOT.jar')
         self.sales_env = env
         self.sales_jar = jar
-        for name in ('sales1', 'sales2'):
+        for name in self.instances:
             instance = self.start_sales(name)
             self.health(self.ports[name], instance)
+        if self.load_balancer:
+            self.start_load_balancer()
         admin_env = env | {'ADMIN_EMAIL': 'admin@example.test', 'ADMIN_PASSWORD': self.password,
                            'ADMIN_NICKNAME': 'admin'}
         admin = self.start_process('admin-init', [JAVA, '-Dloader.main=com.wooyongjeong.limitedsale.member.infrastructure.AdminInitializer',
@@ -172,7 +181,7 @@ class Isolated:
         for cid in self.containers:
             inspection = json.loads(command('docker', 'inspect', cid))[0]
             mounts[cid] = [{'type': item['Type'], 'name': item.get('Name')} for item in inspection.get('Mounts', [])]
-        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'containers': self.containers, 'ports': self.ports,
+        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'instances': list(self.instances), 'load_balancer': self.load_balancer, 'containers': self.containers, 'ports': self.ports,
                     'os': platform.platform(), 'cpu_count': os.cpu_count(), 'python_version': sys.version.split()[0],
                     'cpu_model': command('sysctl', '-n', 'machdep.cpu.brand_string') if platform.system() == 'Darwin' else platform.processor(),
                     'open_file_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE)),
@@ -185,11 +194,30 @@ class Isolated:
                     'jar_sha256': {label: file_hash(path) for label, path in
                                    [('sales', ROOT / 'build/libs/limited-sale-0.0.1-SNAPSHOT.jar'),
                                     ('pg', ROOT / 'mock-pg/build/libs/mock-pg-0.0.1-SNAPSHOT.jar')]},
-                    'pids': {name: process.pid for name, process in zip(('pg', 'sales1', 'sales2', 'admin'), self.processes)},
+                    'pids': {name: process.pid for name, process in zip(('pg', *self.instances, 'admin'), self.processes)},
                     'head': command('git', 'rev-parse', 'HEAD'),
                     'dirty': bool(command('git', 'status', '--porcelain'))}
         (self.output / 'resources.json').write_text(json.dumps(metadata, indent=2) + '\n')
         return self
+
+    def upstreams(self):
+        return [f'{LB_UPSTREAM_HOST}:{self.ports[name]}' for name in self.instances]
+
+    def start_load_balancer(self):
+        """Run the repository Caddyfile in an owned container in front of the sales instances."""
+        caddyfile = base64.b64encode((ROOT / 'infra/caddy/Caddyfile').read_bytes()).decode()
+        script = ('echo "$CADDYFILE_B64" | base64 -d > /tmp/Caddyfile && '
+                  'exec caddy run --config /tmp/Caddyfile --adapter caddyfile')
+        self.lb_container = self.container(
+            'lb', LB_IMAGE, 8000, {'CADDYFILE_B64': caddyfile, 'SALES_UPSTREAMS': ' '.join(self.upstreams())},
+            options=('--add-host', f'{LB_UPSTREAM_HOST}:host-gateway'), args=('sh', '-c', script))
+        # A proxied health response proves Caddy parsed the file and reached an instance.
+        self.health(self.ports['lb'], None)
+
+    def load_balancer_logs(self):
+        """Return the access log on stdout and Caddy's own messages on stderr."""
+        logs = subprocess.run(['docker', 'logs', self.lb_container], text=True, capture_output=True, check=True)
+        return logs.stdout, logs.stderr
 
     def start_sales(self, name, log_name=None):
         env = self.sales_env | {'SERVER_PORT': str(self.ports[name])}

@@ -74,6 +74,25 @@ class VerifyTest(unittest.TestCase):
         data['request_results'][1]['rejection_reason'] = 'PURCHASE_LIMIT_EXCEEDED'
         self.assertTrue(verify(data))
 
+    def test_race_dependent_counts_and_reasons_accept_a_planned_range(self):
+        data = fixture()
+        add_attempt(data, 'rejected', 'REJECTED', member_id=2, key='r',
+                    rejection_reason=['SALE_SOLD_OUT', 'PURCHASE_LIMIT_EXCEEDED'])
+        data['request_results'].append({'member_id': 2, 'key': 'r', 'sale_id': 1, 'quantity': 1,
+                                        'outcome': 'REJECTED', 'order_id': None,
+                                        'rejection_reason': 'PURCHASE_LIMIT_EXCEEDED'})
+        data['requests'][1]['rejection_reason'] = 'PURCHASE_LIMIT_EXCEEDED'
+        data['manifest']['expected_results'] = {'CREATED': [1, 2], 'REJECTED': [0, 1]}
+        self.assertEqual([], verify(data))
+        data['requests'][1]['rejection_reason'] = 'SALE_NOT_FOUND'
+        data['request_results'][1]['rejection_reason'] = 'SALE_NOT_FOUND'
+        self.assertTrue(verify(data))
+        data['requests'][1]['rejection_reason'] = 'SALE_SOLD_OUT'
+        data['request_results'][1]['rejection_reason'] = 'SALE_SOLD_OUT'
+        self.assertEqual([], verify(data))
+        data['manifest']['expected_results']['CREATED'] = [2, 3]
+        self.assertTrue(verify(data))
+
     def test_corrupt_snapshots_fail(self):
         mutations = {
             'sale count': lambda x: x['sales'][0].update(sold_quantity=0),
