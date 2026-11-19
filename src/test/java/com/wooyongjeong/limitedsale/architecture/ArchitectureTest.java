@@ -57,6 +57,14 @@ class ArchitectureTest {
             .allowEmptyShould(true);
     }
 
+    private static ArchRule frameworkFreeApis() {
+        return noClasses().that().resideInAPackage("..api..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "..presentation..", "jakarta.persistence..", "jakarta.servlet..", "org.hibernate..",
+                "org.springframework..", "org.apache.kafka..", "io.lettuce..", "redis.clients..", "org.redisson..")
+            .allowEmptyShould(true);
+    }
+
     private static ArchRule cycles(String root) {
         return slices().matching(root + ".(*)..").should().beFreeOfCycles().allowEmptyShould(true);
     }
@@ -73,6 +81,7 @@ class ArchitectureTest {
             }
         }
         pureDomains().check(classes);
+        frameworkFreeApis().check(classes);
         cycles(root).check(classes);
     }
 
@@ -96,6 +105,7 @@ class ArchitectureTest {
         JavaClasses domainImplementation = importer.importClasses(
             fixtures.domainbad.domain.BadDomain.class, fixtures.domainbad.infrastructure.Store.class);
         JavaClasses domainFramework = importer.importClasses(fixtures.violation.domain.FrameworkDependency.class);
+        JavaClasses frameworkApi = importer.importClasses(fixtures.apibad.api.FrameworkApi.class);
         JavaClasses cycle = importer.importClasses(fixtures.cycle.order.Order.class, fixtures.cycle.sale.Sale.class);
 
         assertThatThrownBy(() -> boundary("fixtures", "order", "member").check(internalReference)).isInstanceOf(AssertionError.class);
@@ -103,6 +113,7 @@ class ArchitectureTest {
         assertThatThrownBy(() -> apiRule("fixtures", "member").check(badApi)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pureDomains().check(domainImplementation)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pureDomains().check(domainFramework)).isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> frameworkFreeApis().check(frameworkApi)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> cycles("fixtures.cycle").check(cycle)).isInstanceOf(AssertionError.class);
     }
 }

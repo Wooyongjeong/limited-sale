@@ -11,6 +11,7 @@ import com.wooyongjeong.limitedsale.sale.api.SaleDetails;
 import com.wooyongjeong.limitedsale.sale.api.SalePatch;
 import com.wooyongjeong.limitedsale.sale.api.SaleQuery;
 import com.wooyongjeong.limitedsale.sale.domain.SaleException;
+import com.wooyongjeong.limitedsale.sale.presentation.code.SaleResponseCode;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.URI;
@@ -38,6 +39,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 
+import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -203,7 +205,7 @@ class SaleIntegrationTest {
         assertThat(user.request("POST", path, payload, user.token).statusCode()).isEqualTo(403);
         assertThat(anonymous.request("POST", path, payload, anonymous.token).statusCode()).isEqualTo(401);
         var created = admin.request("POST", path, payload, admin.token);
-        assertThat(created.statusCode()).isEqualTo(201);
+        assertCode(created, SaleResponseCode.SALE_CREATED);
         JsonNode sale = data(created);
         long id = sale.path("saleId").asLong();
         assertThat(sale.path("name").asText()).isEqualTo("sale");
@@ -216,26 +218,33 @@ class SaleIntegrationTest {
             "productNameSnapshot", "unitPrice", "startsAt", "endsAt", "totalQuantity", "perMemberLimit",
             "status", "version", "createdAt", "updatedAt");
         assertThat(data(anonymous.request("GET", "/api/v1/sales/" + id, null, null))).isEqualTo(sale);
+        assertCode(anonymous.request("GET", "/api/v1/sales/" + id, null, null), SaleResponseCode.SALE_FOUND);
+        assertCode(anonymous.request("GET", "/api/v1/sales", null, null), SaleResponseCode.SALES_FOUND);
         jdbc.update("UPDATE products SET name = 'edited source', base_price = 2000 WHERE id = ?", product1);
         assertThat(queries.get(id).productNameSnapshot()).isEqualTo("original product");
         assertThat(queries.get(id).unitPrice()).isEqualTo(1000);
         jdbc.update("UPDATE products SET name = 'original product', base_price = 1000 WHERE id = ?", product1);
-        JsonNode changed = data(admin.request("PATCH", path + "/" + id,
-            "{\"version\":0,\"productId\":" + product2 + ",\"description\":null}", admin.token));
+        var patched = admin.request("PATCH", path + "/" + id,
+            "{\"version\":0,\"productId\":" + product2 + ",\"description\":null}", admin.token);
+        assertCode(patched, SaleResponseCode.SALE_UPDATED);
+        JsonNode changed = data(patched);
         assertThat(changed.path("productNameSnapshot").asText()).isEqualTo("replacement product");
         assertThat(changed.path("unitPrice").asLong()).isEqualTo(1000);
         assertThat(changed.path("version").asLong()).isEqualTo(1);
-        assertThat(admin.request("PATCH", path + "/" + id, "{\"version\":0,\"name\":\"stale\"}", admin.token)
-            .statusCode()).isEqualTo(409);
-        JsonNode stopped = data(admin.request("POST", path + "/" + id + "/stop", null, admin.token));
+        assertCode(admin.request("PATCH", path + "/" + id, "{\"version\":0,\"name\":\"stale\"}", admin.token),
+            SaleResponseCode.SALE_VERSION_CONFLICT);
+        var stopResponse = admin.request("POST", path + "/" + id + "/stop", null, admin.token);
+        assertCode(stopResponse, SaleResponseCode.SALE_STOPPED);
+        JsonNode stopped = data(stopResponse);
         assertThat(stopped.path("status").asText()).isEqualTo("STOPPED");
         assertThat(data(admin.request("POST", path + "/" + id + "/stop", null, admin.token))).isEqualTo(stopped);
-        assertThat(data(admin.request("POST", path + "/" + id + "/resume", null, admin.token))
-            .path("status").asText()).isEqualTo("SCHEDULED");
+        var resumeResponse = admin.request("POST", path + "/" + id + "/resume", null, admin.token);
+        assertCode(resumeResponse, SaleResponseCode.SALE_RESUMED);
+        assertThat(data(resumeResponse).path("status").asText()).isEqualTo("SCHEDULED");
         var deletion = admin.request("DELETE", path + "/" + id, null, admin.token);
-        assertThat(deletion.statusCode()).isEqualTo(200);
+        assertCode(deletion, SaleResponseCode.SALE_DELETED);
         assertThat(data(deletion).isNull()).isTrue();
-        assertThat(admin.request("DELETE", path + "/" + id, null, admin.token).statusCode()).isEqualTo(404);
+        assertCode(admin.request("DELETE", path + "/" + id, null, admin.token), SaleResponseCode.SALE_NOT_FOUND);
     }
 
     @Test
@@ -313,10 +322,16 @@ class SaleIntegrationTest {
         assertThat(admin.request("GET", "/api/v1/sales/0", null, null).statusCode()).isEqualTo(400);
         assertThat(admin.request("GET", "/api/v1/sales/" + Long.MAX_VALUE, null, null).statusCode()).isEqualTo(404);
         jdbc.update("UPDATE sales SET starts_at = UTC_TIMESTAMP(6) - INTERVAL 1 SECOND WHERE id = ?", sale.saleId());
-        assertThat(admin.request("PATCH", path + "/" + sale.saleId(),
-            "{\"version\":0,\"unitPrice\":1000}", admin.token).statusCode()).isEqualTo(409);
-        assertThat(admin.request("PATCH", path + "/" + sale.saleId(),
-            "{\"version\":0,\"name\":\"after start\"}", admin.token).statusCode()).isEqualTo(200);
+        assertCode(admin.request("PATCH", path + "/" + sale.saleId(),
+            "{\"version\":0,\"unitPrice\":1000}", admin.token), SaleResponseCode.SALE_ALREADY_STARTED);
+        assertCode(admin.request("PATCH", path + "/" + sale.saleId(),
+            "{\"version\":0,\"name\":\"after start\"}", admin.token), SaleResponseCode.SALE_UPDATED);
+        jdbc.update("UPDATE sales SET starts_at = UTC_TIMESTAMP(6) - INTERVAL 2 HOUR, "
+            + "ends_at = UTC_TIMESTAMP(6) - INTERVAL 1 HOUR WHERE id = ?", sale.saleId());
+        assertCode(admin.request("POST", path + "/" + sale.saleId() + "/stop", null, admin.token),
+            SaleResponseCode.SALE_ALREADY_ENDED);
+        assertCode(admin.request("POST", path + "/" + sale.saleId() + "/resume", null, admin.token),
+            SaleResponseCode.SALE_ALREADY_ENDED);
     }
 
     private static SalePatch patch(long version, String name, Long price) {

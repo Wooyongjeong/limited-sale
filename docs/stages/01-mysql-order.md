@@ -260,6 +260,10 @@ Argon2id 선택 근거는 [OWASP 비밀번호 저장 지침](https://cheatsheets
 - [x] 지정 워커의 해당 범위 구현과 검증 결과 수령
 - [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
 
+### 1-12. 1단계 후속 검증
+
+정책 결정과 후속 검증 체크리스트의 마지막 8개 항목을 증거로 닫았다. 근거와 보강한 테스트는 [1-12 상세 문서](01-12-followup-verification.md)에서 관리한다. 새 정책은 정하지 않았다.
+
 ## 검증 기준
 
 - 실제 MySQL에서 마이그레이션과 트랜잭션·동시성 검증을 수행한다.
@@ -293,7 +297,7 @@ Argon2id 선택 근거는 [OWASP 비밀번호 저장 지침](https://cheatsheets
 - [x] 실패·취소 확정 후 점유 해제, PG 무응답 시 점유 유지·운영 확인 표시
 - [x] 서버 재시작 후 DB의 미완료 주문·결제를 찾아 복구 재개
 - [x] 결과 조회·종료·미완료 DB 복구·작업 임대·단조로운 최종 상태 전이 기본안
-- [ ] 1-7에서 복구 임대 시간·배치 크기·PG 통신 오류 상세 및 동시성 검증
+- [x] 1-7에서 복구 임대 시간·배치 크기·PG 통신 오류 상세 및 동시성 검증 → `OrderPaymentIntegrationTest`(두 노드 임대 경쟁·잠긴 후보·PG 중단 수렴·통신 실패 시 점유 유지·회당 후보 상한), `OrderRecoverySchedulerTest`, [1-7-4](01-7-4-order-recovery-and-leases.md)·[1-7-5](01-7-5-order-payment-recovery-regression.md), [1-12](01-12-followup-verification.md)
 - [x] 재고 또는 사용자 잔여 한도 부족 시 전량 거절
 - [x] Mock PG는 별도 HTTP 서버로 실행
 - [x] Mock PG 결제 기록은 별도 스키마·계정으로 영속 저장, 판매 서버는 HTTP만 사용
@@ -302,23 +306,23 @@ Argon2id 선택 근거는 [OWASP 비밀번호 저장 지침](https://cheatsheets
 - [x] PG 시뮬레이션 제어는 ADMIN 전용·로컬/테스트 환경 한정
 - [x] member·payment 도메인 추가. member는 계정·권한, sale은 총재고·사용자 수량, order는 주문, payment는 PG·결제·복구 담당
 - [x] member·product·sale·order·payment 공개 계약과 mock-pg 하위 프로젝트 기본안
-- [ ] 각 소단계에서 공개 인터페이스 시그니처·입출력 상세 점검
+- [x] 각 소단계에서 공개 인터페이스 시그니처·입출력 상세 점검 → [1-12](01-12-followup-verification.md)에서 `api` 패키지 전체를 계약 문서와 대조해 이름 불일치를 문서에 반영, `ArchitectureTest`에 api 프레임워크 타입 금지 규칙 추가
 - [x] 주문·결제 상태, sale의 수량 소유, 짧은 DB 트랜잭션 사이 PG 호출·복구 기본안
 - [x] 클라이언트 주문 요청 키로 재시도 구분, 동일 키·같은 입력은 기존 결과 반환, 다른 입력은 충돌 거절
 - [x] 주문 요청 키는 사용자별 필수 UUID, 성공·업무 거절 결과를 TTL 없이 보관. PG에는 주문에 고정된 결제 키 사용
 - [x] 사용자+요청 키 유니크·입력 비교·기존 주문 재조회 및 고정 PG 키 기본안
-- [ ] 1-2에서 제약·인덱스, 1-7에서 동시 요청·키 충돌 재현 검증
+- [x] 1-2에서 제약·인덱스, 1-7에서 동시 요청·키 충돌 재현 검증 → `MySqlSchemaIntegrationTest`(유니크·FK·CHECK 오류 코드), `OrderIntegrationTest.sameKeyRacesReplayOrConflictAndAreScopedToMember`·`sameKeyDifferentQuantitiesAndRejectedVersusCreatedRacePreserveWinner`, [1-7-5](01-7-5-order-payment-recovery-regression.md) 같은 키 재시도 3회
 - [x] 가격의 통화·정밀도: 원화 정수 단위
 - [x] 판매 가격은 관리자 지정, 제품 기준 가격을 기본값으로 제공. 주문에 판매 가격 별도 보관
 - [x] 개당 가격 1원~10억원, 이벤트 수량 1~100만개. 무료 제품 제외
 - [x] 금액 long·BIGINT 및 수량 한도·누적 수량 기본안
-- [ ] 1-2에서 CHECK·인덱스, 1-7에서 금액 곱셈과 범위 경계 검증
+- [x] 1-2에서 CHECK·인덱스, 1-7에서 금액 곱셈과 범위 경계 검증 → `MySqlSchemaIntegrationTest`(금액·단가 상한 초과 거절), `OrderIntegrationTest.maximumPriceAndQuantityKeepExactLongAmountAcrossOrderAndPayment`(10억원×100만개=10^15원), 주문 수량 0·1,000,001 거절
 - [x] 시작 후 이벤트명·설명 수정 허용, 주요 조건 변경·삭제 금지, 신규 주문 중단과 기존 주문·결제 지속 처리
 - [x] 시작 전 조건 수정·삭제 허용, 판매 기간 내 조건 유지 재개 허용, 종료 후 신규 주문·재개 금지
 - [x] 신규 주문은 시작 시각 이상~종료 시각 미만, 종료 전 점유 주문은 종료 후에도 결제 처리
 - [x] MySQL 수량 점유 작업과 함께 잠금 획득 후 DB 시각·이벤트 상태 판정, UTC 저장
 - [x] 중단·재개·수정과 수량 점유의 동일 이벤트 행 잠금 기본안
-- [ ] 1-6~1-7에서 잠금 SQL·대기 후 시간 판정·경쟁 시나리오 검증
+- [x] 1-6~1-7에서 잠금 SQL·대기 후 시간 판정·경쟁 시나리오 검증 → `OrderIntegrationTest.locksBeforeReadingDatabaseTimeAndObservesConcurrentStop`, `SaleIntegrationTest.waitingForLockPastStartRejectsTermsChangeAndDeletion`, `OrderPaymentIntegrationTest.databaseTimeIsReadAfterPaymentRowLockWait`
 - [x] 이메일·비밀번호와 Redis 세션 인증 범위 확정 및 회원·인증 소단계 반영
 - [x] Redis는 1단계 세션용 도입, 2단계 캐시·분산 요청 제한 확장
 - [x] 세션 유휴 만료 30분, 설정 변경 가능
@@ -330,17 +334,17 @@ Argon2id 선택 근거는 [OWASP 비밀번호 저장 지침](https://cheatsheets
 - [x] 로그인 실패 동일 메시지, 이메일+IP 조합별 5분 5회 실패 제한·429, 설정 가능
 - [x] 이메일 254자·제품명/이벤트명 100자·설명 2,000자, 사용자 구매 한도 1~이벤트 총수량
 - [x] 목록은 페이지 방식 기본 20개·최대 100개, 필터·정렬은 조회 소단계에서 확인
-- [ ] 1-2~1-3에서 확정 길이·형식·유니크 제약 검증, Argon2id 비용 실측 확인
+- [x] 1-2~1-3에서 확정 길이·형식·유니크 제약 검증, Argon2id 비용 실측 확인 → `ProductIntegrationTest`(이름 100/101·설명 2,000/2,001), `MemberIntegrationTest`(이메일 254자·이메일·닉네임 동시 유니크), `MemberInputTest`, Argon2id는 [1-3 측정](01-3-argon2-measurement.md)과 [1-12](01-12-followup-verification.md)의 재측정(encode p50 18.4ms)
 - [x] 1-4 워커의 로그인 제한 Redis 연산·프록시/IP 판정 검증
 - [x] 인증 실패 401·권한 부족 403·Redis 장애로 인증 불가 시 503, 가능한 공개 조회는 유지
 - [x] HttpOnly·SameSite=Lax, HTTPS Secure·로컬 HTTP 예외, 변경 요청 CSRF 검증, 교차 사이트 배치 제외
 - [x] API 상태와 공통 응답, field/reason 검증 오류, 본인 주문 조회와 권한 기본안
-- [ ] 각 API 구현 소단계에서 enum 코드·메시지·필드 오류 경계 검증
+- [x] 각 API 구현 소단계에서 enum 코드·메시지·필드 오류 경계 검증 → 각 통합 테스트의 field/reason 검사, [1-12](01-12-followup-verification.md)에서 추가한 `ResponseEnvelope.assertCode`(상태·본문 httpStatus·code·message)와 `ResponseCodeContractTest`
 - [x] 관리자 초기화 명령 환경변수 입력, 기존 ADMIN 무변경, 기존 USER는 오류로 종료. 추후 변경 가능
 - [x] 공통 응답 템플릿: httpStatus·code·제네릭 data·message, 빈 데이터는 null, 검증 오류는 필드 목록
 - [x] common.web의 ResponseCode 인터페이스를 도메인별 성공·오류 enum과 공통 오류 enum이 구현
 - [x] 주문 생성 201·재시도 200, 결제 미확인 202·명확 거절 409, 조회 200, 타인 주문 404, 가입·로그인 API 분리
 - [x] 판매 서버+mock-pg 하위 프로젝트, 도메인별 영속 엔티티 분리, READ COMMITTED·행 잠금과 사용자 요청 키 유니크 제약 기본안
-- [ ] 1-2 진입 시 테이블·인덱스·입력 길이·JPA 매핑 상세 재점검
+- [x] 1-2 진입 시 테이블·인덱스·입력 길이·JPA 매핑 상세 재점검 → [1-2 문서](01-2-mysql-schema-and-boundaries.md), `ddl-auto: validate`로 실제 MySQL에서 엔티티·스키마를 대조하는 통합 테스트들과 `MySqlSchemaIntegrationTest`의 JPA 왕복
 
 공용 재고 제외, 시간 범위, 판매 가격 설정 방식은 확정한 정책을 따른다. 나머지 세부 설정과 기술 계약은 1-1에서 추가로 확인한다. 미정 사항을 사용자 답변 없이 기본안으로 확정하지 않는다.

@@ -8,13 +8,13 @@
 
 판매 서버는 루트 Spring Boot 프로젝트를 유지하고 `mock-pg` Gradle 하위 프로젝트를 별도 실행 애플리케이션으로 추가하는 안이다. 판매 서버는 `com.wooyongjeong.limitedsale`, Mock PG는 `com.wooyongjeong.mockpg` 패키지를 제안한다. Mock PG에 판매 서버 코드를 의존시키거나 판매 서버가 PG 테이블을 직접 조회하지 않는다.
 
-| 도메인 | 데이터·기능 소유권 | 공개 계약 초안 |
+| 도메인 | 데이터·기능 소유권 | 공개 계약 (1-12에서 구현과 대조) |
 |---|---|---|
-| member | 이메일·비밀번호 해시·권한, 인증 어댑터 | MemberRegistration, MemberAuthentication, MemberQuery |
+| member | 이메일·비밀번호 해시·권한, 인증 어댑터 | MemberIdentity |
 | product | 제품 이름·설명·기준 가격 | ProductCommand, ProductQuery |
 | sale | 이벤트 조건·상태, 전체 수량, 사용자별 수량, 주문별 점유 | SaleCommand, SaleQuery, SaleReservation |
-| order | 주문·요청 키, 주문 시점 제품·가격, 전체 주문 처리 조합 | OrderCommand, OrderQuery |
-| payment | 판매 서버의 결제 기록, PG 요청·조회·종료, 결제 결과 복구 | PaymentCommand, PaymentQuery, PaymentRecovery |
+| order | 주문·요청 키, 주문 시점 제품·가격, 전체 주문 처리 조합 | OrderLookup |
+| payment | 판매 서버의 결제 기록, PG 요청·조회·종료, 결제 결과 복구 | PaymentGateway, PaymentOperations, PaymentPreparation, PaymentSimulation |
 
 도메인별로 api/application/domain/infrastructure/presentation을 둔다. 외부 도메인은 api만 참조한다. 공통 응답·ResponseCode와 공통 시스템 오류는 common.web에, 업무별 성공·오류 enum은 각 도메인의 presentation.code에 둔다. member의 인증 필터·핸들러도 공통 응답을 사용한다.
 
