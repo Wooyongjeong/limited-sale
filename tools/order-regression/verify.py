@@ -7,6 +7,20 @@ import math
 import sys
 
 
+def counts_match(actual, expected):
+    # An expected value is an exact count or an inclusive [min, max] pair for outcomes that depend on a race.
+    for name in set(actual) | set(expected):
+        want = expected.get(name, 0)
+        low, high = want if isinstance(want, list) else (want, want)
+        if not low <= actual.get(name, 0) <= high:
+            return False
+    return True
+
+
+def rejection_allowed(plan_reason, reason):
+    return reason in plan_reason if isinstance(plan_reason, list) else reason == plan_reason
+
+
 def verify(data):
     errors = []
 
@@ -141,9 +155,10 @@ def verify(data):
             if saved is not None:
                 matched_results.add(result_key)
             if outcome == 'REJECTED':
-                require(attempt['rejection_reason'] == plan['rejection_reason']
-                        and plan['rejection_reason'] in rejection_reasons,
-                        f'attempt {attempt_id}: rejection reason')
+                planned_reasons = plan['rejection_reason']
+                require(rejection_allowed(planned_reasons, attempt['rejection_reason'])
+                        and set(planned_reasons if isinstance(planned_reasons, list) else [planned_reasons])
+                        <= rejection_reasons, f'attempt {attempt_id}: rejection reason')
             if outcome == 'CREATED':
                 require(attempt['rejection_reason'] is None, f'attempt {attempt_id}: unexpected rejection')
                 order = orders.get(attempt['order_id'])
@@ -156,8 +171,9 @@ def verify(data):
             require(saved is not None and not same(saved, attempt, ('sale_id', 'quantity')),
                     f'attempt {attempt_id}: conflict did not change input')
     require(matched_results == set(results), 'saved request result coverage')
-    require(Counter(r['result'] for r in data['requests']) == Counter(manifest['expected_results']), 'result counts')
-    require(Counter(o['status'] for o in data['orders']) == Counter(manifest['expected_order_statuses']),
+    require(counts_match(Counter(r['result'] for r in data['requests']), manifest['expected_results']),
+            'result counts')
+    require(counts_match(Counter(o['status'] for o in data['orders']), manifest['expected_order_statuses']),
             'order status counts')
     recovery = data['recovery']
     required = manifest['recovery_required']

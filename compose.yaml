@@ -24,5 +24,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  load-balancer:
+    profiles: ["multi-instance"]
+    image: caddy:2.11.2-alpine
+    ports:
+      - "127.0.0.1:${LB_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
 volumes:
   mysql_data:

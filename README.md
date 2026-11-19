@@ -88,3 +88,40 @@ Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 
 기본 자동 복구는 켜져 있다. `limited-sale.recovery.enabled=false`로 중지할 수 있다. 실행 간격 `interval=PT1S`, 회당 `batch-size=20`, 서버당 `concurrency=4`, 임대 `lease-duration=PT30S`, 반복 경고 `warning-interval=PT5M`이며 모두 `limited-sale.recovery` 아래 설정이다. 실행 대기열에 임대를 쌓지 않고 실행 직전에 취득한다.
 
 미요청 주문을 만료 전 임의 결제하지 않는다. 만료 후 PG 결과를 모르면 점유 유지·운영 확인 표시·기본 10초 재시도이며 강제 실패나 자동 재고 반환은 없다. 종료·재시작과 오래된 토큰 차단은 [복구 위키](docs/wiki/recovery.md)를 본다.
+
+## 여러 인스턴스 실행과 정합성 대조
+
+판매 앱 JAR 두 개를 `8080`, `8082`로 띄우고 앞에 Caddy 로드 밸런서(`127.0.0.1:8000`)를 둔다. MySQL·Redis·Mock PG는 공유한다. 기본 `docker compose up`은 mysql과 redis만 시작하며 로드 밸런서는 `multi-instance` 프로필에서만 시작한다. 분산은 라운드 로빈이고 고정 세션과 실패 재시도는 없다. 세션과 CSRF 토큰은 Redis에 있으므로 한 로그인으로 두 인스턴스를 모두 사용할 수 있다. 설정은 [infra/caddy/Caddyfile](infra/caddy/Caddyfile)이며 `SALES_UPSTREAMS`(공백으로 구분한 `host:port`)로 대상을 바꾼다. 컨테이너는 `host.docker.internal`로 호스트의 JVM에 접속하므로 앱은 루프백 전용이 아닌 기본 바인딩이어야 한다.
+
+```sh
+./gradlew bootJar :mock-pg:bootJar
+set -a; source .env; set +a
+docker compose --profile multi-instance up -d    # mysql, redis, load-balancer
+./scripts/prepare-local-db.sh
+java -jar mock-pg/build/libs/mock-pg-0.0.1-SNAPSHOT.jar                         # 터미널 1
+SERVER_PORT=8080 java -jar build/libs/limited-sale-0.0.1-SNAPSHOT.jar           # 터미널 2
+SERVER_PORT=8082 java -jar build/libs/limited-sale-0.0.1-SNAPSHOT.jar           # 터미널 3
+curl -f http://127.0.0.1:8000/actuator/health                                   # 로드 밸런서 경유
+```
+
+클라이언트는 `http://127.0.0.1:8000`만 사용한다. 로드 밸런서 포트는 `LB_PORT`로 바꾼다. Caddy 접근 로그(JSON, stdout)의 `upstream` 필드가 요청을 처리한 인스턴스다. 응답에는 인스턴스 정보를 넣지 않는다.
+
+```sh
+docker compose logs --no-log-prefix load-balancer | python3 -c "
+import collections, json, sys
+n = collections.Counter()
+for line in sys.stdin:
+    try: e = json.loads(line)
+    except ValueError: continue
+    r = e.get('request') or {}
+    if r.get('method') == 'POST' and r.get('uri') == '/api/v1/orders': n[e.get('upstream')] += 1
+print(dict(n))"
+```
+
+정합성 대조 SQL [tools/reconciliation/reconcile.sql](tools/reconciliation/reconcile.sql)은 위반 행만 돌려준다. 빈 결과가 정합이다. 읽기 전용 단일 SELECT이며 개발 DB에도 그대로 실행한다. 진행 중인 주문(AWAITING_PAYMENT·PAYMENT_PENDING)은 위반으로 보지 않는다. 검사 항목은 판매 수량 범위와 점유·확정 합계, 사용자별 한도, 주문의 점유·결제·요청 결과 존재, 금액 일치, 확정 주문의 성공 결제, 요청 키 중복이다.
+
+```sh
+docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"' < tools/reconciliation/reconcile.sql
+```
+
+로드 밸런서를 거친 1·2 인스턴스 실험은 `tools/order-regression/run_balanced.py`이며 [실험 도구 안내](tools/order-regression/README.md)를 따른다. 대조 SQL 검증은 `./gradlew integrationTest`의 `ReconciliationSqlIntegrationTest`가 정합 DB와 의도적으로 깨뜨린 DB로 실행한다.

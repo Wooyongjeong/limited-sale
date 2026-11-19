@@ -1,0 +1,22 @@
+# Round-robin load balancer in front of the sales app instances. No sticky sessions: one login session
+# must work on every instance because sessions and CSRF tokens live in Redis.
+#
+# SALES_UPSTREAMS lists the instances as space-separated host:port pairs. The default matches two local
+# JARs started with SERVER_PORT=8080 and SERVER_PORT=8082.
+{
+	admin off
+}
+
+:8000 {
+	# Access log on stdout. `upstream` records which instance served each request.
+	log {
+		output stdout
+		format json
+	}
+	log_append upstream {http.reverse_proxy.upstream.hostport}
+
+	# Never retry a request on another instance: a replayed POST would hide a failed attempt.
+	reverse_proxy {$SALES_UPSTREAMS:host.docker.internal:8080 host.docker.internal:8082} {
+		lb_policy round_robin
+	}
+}
