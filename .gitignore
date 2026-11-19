@@ -7,3 +7,4 @@ build/
 *.iml
 .vscode/
 .DS_Store
+benchmarks/load-baseline/raw/

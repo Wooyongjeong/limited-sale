@@ -41,3 +41,30 @@ python3 -B tools/order-regression/audit_outage.py /tmp/outage-RUN
 ```
 
 검증기는 주어진 manifest와 수집 결과의 일관성을 검사한다. 실제 프로세스 종료, 사전 고정 명세, 단조시계 측정, 수집 시점과 환경의 신뢰성은 별도로 원본 증거와 대조해야 한다. 단일 스냅샷 검증기의 통과만으로 전체 실험을 완료한 것으로 판단하지 않는다.
+
+## 1-11 기준 부하 실험
+
+`run_baseline.py`는 1-10의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공)을 실행마다 새로 만들고, 사용자 가입·로그인을 부하 전에 끝낸 뒤 k6 시나리오 `tests/load/baseline-order.js`로 주문·결제만 보낸다. 반복 하나가 사용자 한 명이며 `shared-iterations`로 동시 VU를 고정한다. 필요한 것은 위 실험과 같고 k6가 PATH에 있어야 한다.
+
+```sh
+./gradlew bootJar :mock-pg:bootJar
+caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario baseline --runs 3 --output benchmarks/load-baseline
+caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario under-demand --runs 1 --output benchmarks/load-baseline
+```
+
+- 시나리오: `baseline`(사용자 10,000·재고 1,000·VU 500), `under-demand`(사용자 800·재고 1,000·VU 500). `--users`, `--stock`, `--vus`는 스모크 확인용 덮어쓰기이며 결과에 `UNOFFICIAL`이 표시된다. `--label`은 모든 결과에 남는 설명 문구다. 공식 기준값이 아닌 JAR(예: 의존성 버전을 바꾼 JAR)로 돌릴 때 사용한다.
+- 세션 파일: 쿠키·CSRF·요청 키를 담은 0600 임시 파일을 만들어 k6에만 넘기고, k6가 끝나면 실패해도 지운다. 출력 디렉터리에 복사하지 않는다.
+- 통과 기준(`checks`): k6 종료 코드 0, 반복 완료 수와 누락 0, 5xx·연결 오류 0, 기대 외 상태 코드(200·201·202·409 밖) 0, 모든 주문의 종료 상태 수렴, 확정 수·잔여 수량(`baseline` 확정 1,000·잔여 0, `under-demand` 확정 800), `verify.py`·`reconcile.sql` 위반 0, k6가 센 생성·품절 건수와 DB 일치, 생성 주문마다 결제 요청 1건, 두 인스턴스의 주문 요청 수 합이 사용자 수와 같고 모두 처리, MySQL 관측 전체 수집. 품절 409는 오류가 아니라 업무 거절이다.
+- 검증기 입력: k6는 요청별 기록을 남기지 않으므로 `verify.py`의 시도 결과는 서버가 모든 판정마다 저장하는 `order_request_results`에서 만든다. 클라이언트 관점은 k6 상태·업무 코드 건수를 DB와 대조해 교차 검증한다.
+- 지표 수집: 부하 전후 두 관리 포트(`/actuator/prometheus`) 스냅샷의 차이(HTTP 서버, Hikari 획득, GC, 업무 카운터, JVM CPU 시간)와, 부하·수렴 동안 1초 간격으로 읽은 게이지의 최대·평균(Hikari 사용·대기, 프로세스·시스템 CPU, 힙, 스레드). Hikari 사용·대기 게이지는 HikariCP가 1초 단위로 캐시하므로 부하 직후 단발 스냅샷 값은 신뢰하지 않고 최대값만 쓴다. `scripts/mysql-observe.sh` 전후 차이(행 잠금 대기 수·시간, 교착·시간 초과, 소요 시간 상위 다이제스트)와 k6 프로세스의 CPU 시간을 함께 기록한다. 부하 생성기·JVM·MySQL이 한 컴퓨터를 나눠 쓰므로 CPU 값은 병목 해석에 함께 본다.
+- 환경: CPU·메모리·OS·Java·MySQL·Redis·Docker·k6 버전, Docker VM 자원, git 커밋과 dirty 여부, JAR SHA-256, JAR에 들어간 Micrometer·Prometheus·HikariCP 라이브러리 버전.
+
+출력 디렉터리는 없으면 만든다. 같은 시나리오의 `<시나리오>-aggregate.json`이 이미 있으면 거부한다.
+
+| 파일 | 내용 | 커밋 |
+|---|---|---|
+| `<시나리오>-run-N.json` | 실행별 요약: 환경, 처리량, 엔드포인트별 p50/p95/p99, 상태·업무 코드 건수, 관리 포트·MySQL 전후 차이, 통과 기준 | 예 |
+| `<시나리오>-aggregate.json` | 실행 수, 통과 여부, 환경, 지표별 중앙값·최소·최대·실행별 값 | 예 |
+| `raw/<시나리오>-run-N/` | JVM·k6 로그, 관리 포트 원본, MySQL 스냅샷, 검증기 입력, 정리 증거 | 아니요(`.gitignore`) |
+
+실행 시간은 환경 시작 약 25초, 사용자 준비(가입·Argon2 로그인), 부하, 수렴·검증으로 나뉘며 `durations_seconds`에 기록된다. 순수 로직(지표 파싱·차이·집계·통과 판정) 테스트는 `python3 -B -m unittest discover -s tools/order-regression -v`에 포함된다.
