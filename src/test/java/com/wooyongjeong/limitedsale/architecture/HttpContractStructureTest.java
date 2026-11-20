@@ -2,8 +2,8 @@ package com.wooyongjeong.limitedsale.architecture;
 
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
-import com.wooyongjeong.limitedsale.member.domain.Member;
 import com.wooyongjeong.limitedsale.common.web.ResponseCode;
+import com.wooyongjeong.limitedsale.member.domain.Member;
 import com.wooyongjeong.limitedsale.member.domain.MemberRole;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
