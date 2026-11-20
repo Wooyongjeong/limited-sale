@@ -14,13 +14,15 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 
 다른 도메인은 `api` 패키지의 인터페이스와 계약 타입만 참조한다. 서비스 구현, 엔티티, 저장소를 직접 참조하지 않는다. 인터페이스는 기능을 제공하는 도메인이 소유한다.
 
-호출 예시는 다음과 같다. 기본 API 계약은 1-1 기술 계약을 따르며 Java 시그니처는 각 구현 소단계에서 점검한다.
+호출 예시는 다음과 같다. 기본 API 계약은 1-1 기술 계약을 따르며 실제 시그니처는 각 도메인의 `api` 패키지를 따른다.
 
 ```text
 판매 이벤트 생성 → ProductQuery.find(productId) → 제품 정보 확인 후 이벤트 저장
-주문 컨트롤러 → OrderCommand.create(주문 요청)
-주문 유스케이스 → 판매 수량·사용자 한도 처리
-주문·결제 흐름 → Mock PG 처리 → 결과에 따른 주문 상태 전이
+주문 컨트롤러 → OrderService → OrderTransaction
+OrderTransaction → SaleReservation.allocate(saleId, memberId, quantity) → 수량·사용자 한도 점유
+OrderTransaction → PaymentPreparation.prepare(orderId, amount, time) → 결제 기록 준비
+OrderPaymentService → PaymentGateway.charge(payment, timeout) → Mock PG 호출(트랜잭션 밖)
+OrderPaymentTransaction → PaymentOperations.record(...) → SaleReservation.finish(...) → 주문 상태 전이
 ```
 
 컨트롤러는 재고·주문·결제 작업을 직접 조합하지 않는다. 주문·결제 유스케이스가 상태 전이와 각 DB 트랜잭션을 조합한다. Mock PG 호출을 DB 트랜잭션과 하나의 원자적 작업으로 간주하지 않는다.
@@ -66,40 +68,51 @@ API·DB·프로젝트 구성의 기본 계약은 [1-1 기술 계약 문서](stag
 
 기본 패키지는 `com.wooyongjeong.limitedsale`로 확정한다. 단계 표시는 도입 시점이며 실제 디렉터리 이름에 포함하지 않는다.
 
-아래 트리는 향후 구조를 포함한다. 1-2에서 도메인별 영속 엔티티와 Mock PG 실행 뼈대를 추가했고, 1-3에서 회원가입, 1-4에서 세션 인증, 1-5에서 제품 등록·조회 유스케이스를 구현했다. 판매 이벤트 관리·조회는 1-6에서 추가하며 주문·결제 업무 유스케이스는 이후 단계 범위다.
+아래 트리는 구현된 구조를 대표 파일 중심으로 보여 주며 모든 파일을 나열하지 않는다. 2·3단계 항목은 표시한 도입 시점에 추가할 위치다.
 
 ```text
 src/main/java/com/wooyongjeong/limitedsale/
   LimitedSaleApplication.java
-  member/                    # 1단계 회원·권한·인증
-  payment/                   # 1단계 PG 연동·결제·복구
+  member/
+    api/                     # MemberIdentity
+    application/             # MemberService, AuthenticationService
+    domain/
+    infrastructure/
+      persistence/
+      security/              # 세션 인증·Argon2id 해시기
+    presentation/
+      code/                  # 도메인별 ResponseCode 구현
+      request/
+      response/
+  payment/
+    api/                     # PaymentGateway, PaymentOperations, PaymentPreparation, PaymentSimulation
+    domain/
+    infrastructure/
+      http/                  # Mock PG 호출
+      persistence/
   product/
-    api/
-      ProductQuery.java
-      ProductView.java
+    api/                     # ProductCommand, ProductQuery
     application/
     domain/
     infrastructure/persistence/
     presentation/
+      code/
+      request/
+      response/
   sale/
-    api/
-      SaleQuery.java
-      SaleReservation.java
-      SaleView.java
-      AllocationResult.java
+    api/                     # SaleCommand, SaleQuery, SaleReservation
     application/
     domain/
     infrastructure/
       persistence/
       cache/                 # 2단계: 판매 이벤트 조회 캐시
     presentation/
+      code/
+      request/
+      response/
   order/
-    api/
-      OrderCommand.java
-      OrderQuery.java
-      OrderResult.java
-      OrderView.java
-    application/
+    api/                     # OrderLookup
+    application/             # OrderService, OrderTransaction, OrderPaymentService, OrderRecoveryScheduler
     domain/
     infrastructure/
       persistence/
@@ -107,10 +120,12 @@ src/main/java/com/wooyongjeong/limitedsale/
       kafka/                 # 3단계: 메시지 발행·소비와 변환
       outbox/                # 3단계: 채택 시 발행 작업
     presentation/
+      code/                  # OrderResponseCode, SimulationResponseCode
+      request/
+      response/
   common/
-    config/                  # 공통 기술 설정과 Clock 구성
-    web/                     # 공통 HTTP 오류 형식과 요청 추적
-    observability/
+    web/                     # ApiResponse, ResponseCode, 공통 HTTP 오류 형식
+    observation/             # 공통 요청 추적과 상태 확인
 
 src/main/resources/
   application.yml
@@ -119,19 +134,16 @@ src/main/resources/
 src/test/java/com/wooyongjeong/limitedsale/
   LimitedSaleApplicationTests.java
   architecture/              # 패키지 경계 검증
-  product/
-  sale/
-  order/
+  member/ product/ sale/ order/ payment/ schema/
 src/test/resources/
   application-test.yml
 compose.yaml                 # 루트에서 docker compose 실행
 infra/                       # 이후 모니터링 구성
   prometheus/
   grafana/
-mock-pg/                    # 별도 실행 Gradle 하위 프로젝트, 구현 예정
+mock-pg/                    # 별도 실행 Gradle 하위 프로젝트
 tests/
   load/                      # k6 시나리오
-  reconciliation/            # 실험 후 DB 정합성 대조
 docs/
   project-plan.md
   architecture.md

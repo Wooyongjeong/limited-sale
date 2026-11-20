@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
-import com.wooyongjeong.limitedsale.order.presentation.OrderResponseCode;
+import com.wooyongjeong.limitedsale.order.presentation.code.OrderResponseCode;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.mockpg.MockPgApplication;
 import java.net.CookieManager;

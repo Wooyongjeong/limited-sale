@@ -1,4 +1,4 @@
-package com.wooyongjeong.limitedsale.order.presentation;
+package com.wooyongjeong.limitedsale.order.presentation.code;
 
 import com.wooyongjeong.limitedsale.common.web.ResponseCode;
 
