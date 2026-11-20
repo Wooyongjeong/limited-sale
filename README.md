@@ -28,15 +28,15 @@ local/test 환경에서 ADMIN 세션과 CSRF 토큰을 사용해 `PUT /api/v1/ad
 
 ## 준비와 실행
 
-Java 21, Docker Compose가 필요하다. Spring Boot 3.5.16, Gradle 8.14.3, MySQL 8.4.7, Redis 7.4를 사용한다. 시작 전 3306, 6379, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
+Java 25, Docker Compose가 필요하다. Spring Boot 4.1.2, Gradle 9.9.2, MySQL 8.4.7, Redis 7.4를 사용한다. 시작 전 3306, 6379, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
 
-Apple Silicon macOS에서 Homebrew로 설치한 Java 21은 다음과 같이 현재 셸에서 선택하고 버전을 확인한다. 다른 환경에서는 설치한 Java 21의 경로로 `JAVA_HOME`을 지정한다. 이 설정은 전역 Java 기본값을 변경하지 않는다.
+Apple Silicon macOS에서 Homebrew로 설치한 Java 25는 다음과 같이 현재 셸에서 선택하고 버전을 확인한다. 다른 환경에서는 설치한 Java 25의 경로로 `JAVA_HOME`을 지정한다. 이 설정은 전역 Java 기본값을 변경하지 않는다.
 
 ```sh
-brew install openjdk@21                 # 설치되지 않은 경우
-export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+brew install openjdk@25                 # 설치되지 않은 경우
+export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 export PATH="$JAVA_HOME/bin:$PATH"
-java -version                          # 21 확인
+java -version                          # 25 확인
 ```
 
 ```sh
@@ -75,7 +75,7 @@ curl -f http://localhost:8081/actuator/health
 
 Docker가 실행되지 않으면 통합 테스트는 실패한다. 테스트는 개발 DB를 초기화하지 않는다. `docker compose down`은 컨테이너를 중지하고 볼륨은 보존한다. Flyway는 스키마별 이력을 독립적으로 관리하며 적용된 마이그레이션 수정 대신 새 버전을 추가한다. 현재 Flyway는 MySQL 8.4 지원 경고를 출력하므로 실제 MySQL 검증 결과와 함께 확인해야 한다.
 
-의존성: [Spring Boot 3.5 관리 버전](https://docs.spring.io/spring-boot/3.5/appendix/dependency-versions/coordinates.html), [ArchUnit 사용 안내](https://www.archunit.org/userguide/html/000_Index.html), [Gradle Java 호환성](https://docs.gradle.org/current/userguide/compatibility.html).
+의존성: [Spring Boot 4.1 관리 버전](https://docs.spring.io/spring-boot/4.1/appendix/dependency-versions/coordinates.html), [ArchUnit 사용 안내](https://www.archunit.org/userguide/html/000_Index.html), [Gradle Java 호환성](https://docs.gradle.org/current/userguide/compatibility.html).
 
 ## 사용자 결제
 
@@ -160,7 +160,9 @@ docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroo
 
 ## 기준 부하 실험 (1-11)
 
-k6 시나리오 [tests/load/baseline-order.js](tests/load/baseline-order.js)를 한 명령으로 준비·실행·수집·대조한다. 판매 앱 2개, Caddy, Mock PG, 전용 MySQL·Redis를 실행마다 새로 만들고 자기 자원만 정리한다. 개발 컨테이너와 DB는 건드리지 않는다. k6(v1 이상)와 Docker, Java 21(`JAVA_HOME`)이 필요하다.
+> 주의: `benchmarks/load-baseline`의 기준선은 Java 21·Spring Boot 3.5.16에서 측정했다. Java 25·Spring Boot 4.1.2로 올린 뒤에는 다시 측정하지 않았으므로, 2단계 결과와 비교하기 전에 같은 시나리오로 재측정해야 한다.
+
+k6 시나리오 [tests/load/baseline-order.js](tests/load/baseline-order.js)를 한 명령으로 준비·실행·수집·대조한다. 판매 앱 2개, Caddy, Mock PG, 전용 MySQL·Redis를 실행마다 새로 만들고 자기 자원만 정리한다. 개발 컨테이너와 DB는 건드리지 않는다. k6(v1 이상)와 Docker, Java 25(`JAVA_HOME`)이 필요하다.
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
