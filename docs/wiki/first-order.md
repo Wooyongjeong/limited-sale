@@ -6,7 +6,7 @@
 
 ## 준비: 서버와 클라이언트 변수
 
-[루트 README](../../README.md)의 Java 21·Docker·DB 계정 설정대로 MySQL·Redis와 판매 앱·Mock PG를 실행한다. 두 앱에 같은 MOCK_PG_API_KEY를 설정하고 판매 앱의 MOCK_PG_BASE_URL을 PG 주소로 지정한다. 기본 주소는 `http://localhost:8080`이다. 아래 `{{baseUrl}}`은 이 주소를 저장한 클라이언트 변수이며, 포트를 바꿨다면 함께 바꾼다. `GET {{baseUrl}}/actuator/health`가 성공하는지 확인한다.
+[루트 README](../../README.md)의 Java 25·Docker·DB 계정 설정대로 MySQL·Redis와 판매 앱·Mock PG를 실행한다. 두 앱에 같은 MOCK_PG_API_KEY를 설정하고 판매 앱의 MOCK_PG_BASE_URL을 PG 주소로 지정한다. 기본 주소는 `http://localhost:8080`이다. 아래 `{{baseUrl}}`은 이 주소를 저장한 클라이언트 변수이며, 포트를 바꿨다면 함께 바꾼다. `GET {{baseUrl}}/actuator/health`가 성공하는지 확인한다.
 
 Postman에서는 같은 컬렉션의 변수에 아래 값을 준비한다. `{{변수명}}` 문법이 다른 도구라면 해당 값으로 직접 대체한다. 요청은 쿠키 저장 기능을 켠 같은 클라이언트로 순서대로 실행한다.
 

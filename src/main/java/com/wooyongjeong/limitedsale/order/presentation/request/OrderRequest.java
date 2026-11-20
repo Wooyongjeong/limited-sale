@@ -1,28 +1,26 @@
 package com.wooyongjeong.limitedsale.order.presentation.request;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import java.io.IOException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 @JsonDeserialize(using = OrderRequest.Deserializer.class)
 public record OrderRequest(JsonNode value) {
-    public static class Deserializer extends JsonDeserializer<OrderRequest> {
+    public static class Deserializer extends ValueDeserializer<OrderRequest> {
         @Override
-        public OrderRequest deserialize(JsonParser parser, DeserializationContext context) throws IOException {
-            parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-            JsonNode value = parser.getCodec().readTree(parser);
+        public OrderRequest deserialize(JsonParser parser, DeserializationContext context) {
+            JsonNode value = parser.readValueAsTree();
             if (value == null || !value.isObject() || parser.nextToken() != null) {
-                throw JsonMappingException.from(parser, "Expected one JSON object");
+                throw DatabindException.from(parser, "Expected one JSON object");
             }
             return new OrderRequest(value);
         }
 
         @Override
-        public OrderRequest getNullValue(DeserializationContext context) throws JsonMappingException {
+        public OrderRequest getNullValue(DeserializationContext context) {
             return context.reportInputMismatch(OrderRequest.class, "Expected one JSON object");
         }
     }

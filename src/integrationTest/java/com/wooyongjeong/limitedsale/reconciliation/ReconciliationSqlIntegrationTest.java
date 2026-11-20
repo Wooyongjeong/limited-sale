@@ -23,12 +23,12 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 /** Runs tools/reconciliation/reconcile.sql on a real MySQL schema, clean and deliberately corrupted. */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ReconciliationSqlIntegrationTest {
-    static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     static Connection root;
     static String reconcile;

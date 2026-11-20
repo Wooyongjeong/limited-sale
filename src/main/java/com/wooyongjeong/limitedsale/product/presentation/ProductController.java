@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.product.presentation;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.product.api.ProductDetails;
@@ -38,7 +38,7 @@ public class ProductController {
         if (!input.isObject()) {
             throw new ProductValidationException("body", "제품 등록 요청은 JSON 객체여야 합니다");
         }
-        input.fieldNames().forEachRemaining(field -> {
+        input.propertyNames().forEach(field -> {
             if (!FIELDS.contains(field)) {
                 throw new ProductValidationException("body", "알 수 없는 요청 필드가 있습니다");
             }
@@ -46,17 +46,17 @@ public class ProductController {
         JsonNode name = input.get("name");
         JsonNode description = input.get("description");
         JsonNode price = input.get("basePrice");
-        if (name != null && !name.isNull() && !name.isTextual()) {
+        if (name != null && !name.isNull() && !name.isString()) {
             throw new ProductValidationException("name", "제품명은 문자열이어야 합니다");
         }
-        if (description != null && !description.isNull() && !description.isTextual()) {
+        if (description != null && !description.isNull() && !description.isString()) {
             throw new ProductValidationException("description", "설명은 문자열이어야 합니다");
         }
         if (price == null || !price.isIntegralNumber() || !price.canConvertToLong()) {
             throw new ProductValidationException("basePrice", "기준 가격은 정수여야 합니다");
         }
-        ProductDetails created = command.register(name == null || name.isNull() ? null : name.textValue(),
-            description == null || description.isNull() ? null : description.textValue(), price.longValue());
+        ProductDetails created = command.register(name == null || name.isNull() ? null : name.stringValue(),
+            description == null || description.isNull() ? null : description.stringValue(), price.longValue());
         return ResponseEntity.status(201)
             .body(ApiResponse.of(ProductResponseCode.PRODUCT_CREATED, ProductDetailsResponse.from(created)));
     }

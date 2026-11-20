@@ -1,7 +1,8 @@
 package com.wooyongjeong.limitedsale.product;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
@@ -21,20 +22,20 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ProductIntegrationTest {
-    private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext context;
     private static int port;
 
@@ -87,7 +88,7 @@ class ProductIntegrationTest {
 
         void csrf() throws Exception {
             token = JSON.readTree(request("GET", "/api/v1/csrf", null, null).body())
-                .path("data").path("token").asText();
+                .path("data").path("token").asString();
         }
 
         void login(String email) throws Exception {
@@ -104,7 +105,7 @@ class ProductIntegrationTest {
 
     private static Set<String> fields(JsonNode node) {
         return java.util.stream.StreamSupport.stream(
-            java.util.Spliterators.spliteratorUnknownSize(node.fieldNames(), 0), false).collect(Collectors.toSet());
+            java.util.Spliterators.spliteratorUnknownSize(node.propertyNames().iterator(), 0), false).collect(Collectors.toSet());
     }
 
     private static void invalidField(HttpResponse<String> response, String expectedField) throws Exception {
@@ -113,8 +114,8 @@ class ProductIntegrationTest {
         assertThat(errors.isArray()).isTrue();
         assertThat(errors).hasSize(1);
         assertThat(fields(errors.get(0))).containsExactlyInAnyOrder("field", "reason");
-        assertThat(errors.get(0).path("field").asText()).isEqualTo(expectedField);
-        assertThat(errors.get(0).path("reason").asText()).isNotBlank().doesNotContain("secret");
+        assertThat(errors.get(0).path("field").asString()).isEqualTo(expectedField);
+        assertThat(errors.get(0).path("reason").asString()).isNotBlank().doesNotContain("secret");
     }
 
     @Test
@@ -137,11 +138,11 @@ class ProductIntegrationTest {
         JsonNode created = data(response);
         assertThat(fields(created)).containsExactlyInAnyOrder("productId", "name", "description", "basePrice",
             "createdAt", "updatedAt");
-        assertThat(created.path("name").asText()).isEqualTo("제품  이름");
-        assertThat(created.path("description").asText()).isEqualTo("  설명\n ");
+        assertThat(created.path("name").asString()).isEqualTo("제품  이름");
+        assertThat(created.path("description").asString()).isEqualTo("  설명\n ");
         long id = created.path("productId").asLong();
-        assertThat(Instant.parse(created.path("createdAt").asText())).isEqualTo(
-            Instant.parse(created.path("updatedAt").asText()));
+        assertThat(Instant.parse(created.path("createdAt").asString())).isEqualTo(
+            Instant.parse(created.path("updatedAt").asString()));
         assertThat(data(anonymous.request("GET", "/api/v1/products/" + id, null, null))).isEqualTo(created);
         assertCode(anonymous.request("GET", "/api/v1/products/" + id, null, null), ProductResponseCode.PRODUCT_FOUND);
         assertThat(context.getBean(ProductQuery.class).find(id).orElseThrow().name()).isEqualTo("제품  이름");
@@ -151,14 +152,14 @@ class ProductIntegrationTest {
         var maxValues = admin.request("POST", path, "{\"name\":\"" + "x".repeat(100)
             + "\",\"description\":\"" + "y".repeat(2000) + "\",\"basePrice\":1000000000}", admin.token);
         assertThat(maxValues.statusCode()).isEqualTo(201);
-        assertThat(data(maxValues).path("description").asText()).isEqualTo("y".repeat(2000));
+        assertThat(data(maxValues).path("description").asString()).isEqualTo("y".repeat(2000));
         long maxId = data(maxValues).path("productId").asLong();
         assertThat(data(anonymous.request("GET", "/api/v1/products/" + maxId, null, null))
-            .path("description").asText()).isEqualTo("y".repeat(2000));
+            .path("description").asString()).isEqualTo("y".repeat(2000));
         var emptyDescription = admin.request("POST", path,
             "{\"name\":\"empty description\",\"basePrice\":1}", admin.token);
         assertThat(emptyDescription.statusCode()).isEqualTo(201);
-        assertThat(data(emptyDescription).path("description").asText()).isEmpty();
+        assertThat(data(emptyDescription).path("description").asString()).isEmpty();
         for (String invalid : List.of("{}", "{\"name\":null,\"basePrice\":1}",
                 "{\"name\":\"   \",\"basePrice\":1}", "{\"name\":\"" + "x".repeat(101) + "\",\"basePrice\":1}",
                 "{\"name\":\"a\",\"description\":\"" + "x".repeat(2001) + "\",\"basePrice\":1}",
@@ -168,7 +169,7 @@ class ProductIntegrationTest {
                 "{\"name\":\"a\",\"basePrice\":null}", "{")) {
             var bad = admin.request("POST", path, invalid, admin.token);
             assertThat(bad.statusCode()).as(invalid).isEqualTo(400);
-            assertThat(JSON.readTree(bad.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(bad.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
         }
         invalidField(admin.request("POST", path, "{\"name\":\"  \",\"basePrice\":1}", admin.token), "name");
         invalidField(admin.request("POST", path, "{\"name\":42,\"basePrice\":1}", admin.token), "name");
@@ -233,26 +234,26 @@ class ProductIntegrationTest {
             softly.assertThat(response.statusCode()).as(body + " status").isEqualTo(400);
             softly.assertThat(after).as(body + " row count").isEqualTo(before);
             if (response.statusCode() == 400) {
-                softly.assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+                softly.assertThat(JSON.readTree(response.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
             }
         }
         long before = context.getBean(ProductQuery.class).list(0, 20).totalElements();
         var good = admin.request("POST", path, "  \n" + valid + " \t\r\n", admin.token);
         softly.assertThat(good.statusCode()).as("surrounding whitespace").isEqualTo(201);
-        softly.assertThat(data(good).path("name").asText()).isEqualTo("파서 검증");
+        softly.assertThat(data(good).path("name").asString()).isEqualTo("파서 검증");
         softly.assertThat(context.getBean(ProductQuery.class).list(0, 20).totalElements()).isEqualTo(before + 1);
         var empty = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
             .header("Content-Type", "application/json").header("X-CSRF-TOKEN", admin.token)
             .POST(HttpRequest.BodyPublishers.noBody()).build();
         var emptyResult = admin.http.send(empty, HttpResponse.BodyHandlers.ofString());
         softly.assertThat(emptyResult.statusCode()).as("empty body").isEqualTo(400);
-        softly.assertThat(JSON.readTree(emptyResult.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+        softly.assertThat(JSON.readTree(emptyResult.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
         var unsupported = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
             .header("Content-Type", "text/plain").header("X-CSRF-TOKEN", admin.token)
             .POST(HttpRequest.BodyPublishers.ofString(valid)).build();
         var unsupportedResult = admin.http.send(unsupported, HttpResponse.BodyHandlers.ofString());
         softly.assertThat(unsupportedResult.statusCode()).as("unsupported content type").isEqualTo(415);
-        softly.assertThat(JSON.readTree(unsupportedResult.body()).path("code").asText())
+        softly.assertThat(JSON.readTree(unsupportedResult.body()).path("code").asString())
             .isEqualTo("UNSUPPORTED_MEDIA_TYPE");
         softly.assertThat(context.getBean(ProductQuery.class).list(0, 20).totalElements()).isEqualTo(before + 1);
         softly.assertAll();

@@ -1,7 +1,8 @@
 package com.wooyongjeong.limitedsale.member;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.member.domain.LoginAttemptLimit;
@@ -29,7 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -40,17 +41,17 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SessionIntegrationTest {
-    private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext first;
     private static ConfigurableApplicationContext second;
     private static int port1;
@@ -122,8 +123,8 @@ class SessionIntegrationTest {
         void csrf(int port) throws Exception {
             var response = request(port, "GET", "/api/v1/csrf", null, false);
             assertCode(response, AuthenticationResponseCode.CSRF_TOKEN_ISSUED);
-            token = JSON.readTree(response.body()).path("data").path("token").asText();
-            assertThat(JSON.readTree(response.body()).path("data").path("headerName").asText())
+            token = JSON.readTree(response.body()).path("data").path("token").asString();
+            assertThat(JSON.readTree(response.body()).path("data").path("headerName").asString())
                 .isEqualTo("X-CSRF-TOKEN");
         }
 
@@ -146,21 +147,21 @@ class SessionIntegrationTest {
                 registration.replace("\"email\":\"strict@example.com\"", "\"email\":[]"), "[]", "null")) {
             var response = client.request(port1, "POST", "/api/v1/members", body, true);
             assertThat(response.statusCode()).as(body).isEqualTo(400);
-            assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(response.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
             assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
         }
         var registered = client.request(port1, "POST", "/api/v1/members", registration, true);
         assertThat(registered.statusCode()).isEqualTo(201);
         var member = JSON.readTree(registered.body()).path("data");
         assertThat(member.size()).isEqualTo(3);
-        assertThat(member.path("email").asText()).isEqualTo("strict@example.com");
-        assertThat(member.path("nickname").asText()).isEqualTo("strictnick");
-        assertThat(member.path("role").asText()).isEqualTo("USER");
+        assertThat(member.path("email").asString()).isEqualTo("strict@example.com");
+        assertThat(member.path("nickname").asString()).isEqualTo("strictnick");
+        assertThat(member.path("role").asString()).isEqualTo("USER");
         var invalid = client.request(port1, "POST", "/api/v1/members", "{\"email\":\"bad\"}", true);
         var fieldError = JSON.readTree(invalid.body()).path("data").get(0);
         assertThat(fieldError.size()).isEqualTo(2);
-        assertThat(fieldError.path("field").isTextual()).isTrue();
-        assertThat(fieldError.path("reason").isTextual()).isTrue();
+        assertThat(fieldError.path("field").isString()).isTrue();
+        assertThat(fieldError.path("reason").isString()).isTrue();
         assertThat(client.request(port1, "POST", "/api/v1/members",
             "{\"email\":\"nonick@example.com\",\"password\":\"password\"}", true).statusCode()).isEqualTo(201);
         assertThat(client.request(port1, "POST", "/api/v1/members",
@@ -178,7 +179,7 @@ class SessionIntegrationTest {
                 login.replace("\"email\":\"strict@example.com\"", "\"email\":{}"), "[]", "null")) {
             var response = client.request(port1, "POST", "/api/v1/sessions", body, true);
             assertThat(response.statusCode()).as(body).isEqualTo(400);
-            assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(response.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
             assertThat(JSON.readTree(response.body()).path("data").isNull()).isTrue();
             assertCode(client.request(port1, "GET", "/api/v1/members/me", null, false),
             AuthenticationResponseCode.AUTHENTICATION_REQUIRED);
@@ -254,7 +255,7 @@ class SessionIntegrationTest {
         var me = a.request(port2, "GET", "/api/v1/members/me", null, false);
         assertThat(me.statusCode()).isEqualTo(200);
         JsonNode data = JSON.readTree(me.body()).path("data");
-        assertThat(data.path("email").asText()).isEqualTo("session@example.com");
+        assertThat(data.path("email").asString()).isEqualTo("session@example.com");
         assertThat(data.has("id")).isFalse();
         assertCode(a.request(port2, "DELETE", "/api/v1/sessions/current", null, true),
             AuthenticationResponseCode.CSRF_INVALID);
@@ -308,9 +309,9 @@ class SessionIntegrationTest {
         client.csrf(port1);
         var login = client.login(port1, "password");
         assertThat(login.statusCode()).isEqualTo(200);
-        assertThat(JSON.readTree(login.body()).path("data").path("role").asText()).isEqualTo("ADMIN");
+        assertThat(JSON.readTree(login.body()).path("data").path("role").asString()).isEqualTo("ADMIN");
         var me = client.request(port2, "GET", "/api/v1/members/me", null, false);
-        assertThat(JSON.readTree(me.body()).path("data").path("role").asText()).isEqualTo("ADMIN");
+        assertThat(JSON.readTree(me.body()).path("data").path("role").asString()).isEqualTo("ADMIN");
     }
 
     @Test
@@ -325,7 +326,7 @@ class SessionIntegrationTest {
         assertThat(user.login(port1, "password").statusCode()).isEqualTo(200);
         var forbidden = user.request(port2, "GET", "/api/v1/admin/test", null, false);
         assertThat(forbidden.statusCode()).isEqualTo(403);
-        assertThat(JSON.readTree(forbidden.body()).path("code").asText()).isEqualTo("ACCESS_DENIED");
+        assertThat(JSON.readTree(forbidden.body()).path("code").asString()).isEqualTo("ACCESS_DENIED");
         Client admin = new Client();
         admin.email = "admin@example.com";
         admin.csrf(port1);
@@ -360,7 +361,7 @@ class SessionIntegrationTest {
             .POST(HttpRequest.BodyPublishers.ofString("invalid")).build();
         var response = client.http.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(415);
-        assertThat(JSON.readTree(response.body()).path("code").asText()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
+        assertThat(JSON.readTree(response.body()).path("code").asString()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
         assertThat(client.cookies.getCookieStore().getCookies().toString()).isEqualTo(cookie);
         assertThat(client.request(port1, "GET", "/api/v1/members/me", null, false).statusCode()).isEqualTo(401);
         assertThat(client.login(port1, "password").statusCode()).isEqualTo(200);

@@ -7,7 +7,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,17 +16,18 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PaymentHttpIntegrationTest {
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4.7");
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4.7");
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", () -> MYSQL.getJdbcUrl()
@@ -176,7 +178,7 @@ class PaymentHttpIntegrationTest {
     @Test
     void unauthenticatedPathVariantsCannotReachAnyBusinessEndpoint() throws Exception {
         UUID key = UUID.randomUUID();
-        int port = ((org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext) applicationContext)
+        int port = ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) applicationContext)
                 .getWebServer().getPort();
         var client = java.net.http.HttpClient.newHttpClient();
         for (String prefix : java.util.List.of("/api/v1", "/api;probe/v1", "/api/v1;probe", "/%61pi/v1",
@@ -259,7 +261,7 @@ class PaymentHttpIntegrationTest {
         UUID key = UUID.randomUUID();
         UUID delayedKey = UUID.randomUUID();
         try (var first = newContext()) {
-            int port = ((org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext) first)
+            int port = ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) first)
                     .getWebServer().getPort();
             String base = "http://localhost:" + port;
             assertThat(call(HttpMethod.PUT, base + "/api/v1/simulations/" + key,
@@ -272,7 +274,7 @@ class PaymentHttpIntegrationTest {
                     .getStatusCode().value()).isEqualTo(202);
         }
         try (var restarted = newContext()) {
-            int port = ((org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext) restarted)
+            int port = ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) restarted)
                     .getWebServer().getPort();
             String base = "http://localhost:" + port;
             assertThat(call(HttpMethod.GET, base + "/api/v1/payments/" + key, null).getBody()).contains("SUCCEEDED");
@@ -337,7 +339,7 @@ class PaymentHttpIntegrationTest {
     void intentionalResponseDelayCausesShortClientTimeoutOnlyOnce() throws Exception {
         UUID key = UUID.randomUUID();
         configure(key, "{\"scenario\":\"RESPONSE_LOSS\",\"delaySeconds\":2}");
-        int port = ((org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext) applicationContext).getWebServer().getPort();
+        int port = ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) applicationContext).getWebServer().getPort();
         var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port
                 + "/api/v1/payments")).timeout(java.time.Duration.ofMillis(500)).header("X-Mock-PG-Key", "integration-test-key")
                 .header("Content-Type", "application/json")

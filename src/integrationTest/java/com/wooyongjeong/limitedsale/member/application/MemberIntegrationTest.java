@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.member.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.member.domain.Member;
 import com.wooyongjeong.limitedsale.member.domain.MemberConflict;
 import com.wooyongjeong.limitedsale.member.domain.MemberRole;
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,7 +39,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 class MemberIntegrationTest {
-    private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
 
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
@@ -136,14 +136,14 @@ class MemberIntegrationTest {
         URI uri = URI.create("http://localhost:" + port + "/api/v1/members");
         var tokenResponse = client.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/csrf"))
             .GET().build(), HttpResponse.BodyHandlers.ofString());
-        String token = objectMapper.readTree(tokenResponse.body()).path("data").path("token").asText();
+        String token = objectMapper.readTree(tokenResponse.body()).path("data").path("token").asString();
         HttpRequest invalidContent = HttpRequest.newBuilder(uri).header("X-CSRF-TOKEN", token)
             .header("Content-Type", "text/plain")
             .header("Accept", "application/json").POST(HttpRequest.BodyPublishers.ofString("hello")).build();
         HttpResponse<String> unsupported = client.send(invalidContent, HttpResponse.BodyHandlers.ofString());
         assertThat(unsupported.statusCode()).isEqualTo(415);
         assertThat(objectMapper.readTree(unsupported.body()).get("httpStatus").asInt()).isEqualTo(415);
-        assertThat(objectMapper.readTree(unsupported.body()).get("code").asText()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
+        assertThat(objectMapper.readTree(unsupported.body()).get("code").asString()).isEqualTo("UNSUPPORTED_MEDIA_TYPE");
 
         HttpRequest invalidAccept = HttpRequest.newBuilder(uri).header("X-CSRF-TOKEN", token)
             .header("Content-Type", "application/json")

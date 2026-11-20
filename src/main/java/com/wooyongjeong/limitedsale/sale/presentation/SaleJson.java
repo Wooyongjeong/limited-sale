@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.sale.presentation;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.wooyongjeong.limitedsale.sale.domain.SaleException;
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -12,7 +12,7 @@ final class SaleJson {
     }
 
     static void fields(JsonNode node, Set<String> allowed) {
-        node.fieldNames().forEachRemaining(field -> {
+        node.propertyNames().forEach(field -> {
             if (!allowed.contains(field)) {
                 throw SaleException.invalid("body", "알 수 없는 요청 필드가 있습니다");
             }
@@ -24,10 +24,10 @@ final class SaleJson {
         if (value == null && !required) {
             return null;
         }
-        if (value == null || !value.isTextual()) {
+        if (value == null || !value.isString()) {
             throw SaleException.invalid(field, "문자열을 입력하세요");
         }
-        return value.textValue();
+        return value.stringValue();
     }
 
     static String description(JsonNode node) {

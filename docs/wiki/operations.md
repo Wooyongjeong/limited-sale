@@ -6,7 +6,7 @@
 
 ## 로컬에서 흐름 확인
 
-Java 21과 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트 README의 실행 안내](../../README.md)를 따른다. 개발 볼륨을 지우지 않는다. 판매 앱과 Mock PG의 `/actuator/health`를 각각 확인한다. Mock PG는 health GET·HEAD만 공개한다. PG 업무 API에는 X-Mock-PG-Key가 필요하며 health 성공만으로 결제·장애 시나리오 검증을 대신하지 않는다.
+Java 25와 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트 README의 실행 안내](../../README.md)를 따른다. 개발 볼륨을 지우지 않는다. 판매 앱과 Mock PG의 `/actuator/health`를 각각 확인한다. Mock PG는 health GET·HEAD만 공개한다. PG 업무 API에는 X-Mock-PG-Key가 필요하며 health 성공만으로 결제·장애 시나리오 검증을 대신하지 않는다.
 
 동작 확인은 별도 로컬 테스트 계정을 사용한다. 실제 자격 증명, 세션 쿠키, CSRF 토큰을 터미널 기록이나 공유 문서에 남기지 않는다.
 
@@ -63,7 +63,7 @@ MySQL 잠금과 느린 쿼리는 `scripts/mysql-observe.sh`로 본다. `performa
 실제 동시 요청, 프로세스 강제 종료, PG 장기 중단을 재현하는 실험은 `./gradlew clean build`와 별도로 실행한다. 실험 도구는 전용 MySQL·Redis 컨테이너, 판매 JVM 2개, Mock PG를 직접 만들고, 끝나면 자신이 만든 자원만 정리한다. 개발 DB와 실행 중인 서버는 사용하지 않는다.
 
 1. 현재 소스로 실행 JAR을 만든다: `./gradlew bootJar :mock-pg:bootJar`
-2. `JAVA_HOME`을 Java 21로 지정한다.
+2. `JAVA_HOME`을 Java 25로 지정한다.
 3. 출력 디렉터리를 새 경로로 정하고 전체 실험을 실행한다. macOS에서는 `caffeinate`로 잠자기를 막는다.
 
 ```sh

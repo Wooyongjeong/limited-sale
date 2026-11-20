@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.member.presentation.request;
 
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 @JsonDeserialize(using = MemberJson.RegistrationDeserializer.class)
 public record MemberRegistrationRequest(String email, String password, String nickname) {

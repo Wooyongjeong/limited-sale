@@ -46,7 +46,7 @@
 
 ## 기술 구성과 도메인 경계
 
-- Java 21, Spring Boot, Gradle Wrapper, Docker Compose MySQL을 사용한다. 정확한 버전은 빌드·Compose 설정과 README를 따른다.
+- Java 25, Spring Boot, Gradle Wrapper, Docker Compose MySQL을 사용한다. 정확한 버전은 빌드·Compose 설정과 README를 따른다.
 - 판매 앱 기본 패키지는 `com.wooyongjeong.limitedsale`, 별도 실행 `mock-pg`는 `com.wooyongjeong.mockpg`다.
 - 판매 앱은 도메인별 패키지로 나누는 모듈형 모놀리스다. `member`, `product`, `sale`, `order`, `payment`와 기술 공통 `common`을 사용한다. `shared`로 바꾸지 않는다.
 - 각 도메인은 `api`, `application`, `domain`, `infrastructure`, `presentation`으로 구분한다. 실제 구현이 필요할 때 패키지·클래스를 만든다.
@@ -100,7 +100,7 @@
 git diff --check
 ```
 
-- Gradle Wrapper와 Java 21을 사용한다. 실행 환경과 DB 준비는 README를 따른다.
+- Gradle Wrapper와 Java 25를 사용한다. 실행 환경과 DB 준비는 README를 따른다.
 - MySQL 제약·잠금·동시성·Flyway·매핑은 Testcontainers의 실제 MySQL로 검증한다. H2·목만으로 MySQL 정합성을 입증하지 않는다. Docker가 없으면 통합 검증을 건너뛰어 통과시키지 않는다.
 - 재시도·동시 주문·결제 응답 유실·재시작·경계 시각 등 변경한 계약의 실패 조건과 정상 성공 조건을 검증한다. 구현 내용을 그대로 복사한 테스트는 피한다.
 - DB 통합 테스트는 격리된 컨테이너를 사용한다. 로컬 개발 볼륨 삭제·데이터 초기화로 검증을 대신하지 않는다.

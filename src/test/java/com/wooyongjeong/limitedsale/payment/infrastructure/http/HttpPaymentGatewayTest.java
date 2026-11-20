@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.http;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.wooyongjeong.limitedsale.payment.api.GatewayResult;
 import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
@@ -35,7 +35,7 @@ class HttpPaymentGatewayTest {
         try {
             var env = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "secret")
                     .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + server.getAddress().getPort());
-            var gateway = new HttpPaymentGateway(env, new ObjectMapper(), new SimpleMeterRegistry());
+            var gateway = new HttpPaymentGateway(env, JsonMapper.builder().build(), new SimpleMeterRegistry());
             long start = System.nanoTime();
             assertThat(gateway.query(new PaymentDetails(UUID.randomUUID(), 1000, "PROCESSING"),
                     Duration.ofMillis(250))).isEqualTo(GatewayResult.UNKNOWN);
@@ -61,7 +61,7 @@ class HttpPaymentGatewayTest {
         try {
             var env = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "secret")
                     .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + server.getAddress().getPort());
-            var gateway = new HttpPaymentGateway(env, new ObjectMapper(), new SimpleMeterRegistry());
+            var gateway = new HttpPaymentGateway(env, JsonMapper.builder().build(), new SimpleMeterRegistry());
             var payment = new PaymentDetails(key, 1000, "PROCESSING");
             assertThat(gateway.query(payment, Duration.ofSeconds(2))).isEqualTo(GatewayResult.SUCCEEDED);
             response.set(response.get().replace("2026-01-01T00:00:00Z", "invalid"));
@@ -92,7 +92,7 @@ class HttpPaymentGatewayTest {
         try {
             var env = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "secret")
                     .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + port);
-            var gateway = new HttpPaymentGateway(env, new ObjectMapper(), registry);
+            var gateway = new HttpPaymentGateway(env, JsonMapper.builder().build(), registry);
             assertThat(gateway.query(new PaymentDetails(key, 1000, "PROCESSING"), Duration.ofSeconds(2)))
                     .isEqualTo(GatewayResult.UNKNOWN);
         } finally {
@@ -106,7 +106,7 @@ class HttpPaymentGatewayTest {
 
         var unreachable = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "secret")
                 .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + port);
-        var refused = new HttpPaymentGateway(unreachable, new ObjectMapper(), registry);
+        var refused = new HttpPaymentGateway(unreachable, JsonMapper.builder().build(), registry);
         assertThat(refused.charge(new PaymentDetails(key, 1000, "READY"), Duration.ofSeconds(2)))
                 .isEqualTo(GatewayResult.UNKNOWN);
         assertThat(registry.get("http.client.requests").tag("uri", "/api/v1/payments").tag("method", "POST")

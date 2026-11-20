@@ -1,6 +1,6 @@
 # 주문·결제·복구 정합성 실험
 
-이 도구는 전용 MySQL 8.4.7 두 개, Redis 7.4, Mock PG JVM과 판매 JVM 두 개를 만들고 소유한 자원만 정리한다. 기존 Compose 볼륨이나 서버를 사용하지 않는다. Python 3.9 이상과 Java 21, Docker가 필요하며 Python 외부 패키지는 사용하지 않는다. 먼저 현재 소스의 실행 JAR을 만든다.
+이 도구는 전용 MySQL 8.4.7 두 개, Redis 7.4, Mock PG JVM과 판매 JVM 두 개를 만들고 소유한 자원만 정리한다. 기존 Compose 볼륨이나 서버를 사용하지 않는다. Python 3.9 이상과 Java 25, Docker가 필요하며 Python 외부 패키지는 사용하지 않는다. 먼저 현재 소스의 실행 JAR을 만든다.
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
@@ -12,7 +12,7 @@
 caffeinate -ims python3 -B tools/order-regression/run_all.py --output /tmp/order-regression-RUN
 ```
 
-개별 실행도 가능하다. `JAVA_HOME`은 Java 21을 가리켜야 한다.
+개별 실행도 가능하다. `JAVA_HOME`은 Java 25를 가리켜야 한다.
 
 ```sh
 python3 -B tools/order-regression/run_oversubscription.py --users 100 --output /tmp/oversub-RUN

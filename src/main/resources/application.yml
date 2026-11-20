@@ -9,8 +9,12 @@ spring:
       port: ${REDIS_PORT:6379}
   session:
     timeout: 30m
-    redis:
-      flush-mode: immediate
+    data:
+      redis:
+        flush-mode: immediate
+  jackson:
+    read:
+      strict-duplicate-detection: true
   flyway:
     locations: classpath:db/migration,classpath:db/nickmigration
   datasource:

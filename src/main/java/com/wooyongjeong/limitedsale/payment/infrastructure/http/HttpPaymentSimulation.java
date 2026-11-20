@@ -1,9 +1,11 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.http;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.payment.api.PaymentSimulation;
 import com.wooyongjeong.limitedsale.payment.api.SimulationConfiguration;
 import com.wooyongjeong.limitedsale.payment.api.SimulationConflict;
@@ -29,11 +31,11 @@ public class HttpPaymentSimulation implements PaymentSimulation {
     private final ObjectMapper mapper;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
 
-    public HttpPaymentSimulation(PaymentKeyLookup keys, Environment environment, ObjectMapper mapper) {
+    public HttpPaymentSimulation(PaymentKeyLookup keys, Environment environment, JsonMapper mapper) {
         this.keys = keys;
         this.environment = environment;
-        this.mapper = mapper.copy().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
-                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        this.mapper = mapper.rebuild().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     }
 
     @Override
@@ -62,12 +64,12 @@ public class HttpPaymentSimulation implements PaymentSimulation {
             if (responseBody == null || !responseBody.path("httpStatus").isIntegralNumber()
                     || !responseBody.path("httpStatus").canConvertToInt()
                     || responseBody.path("httpStatus").intValue() != 200
-                    || !"OK".equals(responseBody.path("code").asText())) {
+                    || !"OK".equals(responseBody.path("code").asString())) {
                 throw new SimulationUnavailable();
             }
             JsonNode data = responseBody.path("data");
             JsonNode actualDelay = data.path("delaySeconds");
-            if (!configuration.scenario().equals(data.path("scenario").asText())
+            if (!configuration.scenario().equals(data.path("scenario").asString())
                     || (configuration.delaySeconds() == null && !actualDelay.isNull())
                     || (configuration.delaySeconds() != null && (!actualDelay.isIntegralNumber()
                     || !actualDelay.canConvertToInt()
@@ -78,7 +80,7 @@ public class HttpPaymentSimulation implements PaymentSimulation {
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             throw new SimulationUnavailable();
-        } catch (java.io.IOException | IllegalArgumentException failure) {
+        } catch (java.io.IOException | JacksonException | IllegalArgumentException failure) {
             throw new SimulationUnavailable();
         }
     }

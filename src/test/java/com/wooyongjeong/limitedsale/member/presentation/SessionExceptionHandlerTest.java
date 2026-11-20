@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.member.presentation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.common.web.CommonResponseCode;
 import com.wooyongjeong.limitedsale.member.application.AuthenticationService;
 import com.wooyongjeong.limitedsale.member.infrastructure.security.RedisFailureFilter;
@@ -31,7 +31,7 @@ class SessionExceptionHandlerTest {
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(new SessionController(service, null, null))
             .setControllerAdvice(new SessionExceptionHandler())
-            .addFilters(new RedisFailureFilter(new ObjectMapper())).build();
+            .addFilters(new RedisFailureFilter(JsonMapper.builder().build())).build();
     }
 
     @Test

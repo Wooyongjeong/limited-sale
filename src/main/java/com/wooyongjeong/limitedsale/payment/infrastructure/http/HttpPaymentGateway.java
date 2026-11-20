@@ -1,16 +1,17 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.http;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.payment.api.GatewayResult;
 import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
 import com.wooyongjeong.limitedsale.payment.api.PaymentGateway;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.binder.http.Outcome;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,11 +35,11 @@ public class HttpPaymentGateway implements PaymentGateway {
     private final MeterRegistry registry;
     private final HttpClient client = HttpClient.newHttpClient();
 
-    public HttpPaymentGateway(Environment environment, ObjectMapper mapper, MeterRegistry registry) {
+    public HttpPaymentGateway(Environment environment, JsonMapper mapper, MeterRegistry registry) {
         this.environment = environment;
         this.registry = registry;
-        this.mapper = mapper.copy().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
-                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        this.mapper = mapper.rebuild().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     }
 
     @Override
@@ -82,36 +83,36 @@ public class HttpPaymentGateway implements PaymentGateway {
             JsonNode json = mapper.readTree(response.body());
             if (json == null || !json.isObject() || !json.path("httpStatus").isIntegralNumber()
                     || !json.path("httpStatus").canConvertToInt() || json.path("httpStatus").intValue() != response.statusCode()
-                    || !json.path("code").isTextual() || !json.path("message").isTextual() || json.size() != 4) {
+                    || !json.path("code").isString() || !json.path("message").isString() || json.size() != 4) {
                 return GatewayResult.UNKNOWN;
             }
             if (response.statusCode() == 404 && allowMissing
-                    && "NOT_FOUND".equals(json.path("code").textValue())
+                    && "NOT_FOUND".equals(json.path("code").stringValue())
                     && json.path("data").isNull()) {
                 return GatewayResult.MISSING;
             }
-            boolean ok = response.statusCode() == 200 && "OK".equals(json.path("code").textValue());
-            boolean processing = response.statusCode() == 202 && "PROCESSING".equals(json.path("code").textValue());
+            boolean ok = response.statusCode() == 200 && "OK".equals(json.path("code").stringValue());
+            boolean processing = response.statusCode() == 202 && "PROCESSING".equals(json.path("code").stringValue());
             JsonNode data = json.path("data");
-            if ((!ok && !processing) || !data.isObject() || !data.path("pgKey").isTextual()
-                    || !payment.key().toString().equalsIgnoreCase(data.path("pgKey").textValue())
+            if ((!ok && !processing) || !data.isObject() || !data.path("pgKey").isString()
+                    || !payment.key().toString().equalsIgnoreCase(data.path("pgKey").stringValue())
                     || !data.path("amount").isIntegralNumber() || !data.path("amount").canConvertToLong()
-                    || payment.amount() != data.path("amount").longValue() || !data.path("status").isTextual()
-                    || data.size() != 6 || !data.path("createdAt").isTextual() || !data.path("updatedAt").isTextual()
+                    || payment.amount() != data.path("amount").longValue() || !data.path("status").isString()
+                    || data.size() != 6 || !data.path("createdAt").isString() || !data.path("updatedAt").isString()
                     || !data.has("finalizedAt")) {
                 return GatewayResult.UNKNOWN;
             }
-            Instant.parse(data.path("createdAt").textValue());
-            Instant.parse(data.path("updatedAt").textValue());
-            String status = data.path("status").textValue();
+            Instant.parse(data.path("createdAt").stringValue());
+            Instant.parse(data.path("updatedAt").stringValue());
+            String status = data.path("status").stringValue();
             if (processing && !data.path("finalizedAt").isNull()) {
                 return GatewayResult.UNKNOWN;
             }
             if (ok) {
-                if (!data.path("finalizedAt").isTextual()) {
+                if (!data.path("finalizedAt").isString()) {
                     return GatewayResult.UNKNOWN;
                 }
-                Instant.parse(data.path("finalizedAt").textValue());
+                Instant.parse(data.path("finalizedAt").stringValue());
             }
             if (processing && "PROCESSING".equals(status)) {
                 return GatewayResult.PROCESSING;
@@ -123,7 +124,7 @@ public class HttpPaymentGateway implements PaymentGateway {
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             return GatewayResult.UNKNOWN;
-        } catch (IOException | IllegalArgumentException | DateTimeParseException | ExecutionException failure) {
+        } catch (JacksonException | IllegalArgumentException | DateTimeParseException | ExecutionException failure) {
             return GatewayResult.UNKNOWN;
         }
     }

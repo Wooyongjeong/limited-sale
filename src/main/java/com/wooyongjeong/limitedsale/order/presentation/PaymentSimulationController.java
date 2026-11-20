@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.order.presentation;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.wooyongjeong.limitedsale.common.web.ApiResponse;
 import com.wooyongjeong.limitedsale.common.web.CommonResponseCode;
 import com.wooyongjeong.limitedsale.order.application.PaymentSimulationService;
@@ -36,16 +36,16 @@ public class PaymentSimulationController {
             @RequestBody PaymentSimulationRequest request) {
         UUID id = OrderJson.uuid(orderId, "orderId");
         JsonNode body = request.value();
-        body.fieldNames().forEachRemaining(name -> {
+        body.propertyNames().forEach(name -> {
             if (!Set.of("scenario", "delaySeconds").contains(name) || body.get(name).isNull()) {
                 throw new InvalidOrderInput("body", "입력값을 확인하세요");
             }
         });
         JsonNode scenarioNode = body.get("scenario");
-        if (scenarioNode == null || !scenarioNode.isTextual()) {
+        if (scenarioNode == null || !scenarioNode.isString()) {
             throw new InvalidOrderInput("body", "입력값을 확인하세요");
         }
-        String scenario = scenarioNode.textValue();
+        String scenario = scenarioNode.stringValue();
         JsonNode delayNode = body.get("delaySeconds");
         if (delayNode != null && (!delayNode.isIntegralNumber() || !delayNode.canConvertToInt())) {
             throw new InvalidOrderInput("body", "입력값을 확인하세요");
