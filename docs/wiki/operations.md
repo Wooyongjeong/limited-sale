@@ -107,7 +107,7 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario bas
 - 403: CSRF 토큰 누락·불일치인지 역할 부족인지 응답 코드를 확인하고 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)을 본다.
 - 429: 정규화 이메일과 직접 연결 IP의 실패 구간을 [RedisLoginAttemptLimit](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisLoginAttemptLimit.java)에서 확인한다.
 - 503: 인증 저장소 장애와 자동 닉네임 생성 소진은 서로 다른 코드다. [RedisFailureFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisFailureFilter.java) 또는 [MemberService](../../src/main/java/com/wooyongjeong/limitedsale/member/application/MemberService.java)를 확인한다.
-- 409 주문: `IDEMPOTENCY_CONFLICT`는 같은 키의 입력 변경이다. 판매 조건 거절은 같은 키로 재시도해도 유지된다. [OrderResponseCode](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/OrderResponseCode.java)와 [주문 페이지](orders.md)를 확인한다.
+- 409 주문: `IDEMPOTENCY_CONFLICT`는 같은 키의 입력 변경이다. 판매 조건 거절은 같은 키로 재시도해도 유지된다. [OrderResponseCode](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/code/OrderResponseCode.java)와 [주문 페이지](orders.md)를 확인한다.
 - 409 닉네임 충돌: 수동 입력 중복인지 자동 생성 경쟁인지 [회원 가입](member.md)의 비교 키와 트랜잭션 설명을 확인한다.
 - 400: 제품뿐 아니라 가입·로그인 입력 오류도 해당한다. `data`의 `field`·`reason`과 요청 경로를 먼저 보고 해당 컨트롤러·예외 처리기를 찾는다. 제품에 대한 유효한 ID가 DB에 없으면 404이며, 형식이 잘못된 ID는 400이다.
 - Flyway 실패: 실패 이력과 실제 스키마를 먼저 확인한다. 특히 V3 DDL 부분 적용은 [데이터베이스](persistence.md)의 주의사항을 따른다. Flyway의 MySQL 8.4 지원 경고는 [README](../../README.md)에 기록되어 있다.

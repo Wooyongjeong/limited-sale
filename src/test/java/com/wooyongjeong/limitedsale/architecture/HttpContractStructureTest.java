@@ -3,6 +3,7 @@ package com.wooyongjeong.limitedsale.architecture;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.wooyongjeong.limitedsale.member.domain.Member;
+import com.wooyongjeong.limitedsale.common.web.ResponseCode;
 import com.wooyongjeong.limitedsale.member.domain.MemberRole;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
@@ -38,6 +39,22 @@ class HttpContractStructureTest {
             }
         });
         assertThat(violations).isEmpty();
+    }
+
+    @Test
+    void responseCodesLiveInPresentationCodePackage() {
+        var classes = new ClassFileImporter().withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPackages(ROOT);
+        var violations = classes.stream().map(type -> type.reflect())
+            .filter(type -> responseCodeLocationViolation(type)).map(Class::getName).toList();
+        assertThat(violations).isEmpty();
+        assertThat(responseCodeLocationViolation(BadCode.class)).isTrue();
+    }
+
+    private static boolean responseCodeLocationViolation(Class<?> type) {
+        return ResponseCode.class.isAssignableFrom(type) && type != ResponseCode.class
+            && !type.getPackageName().equals(ROOT + ".common.web")
+            && !type.getPackageName().matches(ROOT.replace(".", "\\.") + "\\.[^.]+\\.presentation\\.code");
     }
 
     @Test
@@ -127,6 +144,25 @@ class HttpContractStructureTest {
         @PostMapping("/bad")
         List<Member> bad(@RequestBody Registration request) {
             return List.of();
+        }
+    }
+
+    enum BadCode implements ResponseCode {
+        BAD;
+
+        @Override
+        public int httpStatus() {
+            return 200;
+        }
+
+        @Override
+        public String code() {
+            return name();
+        }
+
+        @Override
+        public String message() {
+            return "bad";
         }
     }
 
