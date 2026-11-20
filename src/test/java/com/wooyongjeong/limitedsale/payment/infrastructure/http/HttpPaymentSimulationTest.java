@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.payment.infrastructure.http;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.wooyongjeong.limitedsale.payment.api.SimulationConfiguration;
 import com.wooyongjeong.limitedsale.payment.api.SimulationUnavailable;
@@ -23,7 +23,7 @@ class HttpPaymentSimulationTest {
         when(keys.find(1)).thenReturn(UUID.randomUUID());
         var environment = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "test-secret")
                 .withProperty("MOCK_PG_BASE_URL", "not a valid address");
-        var client = new HttpPaymentSimulation(keys, environment, new ObjectMapper());
+        var client = new HttpPaymentSimulation(keys, environment, JsonMapper.builder().build());
         assertThatThrownBy(() -> client.configure(1, new SimulationConfiguration("SUCCESS", null)))
                 .isInstanceOf(SimulationUnavailable.class);
     }
@@ -56,7 +56,7 @@ class HttpPaymentSimulationTest {
             when(keys.find(1)).thenReturn(UUID.randomUUID());
             var environment = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "test-secret")
                     .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + server.getAddress().getPort());
-            return new HttpPaymentSimulation(keys, environment, new ObjectMapper())
+            return new HttpPaymentSimulation(keys, environment, JsonMapper.builder().build())
                     .configure(1, new SimulationConfiguration("RESPONSE_LOSS", 5));
         } finally {
             server.stop(0);
@@ -80,7 +80,7 @@ class HttpPaymentSimulationTest {
             when(keys.find(1)).thenReturn(UUID.randomUUID());
             var environment = new MockEnvironment().withProperty("MOCK_PG_API_KEY", "test-secret")
                     .withProperty("MOCK_PG_BASE_URL", "http://localhost:" + server.getAddress().getPort());
-            var client = new HttpPaymentSimulation(keys, environment, new ObjectMapper());
+            var client = new HttpPaymentSimulation(keys, environment, JsonMapper.builder().build());
             assertThatThrownBy(() -> client.configure(1, new SimulationConfiguration("SUCCESS", null)))
                     .isInstanceOf(SimulationUnavailable.class);
         } finally {

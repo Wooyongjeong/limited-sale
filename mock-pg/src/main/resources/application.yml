@@ -9,6 +9,9 @@ spring:
     password: ${MOCK_PG_PASSWORD}
     hikari:
       transaction-isolation: TRANSACTION_READ_COMMITTED
+  jackson:
+    read:
+      strict-duplicate-detection: true
   jpa:
     hibernate:
       ddl-auto: validate

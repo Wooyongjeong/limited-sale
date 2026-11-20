@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.order.presentation.code.SimulationResponseCode;
@@ -17,20 +18,20 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PaymentSimulationIntegrationTest {
-    private static final MySQLContainer<?> SALES = new MySQLContainer<>("mysql:8.4.7");
-    private static final MySQLContainer<?> PG = new MySQLContainer<>("mysql:8.4.7");
+    private static final MySQLContainer SALES = new MySQLContainer("mysql:8.4.7");
+    private static final MySQLContainer PG = new MySQLContainer("mysql:8.4.7");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext pgContext;
     private static ConfigurableApplicationContext salesContext;
     private static JdbcTemplate sales;
@@ -50,8 +51,13 @@ class PaymentSimulationIntegrationTest {
                 "--spring.flyway.locations=filesystem:mock-pg/src/main/resources/db/migration",
                 "--spring.datasource.url=" + PG.getJdbcUrl(),
                 "--spring.datasource.username=" + PG.getUsername(), "--spring.datasource.password=" + PG.getPassword(),
-                "--spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
-                        + "org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration");
+                "--spring.autoconfigure.exclude=org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration,"
+                        + "org.springframework.boot.session.autoconfigure.SessionAutoConfiguration,"
+                        + "org.springframework.boot.session.data.redis.autoconfigure.SessionDataRedisAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration");
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
         pg = pgContext.getBean(JdbcTemplate.class);
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
@@ -174,10 +180,10 @@ class PaymentSimulationIntegrationTest {
         var body = JSON.readTree(response.body());
         assertThat(body.size()).isEqualTo(4);
         assertThat(body.path("httpStatus").intValue()).isEqualTo(status);
-        assertThat(body.path("code").asText()).isEqualTo(code);
+        assertThat(body.path("code").asString()).isEqualTo(code);
         assertThat(body.has("data")).isTrue();
         assertThat(body.path("data").isNull()).isTrue();
-        assertThat(body.path("message").asText()).isEqualTo(message);
+        assertThat(body.path("message").asString()).isEqualTo(message);
     }
 
     @Test
@@ -227,10 +233,10 @@ class PaymentSimulationIntegrationTest {
         }
 
         void login(String email) throws Exception {
-            token = JSON.readTree(request("GET", "/api/v1/csrf", null, null).body()).path("data").path("token").asText();
+            token = JSON.readTree(request("GET", "/api/v1/csrf", null, null).body()).path("data").path("token").asString();
             assertThat(request("POST", "/api/v1/sessions", "{\"email\":\"" + email
                     + "\",\"password\":\"password\"}", token).statusCode()).isEqualTo(200);
-            token = JSON.readTree(request("GET", "/api/v1/csrf", null, null).body()).path("data").path("token").asText();
+            token = JSON.readTree(request("GET", "/api/v1/csrf", null, null).body()).path("data").path("token").asString();
         }
     }
 }

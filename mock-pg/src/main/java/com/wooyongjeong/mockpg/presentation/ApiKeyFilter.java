@@ -1,6 +1,6 @@
 package com.wooyongjeong.mockpg.presentation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.wooyongjeong.mockpg.common.web.ApiResponse;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

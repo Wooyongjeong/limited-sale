@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.order.presentation;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import java.util.Set;
 import java.util.UUID;
 
@@ -18,7 +18,7 @@ final class OrderJson {
     }
 
     static void fields(JsonNode body) {
-        body.fieldNames().forEachRemaining(field -> {
+        body.propertyNames().forEach(field -> {
             if (!Set.of("saleId", "quantity").contains(field)) {
                 throw new InvalidOrderInput("body", "알 수 없는 요청 필드가 있습니다");
             }

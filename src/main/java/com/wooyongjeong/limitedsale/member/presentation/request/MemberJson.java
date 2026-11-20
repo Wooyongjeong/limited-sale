@@ -1,29 +1,25 @@
 package com.wooyongjeong.limitedsale.member.presentation.request;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import java.io.IOException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.databind.DeserializationContext;
+import tools.jackson.databind.ValueDeserializer;
+import tools.jackson.databind.DatabindException;
+import tools.jackson.databind.JsonNode;
 import java.util.Set;
 
 public final class MemberJson {
     private MemberJson() {
     }
 
-    private static JsonNode read(JsonParser parser, Set<String> fields) throws IOException {
-        parser.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-        JsonNode node = parser.getCodec().readTree(parser);
+    private static JsonNode read(JsonParser parser, Set<String> fields) {
+        JsonNode node = parser.readValueAsTree();
         if (node == null || !node.isObject() || parser.nextToken() != null) {
-            throw JsonMappingException.from(parser, "Expected one JSON object");
+            throw DatabindException.from(parser, "Expected one JSON object");
         }
-        var names = node.fieldNames();
-        while (names.hasNext()) {
-            String name = names.next();
+        for (String name : node.propertyNames()) {
             JsonNode value = node.get(name);
-            if (!fields.contains(name) || (!value.isNull() && !value.isTextual())) {
-                throw JsonMappingException.from(parser, "Invalid request field");
+            if (!fields.contains(name) || (!value.isNull() && !value.isString())) {
+                throw DatabindException.from(parser, "Invalid request field");
             }
         }
         return node;
@@ -31,33 +27,32 @@ public final class MemberJson {
 
     private static String value(JsonNode node, String name) {
         JsonNode field = node.get(name);
-        return field == null || field.isNull() ? null : field.textValue();
+        return field == null || field.isNull() ? null : field.stringValue();
     }
 
-    public static class RegistrationDeserializer extends JsonDeserializer<MemberRegistrationRequest> {
+    public static class RegistrationDeserializer extends ValueDeserializer<MemberRegistrationRequest> {
         @Override
-        public MemberRegistrationRequest deserialize(JsonParser parser, DeserializationContext context)
-                throws IOException {
+        public MemberRegistrationRequest deserialize(JsonParser parser, DeserializationContext context) {
             JsonNode node = read(parser, Set.of("email", "password", "nickname"));
             return new MemberRegistrationRequest(value(node, "email"), value(node, "password"),
                 value(node, "nickname"));
         }
 
         @Override
-        public MemberRegistrationRequest getNullValue(DeserializationContext context) throws JsonMappingException {
+        public MemberRegistrationRequest getNullValue(DeserializationContext context) {
             return context.reportInputMismatch(MemberRegistrationRequest.class, "Expected one JSON object");
         }
     }
 
-    public static class LoginDeserializer extends JsonDeserializer<LoginRequest> {
+    public static class LoginDeserializer extends ValueDeserializer<LoginRequest> {
         @Override
-        public LoginRequest deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+        public LoginRequest deserialize(JsonParser parser, DeserializationContext context) {
             JsonNode node = read(parser, Set.of("email", "password"));
             return new LoginRequest(value(node, "email"), value(node, "password"));
         }
 
         @Override
-        public LoginRequest getNullValue(DeserializationContext context) throws JsonMappingException {
+        public LoginRequest getNullValue(DeserializationContext context) {
             return context.reportInputMismatch(LoginRequest.class, "Expected one JSON object");
         }
     }

@@ -1,7 +1,8 @@
 package com.wooyongjeong.limitedsale.sale;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
@@ -33,21 +34,21 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SaleIntegrationTest {
-    private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext context;
     private static JdbcTemplate jdbc;
     private static SaleCommand commands;
@@ -108,7 +109,7 @@ class SaleIntegrationTest {
         }
 
         void csrf() throws Exception {
-            token = data(request("GET", "/api/v1/csrf", null, null)).path("token").asText();
+            token = data(request("GET", "/api/v1/csrf", null, null)).path("token").asString();
         }
 
         void login(String email) throws Exception {
@@ -125,7 +126,7 @@ class SaleIntegrationTest {
 
     private static Set<String> fields(JsonNode node) {
         return java.util.stream.StreamSupport.stream(
-            java.util.Spliterators.spliteratorUnknownSize(node.fieldNames(), 0), false).collect(Collectors.toSet());
+            java.util.Spliterators.spliteratorUnknownSize(node.propertyNames().iterator(), 0), false).collect(Collectors.toSet());
     }
 
     private static Instant dbNow() {
@@ -164,7 +165,7 @@ class SaleIntegrationTest {
         var first = client.http.send(request, HttpResponse.BodyHandlers.ofString());
         var replay = client.http.send(request, HttpResponse.BodyHandlers.ofString());
         assertThat(first.statusCode()).isEqualTo(404);
-        assertThat(JSON.readTree(first.body()).path("code").asText()).isEqualTo("SALE_NOT_FOUND");
+        assertThat(JSON.readTree(first.body()).path("code").asString()).isEqualTo("SALE_NOT_FOUND");
         assertThat(replay.body()).isEqualTo(first.body());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_request_results", Integer.class)).isEqualTo(1);
     }
@@ -208,11 +209,11 @@ class SaleIntegrationTest {
         assertCode(created, SaleResponseCode.SALE_CREATED);
         JsonNode sale = data(created);
         long id = sale.path("saleId").asLong();
-        assertThat(sale.path("name").asText()).isEqualTo("sale");
-        assertThat(sale.path("description").asText()).isEmpty();
+        assertThat(sale.path("name").asString()).isEqualTo("sale");
+        assertThat(sale.path("description").asString()).isEmpty();
         assertThat(sale.path("unitPrice").asLong()).isEqualTo(1000);
         assertThat(sale.path("perMemberLimit").asInt()).isEqualTo(1);
-        assertThat(sale.path("status").asText()).isEqualTo("SCHEDULED");
+        assertThat(sale.path("status").asString()).isEqualTo("SCHEDULED");
         assertThat(sale.path("version").asLong()).isZero();
         assertThat(fields(sale)).containsExactlyInAnyOrder("saleId", "productId", "name", "description",
             "productNameSnapshot", "unitPrice", "startsAt", "endsAt", "totalQuantity", "perMemberLimit",
@@ -228,7 +229,7 @@ class SaleIntegrationTest {
             "{\"version\":0,\"productId\":" + product2 + ",\"description\":null}", admin.token);
         assertCode(patched, SaleResponseCode.SALE_UPDATED);
         JsonNode changed = data(patched);
-        assertThat(changed.path("productNameSnapshot").asText()).isEqualTo("replacement product");
+        assertThat(changed.path("productNameSnapshot").asString()).isEqualTo("replacement product");
         assertThat(changed.path("unitPrice").asLong()).isEqualTo(1000);
         assertThat(changed.path("version").asLong()).isEqualTo(1);
         assertCode(admin.request("PATCH", path + "/" + id, "{\"version\":0,\"name\":\"stale\"}", admin.token),
@@ -236,11 +237,11 @@ class SaleIntegrationTest {
         var stopResponse = admin.request("POST", path + "/" + id + "/stop", null, admin.token);
         assertCode(stopResponse, SaleResponseCode.SALE_STOP_COMPLETED);
         JsonNode stopped = data(stopResponse);
-        assertThat(stopped.path("status").asText()).isEqualTo("STOPPED");
+        assertThat(stopped.path("status").asString()).isEqualTo("STOPPED");
         assertThat(data(admin.request("POST", path + "/" + id + "/stop", null, admin.token))).isEqualTo(stopped);
         var resumeResponse = admin.request("POST", path + "/" + id + "/resume", null, admin.token);
         assertCode(resumeResponse, SaleResponseCode.SALE_RESUMED);
-        assertThat(data(resumeResponse).path("status").asText()).isEqualTo("SCHEDULED");
+        assertThat(data(resumeResponse).path("status").asString()).isEqualTo("SCHEDULED");
         var deletion = admin.request("DELETE", path + "/" + id, null, admin.token);
         assertCode(deletion, SaleResponseCode.SALE_DELETED);
         assertThat(data(deletion).isNull()).isTrue();
@@ -300,13 +301,13 @@ class SaleIntegrationTest {
                 valid.replace("}", ",\"unitPrice\":0}"), valid.replace("}", ",\"unitPrice\":1000000001}"))) {
             var result = admin.request("POST", path, invalid, admin.token);
             assertThat(result.statusCode()).as(invalid).isEqualTo(400);
-            assertThat(JSON.readTree(result.body()).path("code").asText()).isEqualTo("INVALID_INPUT");
+            assertThat(JSON.readTree(result.body()).path("code").asString()).isEqualTo("INVALID_INPUT");
         }
         assertThat(queries.list(0, 20, null, null).totalElements()).isZero();
         var invalidTime = JSON.readTree(valid).deepCopy();
-        ((com.fasterxml.jackson.databind.node.ObjectNode) invalidTime).put("startsAt", "2000-01-01T00:00:00Z");
+        ((tools.jackson.databind.node.ObjectNode) invalidTime).put("startsAt", "2000-01-01T00:00:00Z");
         assertThat(admin.request("POST", path, invalidTime.toString(), admin.token).statusCode()).isEqualTo(400);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) invalidTime).put("startsAt", "2030-01-01T00:00:00");
+        ((tools.jackson.databind.node.ObjectNode) invalidTime).put("startsAt", "2030-01-01T00:00:00");
         assertThat(admin.request("POST", path, invalidTime.toString(), admin.token).statusCode()).isEqualTo(400);
         assertThat(admin.request("POST", path, body(Long.MAX_VALUE), admin.token).statusCode()).isEqualTo(404);
         SaleDetails sale = create();

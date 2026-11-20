@@ -1,6 +1,6 @@
 package com.wooyongjeong.mockpg.presentation;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.wooyongjeong.mockpg.domain.Scenario;
 import com.wooyongjeong.mockpg.domain.ScenarioConfiguration;
 import java.util.Set;
@@ -53,7 +53,7 @@ final class StrictRequests {
     }
 
     private static void fields(JsonNode root, Set<String> fields) {
-        root.fields().forEachRemaining(field -> {
+        root.properties().forEach(field -> {
             if (!fields.contains(field.getKey()) || field.getValue().isNull()) {
                 throw new InvalidPaymentInput();
             }
@@ -62,10 +62,10 @@ final class StrictRequests {
 
     private static String text(JsonNode root, String field) {
         JsonNode node = root.get(field);
-        if (node == null || !node.isTextual()) {
+        if (node == null || !node.isString()) {
             throw new InvalidPaymentInput();
         }
-        return node.textValue();
+        return node.stringValue();
     }
 
     private static long amount(JsonNode root) {

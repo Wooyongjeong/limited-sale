@@ -1,6 +1,6 @@
 package com.wooyongjeong.limitedsale.member.infrastructure.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.wooyongjeong.limitedsale.member.presentation.code.AuthenticationResponseCode;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

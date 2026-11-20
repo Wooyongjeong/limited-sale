@@ -4,11 +4,11 @@ import java.sql.*;
 import java.util.*;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.*;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 import static org.assertj.core.api.Assertions.*;
 
 class MySqlSchemaIntegrationTest {
-    static MySQLContainer<?> db = new MySQLContainer<>("mysql:8.4.7")
+    static MySQLContainer db = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     static Connection root;
     static Flyway sales;
@@ -458,8 +458,13 @@ class MySqlSchemaIntegrationTest {
                      "--spring.datasource.password=test_password_pg", "--spring.flyway.enabled=false",
                      "--management.health.redis.enabled=false",
                      "--spring.autoconfigure.exclude="
-                         + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
-                         + "org.springframework.boot.actuate.autoconfigure.security.servlet."
+                         + "org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration,"
+                        + "org.springframework.boot.session.autoconfigure.SessionAutoConfiguration,"
+                        + "org.springframework.boot.session.data.redis.autoconfigure.SessionDataRedisAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration,"
+                        + "org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration,"
+                         + "org.springframework.boot.security.autoconfigure.actuate.web.servlet."
                          + "ManagementWebSecurityAutoConfiguration")) {
             assertHealth(context);
             assertConnectionSettings(context);
@@ -492,7 +497,7 @@ class MySqlSchemaIntegrationTest {
         }
     }
     static void assertHealth(org.springframework.context.ConfigurableApplicationContext context) throws Exception {
-        int port = ((org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext) context).getWebServer().getPort();
+        int port = ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) context).getWebServer().getPort();
         var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:" + port + "/actuator/health")).GET().build();
         var response = java.net.http.HttpClient.newHttpClient().send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(200);

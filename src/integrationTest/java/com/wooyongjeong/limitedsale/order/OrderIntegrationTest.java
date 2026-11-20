@@ -1,7 +1,8 @@
 package com.wooyongjeong.limitedsale.order;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
 import com.wooyongjeong.limitedsale.order.presentation.code.OrderResponseCode;
@@ -28,20 +29,20 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 import static com.wooyongjeong.limitedsale.support.ResponseEnvelope.assertCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OrderIntegrationTest {
-    private static final MySQLContainer<?> DB = new MySQLContainer<>("mysql:8.4.7")
+    private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7")
         .withDatabaseName("sales").withUsername("sales_user").withPassword("test_password");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
-    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext context;
     private static JdbcTemplate jdbc;
     private static int port;
@@ -143,10 +144,10 @@ class OrderIntegrationTest {
         }
 
         void login(String email) throws Exception {
-            token = data(request("GET", "/api/v1/csrf", null, null, null)).path("token").asText();
+            token = data(request("GET", "/api/v1/csrf", null, null, null)).path("token").asString();
             assertThat(request("POST", "/api/v1/sessions", "{\"email\":\"" + email
                 + "\",\"password\":\"password\"}", token, null).statusCode()).isEqualTo(200);
-            token = data(request("GET", "/api/v1/csrf", null, null, null)).path("token").asText();
+            token = data(request("GET", "/api/v1/csrf", null, null, null)).path("token").asString();
         }
 
         HttpResponse<String> order(String key, long saleId, int quantity) throws Exception {
@@ -165,7 +166,7 @@ class OrderIntegrationTest {
 
     private static List<String> orderIds(JsonNode page) {
         List<String> ids = new ArrayList<>();
-        page.path("items").forEach(item -> ids.add(item.path("orderId").asText()));
+        page.path("items").forEach(item -> ids.add(item.path("orderId").asString()));
         return ids;
     }
 
@@ -174,7 +175,7 @@ class OrderIntegrationTest {
     }
 
     private static String code(HttpResponse<String> response) throws Exception {
-        return JSON.readTree(response.body()).path("code").asText();
+        return JSON.readTree(response.body()).path("code").asString();
     }
 
     private static Client client(String email) throws Exception {
@@ -187,10 +188,10 @@ class OrderIntegrationTest {
     void orderReadShowsPreparedPaymentWithoutStartingIt() throws Exception {
         long saleId = sale(5, 4);
         Client one = client("order1@example.com");
-        String orderId = data(one.order(UUID.randomUUID().toString(), saleId, 1)).path("orderId").asText();
+        String orderId = data(one.order(UUID.randomUUID().toString(), saleId, 1)).path("orderId").asString();
         var response = one.request("GET", "/api/v1/orders/" + orderId, null, null, null);
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(data(response).path("paymentStatus").asText()).isEqualTo("READY");
+        assertThat(data(response).path("paymentStatus").asString()).isEqualTo("READY");
         assertThat(jdbc.queryForObject("SELECT status FROM payments", String.class)).isEqualTo("READY");
     }
 
@@ -202,9 +203,9 @@ class OrderIntegrationTest {
         Client two = client("order2@example.com");
         List<String> created = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
-            created.add(data(one.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText());
+            created.add(data(one.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asString());
         }
-        String other = data(two.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText();
+        String other = data(two.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asString();
         jdbc.update("UPDATE purchase_orders SET status='EXPIRED' WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
             created.get(0));
         jdbc.update("UPDATE purchase_orders SET status='PAYMENT_PENDING' WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
@@ -221,9 +222,9 @@ class OrderIntegrationTest {
         assertThat(page.path("totalElements").asLong()).isEqualTo(3);
         assertThat(page.path("totalPages").asLong()).isEqualTo(1);
         for (JsonNode item : page.path("items")) {
-            assertThat(item).isEqualTo(one.detail(item.path("orderId").asText()));
+            assertThat(item).isEqualTo(one.detail(item.path("orderId").asString()));
         }
-        assertThat(page.path("items").findValuesAsText("status"))
+        assertThat(page.path("items").findValuesAsString("status"))
             .containsExactly("AWAITING_PAYMENT", "PAYMENT_PENDING", "EXPIRED");
         assertThat(orderIds(data(two.list("")))).containsExactly(other);
 
@@ -257,8 +258,8 @@ class OrderIntegrationTest {
             assertThat(code(orders)).as(query).isEqualTo("INVALID_INPUT");
             assertThat(JSON.readTree(orders.body())).as(query).isEqualTo(JSON.readTree(sales.body()));
         }
-        assertThat(data(one.list("?size=101")).get(0).path("field").asText()).isEqualTo("size");
-        assertThat(data(one.list("?page=-1&size=0")).get(0).path("field").asText()).isEqualTo("page");
+        assertThat(data(one.list("?size=101")).get(0).path("field").asString()).isEqualTo("size");
+        assertThat(data(one.list("?page=-1&size=0")).get(0).path("field").asString()).isEqualTo("page");
     }
 
     @Test
@@ -288,8 +289,8 @@ class OrderIntegrationTest {
         var retry = c.order(key, id, 1);
         assertThat(retry.statusCode()).isEqualTo(200);
         assertThat(code(retry)).isEqualTo("ORDER_FOUND");
-        String orderId = data(created).path("orderId").asText();
-        assertThat(data(retry).path("orderId").asText()).isEqualTo(orderId);
+        String orderId = data(created).path("orderId").asString();
+        assertThat(data(retry).path("orderId").asString()).isEqualTo(orderId);
         JsonNode page = data(c.list(""));
         assertThat(orderIds(page)).containsExactly(orderId);
         assertThat(page.path("totalElements").asLong()).isEqualTo(1);
@@ -304,7 +305,7 @@ class OrderIntegrationTest {
         var retry = c.order(key, id, 2);
         assertThat(retry.statusCode()).isEqualTo(200);
         JsonNode page = data(c.list(""));
-        assertThat(orderIds(page)).containsExactly(data(retry).path("orderId").asText());
+        assertThat(orderIds(page)).containsExactly(data(retry).path("orderId").asString());
         assertThat(page.path("totalElements").asLong()).isEqualTo(1);
         assertThat(page.path("items").get(0).path("quantity").asInt()).isEqualTo(2);
     }
@@ -322,7 +323,7 @@ class OrderIntegrationTest {
         assertThat(data(empty).path("totalElements").asLong()).isZero();
         assertThat(data(empty).path("totalPages").asLong()).isZero();
         jdbc.update("UPDATE sales SET is_stopped=0 WHERE id=?", id);
-        String orderId = data(c.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asText();
+        String orderId = data(c.order(UUID.randomUUID().toString(), id, 1)).path("orderId").asString();
         assertThat(code(c.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("PURCHASE_LIMIT_EXCEEDED");
         assertThat(count("order_request_results")).isEqualTo(4);
         assertThat(orderIds(data(c.list("")))).containsExactly(orderId);
@@ -341,18 +342,18 @@ class OrderIntegrationTest {
             "SELECT DATE_FORMAT(UTC_TIMESTAMP(6), '%Y-%m-%dT%H:%i:%s.%fZ')", String.class));
         assertCode(first, OrderResponseCode.ORDER_CREATED);
         var view = data(first);
-        Instant created = Instant.parse(view.path("createdAt").asText());
+        Instant created = Instant.parse(view.path("createdAt").asString());
         assertThat(created).isBetween(before, after);
         assertThat(Instant.parse(jdbc.queryForObject("SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.%fZ') "
             + "FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))", String.class,
-            view.path("orderId").asText()))).isEqualTo(created);
+            view.path("orderId").asString()))).isEqualTo(created);
         assertThat(view.path("quantity").asInt()).isEqualTo(2);
         assertThat(view.path("totalAmount").asLong()).isEqualTo(2000);
-        assertThat(view.path("status").asText()).isEqualTo("AWAITING_PAYMENT");
-        assertThat(Instant.parse(view.path("expiresAt").asText()))
-            .isEqualTo(Instant.parse(view.path("createdAt").asText()).plusSeconds(300));
+        assertThat(view.path("status").asString()).isEqualTo("AWAITING_PAYMENT");
+        assertThat(Instant.parse(view.path("expiresAt").asString()))
+            .isEqualTo(Instant.parse(view.path("createdAt").asString()).plusSeconds(300));
         Set<String> fields = java.util.stream.StreamSupport.stream(
-            java.util.Spliterators.spliteratorUnknownSize(view.fieldNames(), 0), false).collect(Collectors.toSet());
+            java.util.Spliterators.spliteratorUnknownSize(view.propertyNames().iterator(), 0), false).collect(Collectors.toSet());
         assertThat(fields).containsExactlyInAnyOrder("orderId", "saleId", "productId", "productNameSnapshot",
             "quantity", "unitPrice", "totalAmount", "status", "createdAt", "updatedAt", "expiresAt", "paymentStatus");
         assertThat(one.order(UUID.randomUUID().toString(), id, 2).statusCode()).isEqualTo(201);
@@ -371,15 +372,15 @@ class OrderIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM purchase_orders WHERE next_recovery_at=expires_at",
             Integer.class)).isEqualTo(3);
         jdbc.update("UPDATE purchase_orders SET status='PAYMENT_PENDING' WHERE public_id=UNHEX(REPLACE(?, '-', ''))",
-            view.path("orderId").asText());
+            view.path("orderId").asString());
         var replay = one.order(key, id, 2);
         assertThat(replay.statusCode()).isEqualTo(200);
-        assertThat(data(replay).path("status").asText()).isEqualTo("PAYMENT_PENDING");
+        assertThat(data(replay).path("status").asString()).isEqualTo("PAYMENT_PENDING");
         assertThat(code(one.order(key, id, 3))).isEqualTo("IDEMPOTENCY_CONFLICT");
-        assertThat(data(one.order(key, id, 2)).path("orderId").asText()).isEqualTo(view.path("orderId").asText());
-        assertThat(one.request("GET", "/api/v1/orders/" + view.path("orderId").asText(), null, null, null).statusCode())
+        assertThat(data(one.order(key, id, 2)).path("orderId").asString()).isEqualTo(view.path("orderId").asString());
+        assertThat(one.request("GET", "/api/v1/orders/" + view.path("orderId").asString(), null, null, null).statusCode())
             .isEqualTo(200);
-        assertCode(two.request("GET", "/api/v1/orders/" + view.path("orderId").asText(), null, null, null),
+        assertCode(two.request("GET", "/api/v1/orders/" + view.path("orderId").asString(), null, null, null),
             OrderResponseCode.ORDER_NOT_FOUND);
     }
 
@@ -497,7 +498,7 @@ class OrderIntegrationTest {
                 second = b.get(15, TimeUnit.SECONDS);
             }
             assertThat(List.of(first.statusCode(), second.statusCode())).containsExactlyInAnyOrder(201, 200);
-            assertThat(data(first).path("orderId").asText()).isEqualTo(data(second).path("orderId").asText());
+            assertThat(data(first).path("orderId").asString()).isEqualTo(data(second).path("orderId").asString());
             assertThat(two.order(key, firstSale, 2).statusCode()).isEqualTo(201);
             String competing = UUID.randomUUID().toString();
             var gate2 = new CountDownLatch(1);
@@ -665,10 +666,10 @@ class OrderIntegrationTest {
             var first = a.get(15, TimeUnit.SECONDS);
             var second = b.get(15, TimeUnit.SECONDS);
             assertThat(List.of(first.statusCode(), second.statusCode())).containsExactlyInAnyOrder(201, 409);
-            String winner = first.statusCode() == 201 ? data(first).path("orderId").asText()
-                : data(second).path("orderId").asText();
+            String winner = first.statusCode() == 201 ? data(first).path("orderId").asString()
+                : data(second).path("orderId").asString();
             int quantity = first.statusCode() == 201 ? 1 : 2;
-            assertThat(data(c.order(key, id, quantity)).path("orderId").asText()).isEqualTo(winner);
+            assertThat(data(c.order(key, id, quantity)).path("orderId").asString()).isEqualTo(winner);
             String next = UUID.randomUUID().toString();
             var gate2 = new CountDownLatch(1);
             var valid = executor.submit(() -> {
