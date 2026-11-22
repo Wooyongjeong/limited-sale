@@ -1,0 +1,392 @@
+{
+  "scenario": "under-demand",
+  "label": null,
+  "runs": 1,
+  "passed": true,
+  "failures": {},
+  "environment": {
+    "os": "macOS-26.7-arm64-arm-64bit-Mach-O",
+    "cpu_model": "Apple M4 Pro",
+    "cpu_count": 14,
+    "memory_bytes": 51539607552,
+    "java_version": "openjdk version \"25.0.1\" 2025-10-21",
+    "mysql_version": "mysql  Ver 8.4.7 for Linux on aarch64 (MySQL Community Server - GPL)",
+    "redis_version": "Redis server v=7.4.12 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=6d565d4e3893fa59",
+    "docker_version": "29.8.0",
+    "instances": [
+      "sales1",
+      "sales2"
+    ],
+    "open_file_limit": [
+      1048576,
+      9223372036854775807
+    ],
+    "head": "267408cc7fc48edc33e0c782b7cf57ded1d24fa0",
+    "dirty": true,
+    "jar_sha256": {
+      "sales": "c417f8694ee9caaa0f81f3d1712d8f6b2cfbbc45b75db264d1d030ee712ab3eb",
+      "pg": "b70898738c0af134749999fd4f8fb906e0c8fc34b78985306a8a34b7b7cae36b"
+    },
+    "k6_version": "k6 v2.1.0 (commit/devel, go1.26.4, darwin/arm64)",
+    "docker_vm": {
+      "cpus": 14,
+      "memory_bytes": 8318976000
+    },
+    "sales_jar_libraries": [
+      "HikariCP-7.0.2",
+      "micrometer-core-1.17.2",
+      "micrometer-registry-prometheus-1.17.2",
+      "mysql-connector-j-9.7.0",
+      "prometheus-metrics-core-1.7.0",
+      "tomcat-embed-core-11.0.27"
+    ],
+    "label": null
+  },
+  "metrics": {
+    "business_codes.ORDER_CREATED": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "business_codes.PAYMENT_SUCCEEDED": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "database.confirmed": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "database.orders": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "database.remaining": {
+      "median": 200,
+      "min": 200,
+      "max": 200,
+      "values": [
+        200
+      ]
+    },
+    "durations_seconds.convergence_seconds": {
+      "median": 0.06,
+      "min": 0.06,
+      "max": 0.06,
+      "values": [
+        0.06
+      ]
+    },
+    "durations_seconds.environment_start_seconds": {
+      "median": 23.1,
+      "min": 23.1,
+      "max": 23.1,
+      "values": [
+        23.1
+      ]
+    },
+    "durations_seconds.k6_seconds": {
+      "median": 12.05,
+      "min": 12.05,
+      "max": 12.05,
+      "values": [
+        12.05
+      ]
+    },
+    "durations_seconds.prepare_seconds": {
+      "median": 9.2,
+      "min": 9.2,
+      "max": 9.2,
+      "values": [
+        9.2
+      ]
+    },
+    "durations_seconds.total_seconds": {
+      "median": 26.05,
+      "min": 26.05,
+      "max": 26.05,
+      "values": [
+        26.05
+      ]
+    },
+    "durations_seconds.verify_seconds": {
+      "median": 0.31,
+      "min": 0.31,
+      "max": 0.31,
+      "values": [
+        0.31
+      ]
+    },
+    "errors.connection_errors": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0
+      ]
+    },
+    "errors.server_errors_5xx": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0
+      ]
+    },
+    "latency_ms.order_create.avg_ms": {
+      "median": 2169.543380000001,
+      "min": 2169.543380000001,
+      "max": 2169.543380000001,
+      "values": [
+        2169.543380000001
+      ]
+    },
+    "latency_ms.order_create.max_ms": {
+      "median": 4000.874,
+      "min": 4000.874,
+      "max": 4000.874,
+      "values": [
+        4000.874
+      ]
+    },
+    "latency_ms.order_create.p50_ms": {
+      "median": 2559.886,
+      "min": 2559.886,
+      "max": 2559.886,
+      "values": [
+        2559.886
+      ]
+    },
+    "latency_ms.order_create.p95_ms": {
+      "median": 3398.8261999999995,
+      "min": 3398.8261999999995,
+      "max": 3398.8261999999995,
+      "values": [
+        3398.8261999999995
+      ]
+    },
+    "latency_ms.order_create.p99_ms": {
+      "median": 3694.8577899999996,
+      "min": 3694.8577899999996,
+      "max": 3694.8577899999996,
+      "values": [
+        3694.8577899999996
+      ]
+    },
+    "latency_ms.order_payment.avg_ms": {
+      "median": 4122.88648,
+      "min": 4122.88648,
+      "max": 4122.88648,
+      "values": [
+        4122.88648
+      ]
+    },
+    "latency_ms.order_payment.max_ms": {
+      "median": 7978.079,
+      "min": 7978.079,
+      "max": 7978.079,
+      "values": [
+        7978.079
+      ]
+    },
+    "latency_ms.order_payment.p50_ms": {
+      "median": 4177.3555,
+      "min": 4177.3555,
+      "max": 4177.3555,
+      "values": [
+        4177.3555
+      ]
+    },
+    "latency_ms.order_payment.p95_ms": {
+      "median": 6646.36175,
+      "min": 6646.36175,
+      "max": 6646.36175,
+      "values": [
+        6646.36175
+      ]
+    },
+    "latency_ms.order_payment.p99_ms": {
+      "median": 6750.2583700000005,
+      "min": 6750.2583700000005,
+      "max": 6750.2583700000005,
+      "values": [
+        6750.2583700000005
+      ]
+    },
+    "load_generator.cpu_cores_mean": {
+      "median": 0.11,
+      "min": 0.11,
+      "max": 0.11,
+      "values": [
+        0.11
+      ]
+    },
+    "load_generator.cpu_seconds": {
+      "median": 1.28,
+      "min": 1.28,
+      "max": 1.28,
+      "values": [
+        1.28
+      ]
+    },
+    "management.gc_pause_seconds": {
+      "median": 0.013,
+      "min": 0.013,
+      "max": 0.013,
+      "values": [
+        0.013
+      ]
+    },
+    "management.hikari_acquire_max_ms_peak": {
+      "median": 2919.0,
+      "min": 2919.0,
+      "max": 2919.0,
+      "values": [
+        2919.0
+      ]
+    },
+    "management.hikari_acquire_mean_ms": {
+      "median": 1227.878,
+      "min": 1227.878,
+      "max": 1227.878,
+      "values": [
+        1227.878
+      ]
+    },
+    "management.hikari_active_peak": {
+      "median": 10.0,
+      "min": 10.0,
+      "max": 10.0,
+      "values": [
+        10.0
+      ]
+    },
+    "management.hikari_pending_peak": {
+      "median": 191.0,
+      "min": 191.0,
+      "max": 191.0,
+      "values": [
+        191.0
+      ]
+    },
+    "management.jvm_cpu_seconds": {
+      "median": 24.26,
+      "min": 24.26,
+      "max": 24.26,
+      "values": [
+        24.26
+      ]
+    },
+    "management.process_cpu_usage_peak": {
+      "median": 0.14951247636902754,
+      "min": 0.14951247636902754,
+      "max": 0.14951247636902754,
+      "values": [
+        0.14951247636902754
+      ]
+    },
+    "management.system_cpu_usage_mean": {
+      "median": 0.7561,
+      "min": 0.7561,
+      "max": 0.7561,
+      "values": [
+        0.7561
+      ]
+    },
+    "management.system_cpu_usage_peak": {
+      "median": 0.9943859649122807,
+      "min": 0.9943859649122807,
+      "max": 0.9943859649122807,
+      "values": [
+        0.9943859649122807
+      ]
+    },
+    "mysql.deadlocks": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0
+      ]
+    },
+    "mysql.lock_timeouts": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0
+      ]
+    },
+    "mysql.row_lock_time_ms": {
+      "median": 194929,
+      "min": 194929,
+      "max": 194929,
+      "values": [
+        194929
+      ]
+    },
+    "mysql.row_lock_waits": {
+      "median": 1597,
+      "min": 1597,
+      "max": 1597,
+      "values": [
+        1597
+      ]
+    },
+    "status_counts.200": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "status_counts.201": {
+      "median": 800,
+      "min": 800,
+      "max": 800,
+      "values": [
+        800
+      ]
+    },
+    "throughput.duration_seconds": {
+      "median": 11.908851,
+      "min": 11.908851,
+      "max": 11.908851,
+      "values": [
+        11.908851
+      ]
+    },
+    "throughput.http_requests_per_second": {
+      "median": 134.35385160163645,
+      "min": 134.35385160163645,
+      "max": 134.35385160163645,
+      "values": [
+        134.35385160163645
+      ]
+    },
+    "throughput.iterations_per_second": {
+      "median": 67.17692580081822,
+      "min": 67.17692580081822,
+      "max": 67.17692580081822,
+      "values": [
+        67.17692580081822
+      ]
+    }
+  },
+  "median_total_run_seconds": 26.05
+}
