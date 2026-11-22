@@ -226,7 +226,7 @@ flowchart LR
 
 ## 0단계 구현 범위
 
-Java 25, Spring Boot 4.1.2, Gradle Wrapper 9.9.2와 MySQL 8.4.7의 로컬 Compose 설정을 사용한다. 0단계는 Java 21·Spring Boot 3.5.16으로 구현했고 이후 Java 25·Boot 4.1.2로 올렸다. `benchmarks/load-baseline`의 1-11 기준선은 Java 21·Boot 3.5.16에서 측정했으므로 2단계와 비교하기 전에 재측정한다. Spring Data JPA와 Flyway를 준비하되 업무 엔티티나 마이그레이션은 없다. `product`, `sale`, `order`, `common` 패키지는 책임만 표시한다. 기본 `local` 프로파일과 Actuator health를 구성하며, 지표 노출과 전체 모니터링은 1-9에서 구축한다.
+Java 25, Spring Boot 4.1.2, Gradle Wrapper 9.9.2와 MySQL 8.4.7의 로컬 Compose 설정을 사용한다. 0단계는 Java 21·Spring Boot 3.5.16으로 구현했고 이후 Java 25·Boot 4.1.2로 올렸다. `benchmarks/load-baseline`의 1-11 기준선은 Java 21·Boot 3.5.16에서 측정했고, 2단계 비교 기준선은 Java 25·Boot 4.1.2에서 다시 측정한 `benchmarks/load-baseline-java25`다. Spring Data JPA와 Flyway를 준비하되 업무 엔티티나 마이그레이션은 없다. `product`, `sale`, `order`, `common` 패키지는 책임만 표시한다. 기본 `local` 프로파일과 Actuator health를 구성하며, 지표 노출과 전체 모니터링은 1-9에서 구축한다.
 
 1-2 워커가 실제 MySQL 연결·Flyway 초기화·local health를 확인했고 Testcontainers 검사를 추가했다. 주 에이전트 검증은 대기 중이다. 실행 명령은 [README](../README.md)에 둔다.
 
