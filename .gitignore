@@ -8,3 +8,4 @@ build/
 .vscode/
 .DS_Store
 benchmarks/load-baseline/raw/
+benchmarks/load-baseline-java25/raw/
