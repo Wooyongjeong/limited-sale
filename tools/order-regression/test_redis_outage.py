@@ -8,7 +8,7 @@ os.environ.setdefault('JAVA_HOME', '/unused')
 
 from redis_outage import (Backoff, Decision, Outcome, cache_mismatches, classify, counter_deltas, decide,
                           dirty_outside_results, distribution, evaluate, failures, first_success_after,
-                          instant_micros, labelled_delta, lb_attempt_index, non_policy_failures,
+                          instant_micros, labelled_delta, lb_attempt_index, lb_error_entries, non_policy_failures,
                           parse_retry_after, parse_timeout_seconds, percentile, phase_of, probe_summary,
                           server_record_check, summarize_attempts, throughput, timeout_label, trailing_up,
                           user_summary)
@@ -277,6 +277,16 @@ class AccessLogTest(unittest.TestCase):
             'headers': {'X-Attempt-Seq': ['12'], 'X-Csrf-Token': ['secret']}}})
         other = json.dumps({'status': 200, 'upstream': 'host:2', 'request': {'headers': {}}})
         self.assertEqual({12: {'upstream': 'host:1', 'status': 503}}, lb_attempt_index('\n'.join([line, other, 'x'])))
+
+
+class CaddyErrorTest(unittest.TestCase):
+    def test_error_lines_keep_the_message_and_attempt_but_not_the_headers(self):
+        error = json.dumps({'level': 'error', 'ts': 1.5, 'logger': 'http.log.error', 'msg': 'dial tcp: i/o timeout',
+                            'status': 502, 'request': {'headers': {'X-Attempt-Seq': ['7'], 'X-Csrf-Token': ['s']}}})
+        info = json.dumps({'level': 'info', 'msg': 'started'})
+        entries = lb_error_entries('\n'.join([info, error, 'not json']))
+        self.assertEqual([{'ts': 1.5, 'level': 'error', 'logger': 'http.log.error', 'msg': 'dial tcp: i/o timeout',
+                           'status': 502, 'seq': 7}], entries)
 
 
 class MetricsTest(unittest.TestCase):
