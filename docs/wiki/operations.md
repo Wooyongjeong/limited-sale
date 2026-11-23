@@ -96,6 +96,13 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario bas
 
 현재 기준값과 병목 분석은 [1-11 단계 문서](../stages/01-11-baseline-load-test.md)에 있다. 기준 시나리오의 HTTP 처리량은 약 295 req/s였다. Java 25·Spring Boot 4.1.2에서 같은 시나리오로 다시 잰 2단계 비교 기준선은 약 311 req/s이며 병목 형태는 같다([재측정 결과](../stages/02-redis.md#기준선-재측정-결과)). 이 값을 정한 것은 CPU가 아니라 판매 이벤트 행 하나의 잠금이다. 주문 생성이 모두 같은 행을 `FOR UPDATE`로 잠그므로 요청이 이 행 앞에 한 줄로 선다. 잠금을 기다리는 트랜잭션이 커넥션을 쥐고 있어 커넥션 풀 대기도 함께 늘었다. 부하 생성기와 서버가 같은 컴퓨터를 쓰므로 숫자는 같은 컴퓨터에서 다음 단계와 비교할 때만 쓴다.
 
+### 캐시·요청 제한 비교 실험 (2-6)
+
+[run_comparison.py](../../tools/order-regression/run_comparison.py)는 기준선과 같은 환경(사용자 10,000·재고 1,000·VU 500)에서 두 실험을 따로 돌린다. 실험 A는 사용자마다 판매 상세 조회 5번 뒤 주문·결제하며 캐시를 끄고 켠다. 실험 B는 남용 사용자 100명을 섞어 요청 제한을 끄고 켠다. 결과는 [benchmarks/redis-comparison](../../benchmarks/redis-comparison/)에, 해석은 [2-6 결과](../stages/02-redis.md#2-6-실험-결과와-검증)에 있다.
+
+- 캐시는 상세 조회 p50을 366ms에서 86ms로 줄였고 적중률은 99.3%였다. 행 잠금 대기 횟수는 같아 처리량 상한은 그대로 이벤트 행 잠금이다.
+- 남용 요청도 행 잠금 대기열에 서서 느려지므로 1초 5회 한도에는 거의 닿지 않았다. 1초 1회로 하자 남용 요청의 81%가 DB 전에 429로 끝났고 정상 사용자의 지연과 행 잠금 대기가 줄었다(참고 1회). 그래서 기본값을 1초 1회로 낮췄다.
+
 ### Redis 장애 실험 (2-5)
 
 [run_redis_outage.py](../../tools/order-regression/run_redis_outage.py)는 1-10 격리 환경(판매 앱 2개·Caddy·Mock PG·전용 MySQL·Redis)에 주문 요청 제한을 켜고, 사용자 1,000명이 재고 300에 주문·결제하는 도중 Redis를 15초 동안 멈췄다가 다시 켠다. 클라이언트는 503이면 잠깐 기다리고, 429면 `Retry-After`만큼 기다리고, 401·403 `CSRF_INVALID`면 다시 로그인한 뒤 같은 요청 키로 재시도한다. 장애 중에는 쿠키 없이 판매 상세 조회도 계속 보낸다. 끝나면 [verify.py](../../tools/order-regression/verify.py)와 [reconcile.sql](../../tools/reconciliation/reconcile.sql)로 판정하고, 복구 후 캐시 값을 MySQL과 비교한다. 실행 방법과 통과 기준은 [실험 도구 안내](../../tools/order-regression/README.md)를 본다. 결과는 [benchmarks/redis-outage](../../benchmarks/redis-outage/)에 있다.
