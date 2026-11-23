@@ -16,6 +16,10 @@ import org.springframework.stereotype.Component;
  * Fixed window that starts at the first request, stored under
  * `limited-sale:rate-limit:order:{create|payment}:{memberId}`. The script increments, arms the expiry on the first
  * hit and returns the count with the remaining time in one atomic step, so instances never need a shared clock.
+ *
+ * <p>The default allows one request per window. In the stage 2-6 b3 reference run, abusive members who sent about
+ * 1.6 requests per second never reached the earlier default of five, while a limit of one rejected 81% of their
+ * requests and left normal members, who send one order and one payment, unaffected.
  */
 @Component
 public class RedisOrderRateLimit implements OrderRateLimit {
@@ -37,7 +41,7 @@ public class RedisOrderRateLimit implements OrderRateLimit {
     private final Duration window;
 
     public RedisOrderRateLimit(StringRedisTemplate redis,
-            @Value("${limited-sale.order.rate-limit.max-requests:5}") int maxRequests,
+            @Value("${limited-sale.order.rate-limit.max-requests:1}") int maxRequests,
             @Value("${limited-sale.order.rate-limit.window:1s}") Duration window) {
         if (maxRequests <= 0) {
             throw new IllegalArgumentException("limited-sale.order.rate-limit.max-requests must be positive");

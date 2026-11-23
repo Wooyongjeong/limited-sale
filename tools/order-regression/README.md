@@ -72,7 +72,7 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario und
 
 ## 2-5 Redis 장애 실험
 
-`run_redis_outage.py`는 1-10의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공, 전용 MySQL·Redis)에서 **주문 요청 제한을 켠 채** 부하를 보내다가 Redis 컨테이너를 `docker stop`으로 멈추고 `--outage-seconds` 뒤 `docker start`로 되살린다. 2-1·2-2·2-3·2-4의 Redis 장애 정책이 실제 부하에서 지켜지는지와 명령·연결 타임아웃(`--redis-timeout`) 값에 따른 차이를 잰다. 필요한 것은 위 실험과 같다(Java 25, Docker, Python 3.9+). `k6`는 쓰지 않는다.
+`run_redis_outage.py`는 1-10의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공, 전용 MySQL·Redis)에서 **주문 요청 제한을 켠 채**(허용 횟수 5를 명시 전달한다. 측정 당시 앱 기본값이었고 이후 1로 바뀌었다) 부하를 보내다가 Redis 컨테이너를 `docker stop`으로 멈추고 `--outage-seconds` 뒤 `docker start`로 되살린다. 2-1·2-2·2-3·2-4의 Redis 장애 정책이 실제 부하에서 지켜지는지와 명령·연결 타임아웃(`--redis-timeout`) 값에 따른 차이를 잰다. 필요한 것은 위 실험과 같다(Java 25, Docker, Python 3.9+). `k6`는 쓰지 않는다.
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
@@ -102,11 +102,11 @@ python3 -B tools/order-regression/run_redis_outage.py --redis-timeout 1s --users
 | `a-off` | 사용자 10,000·재고 1,000·VU 500, 반복마다 판매 상세 조회 5번 뒤 주문·결제 | 끔 | 끔 |
 | `a-on` | 같음 | 켬 | 끔 |
 | `b-off` | 1-11 기준 흐름(조회 없음) + 남용 사용자 100명 | 켬(기본) | 끔 |
-| `b-on` | 같음 | 켬(기본) | 켬(기본값 회원당 1초 5회) |
+| `b-on` | 같음 | 켬(기본) | 켬(`max-requests=5`를 명시 전달) |
 | `b2-off` | `b-off`와 같으나 남용 사용자 100명이 각각 동시 VU 5개(총 500) | 켬(기본) | 끔 |
-| `b2-on` | `b2-off`와 같음 | 켬(기본) | 켬(기본값 회원당 1초 5회) |
-| `b3-off` | `b2-off`와 같음 | 켬(기본) | 끔(실험용 `max-requests=1`을 같이 전달) |
-| `b3-on` | `b2-off`와 같음 | 켬(기본) | 켬, 실험용으로만 `limited-sale.order.rate-limit.max-requests=1`(창 1초). 앱 기본값은 그대로다 |
+| `b2-on` | `b2-off`와 같음 | 켬(기본) | 켬(`max-requests=5`를 명시 전달) |
+| `b3-off` | `b2-off`와 같음 | 켬(기본) | 끔(`max-requests=1`을 같이 전달) |
+| `b3-on` | `b2-off`와 같음 | 켬(기본) | 켬, `limited-sale.order.rate-limit.max-requests=1`(창 1초) |
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
@@ -117,10 +117,10 @@ python3 -B tools/order-regression/run_comparison.py --users 500 --stock 100 --vu
 
 - 인자: `--conditions`(쉼표 구분, 기본 `a-off,a-on,b-off,b-on`), `--rounds`(조건당 실행 횟수), `--output`(없으면 만들고 조건별 하위 디렉터리를 만든다), `--users`·`--stock`·`--vus`·`--detail-views`(실험 A만)·`--abusers`(실험 B만)·`--abuser-vus-per-member`(실험 B만, 남용 사용자당 동시 VU 수)는 스모크용 덮어쓰기이며 `--label`은 모든 결과에 남는 설명 문구다. `--order-file`(기본 `execution-order.json`)은 실행 순서를 쓰는 파일이다. 같은 출력 디렉터리에 조건의 `aggregate.json`이나 순서 파일이 이미 있으면 거부한다. `b2-off`·`b2-on`·`b3-off`·`b3-on`은 기본 조건에 들어 있지 않아 `--conditions b2-off,b2-on --order-file execution-order-b2.json`처럼 따로 실행한다.
 - 실행 순서: 한 라운드마다 `--conditions` 순서대로 조건 하나씩 실행하고 라운드를 반복한다(`a-off, a-on, b-off, b-on` × 3). 시간대 편향(컴퓨터 상태가 서서히 변하는 영향)을 조건에 나눠 갖게 하려는 것이다. 실제 순서와 각 실행의 상태는 `execution-order.json`에 남는다.
-- `b3`: 판매 JVM에 `LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS=1`을 전달한다(`b3-off`도 같은 값을 전달해 환경 기록을 맞춘다). 결과의 `environment.settings`에 `order_rate_limit_max_requests`·`order_rate_limit_window`와 `overridden_application_defaults`가 남는다. 정상 사용자는 주문 1회·결제 1회를 따로 세므로 429를 받으면(`normal_users_never_rate_limited`) 실패다. `b3-on`은 429가 한 번도 없으면(`rate_limit_override_reached_the_jvms`) 설정이 JVM에 닿지 않은 것으로 보고 실패시킨다.
-- 스위치: 캐시는 판매 JVM의 `LIMITED_SALE_SALE_CACHE_ENABLED`, 요청 제한은 `Isolated(order_rate_limit=...)`로 지정하고 둘 다 `resources.json`·결과의 `environment.settings`에 남는다. 캐시가 실제로 꺼졌는지는 `sale_cache_requests_total` 계열이 지표에 없는지로 확인한다(꺼진 캐시는 지표를 만들지 않는다). 나머지 설정(캐시 TTL 60초, 제한 5회/1초)은 애플리케이션 기본값이다.
+- `max-requests`: 모든 조건이 판매 JVM에 `LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS`를 명시 전달한다(`a`·`b`·`b2`는 5, `b3`는 1; 제한을 끈 조건도 같은 값을 전달해 환경 기록을 맞춘다). 앱 기본값은 2-6 b3 참고 결과로 5에서 1로 바뀌었고, 명시 전달 덕분에 이미 측정한 `b-on`·`b2-on`을 다시 실행해도 같은 조건이다. 결과의 `environment.settings`에 `order_rate_limit_max_requests`·`order_rate_limit_window`·`order_rate_limit_max_requests_passed_explicitly`와 현재 기본값과 다른 값을 보여 주는 `overridden_application_defaults`가 남는다. 정상 사용자는 주문 1회·결제 1회를 따로 세므로 429를 받으면(`normal_users_never_rate_limited`) 실패다. `b3-on`은 429가 한 번도 없으면(`rate_limit_override_reached_the_jvms`) 설정이 JVM에 닿지 않은 것으로 보고 실패시킨다(`b-on`·`b2-on`은 한도에 닿지 않는 것도 결과이므로 이 검사가 없다).
+- 스위치: 캐시는 판매 JVM의 `LIMITED_SALE_SALE_CACHE_ENABLED`, 요청 제한은 `Isolated(order_rate_limit=...)`로 지정하고 둘 다 `resources.json`·결과의 `environment.settings`에 남는다. 캐시가 실제로 꺼졌는지는 `sale_cache_requests_total` 계열이 지표에 없는지로 확인한다(꺼진 캐시는 지표를 만들지 않는다). 나머지 설정(캐시 TTL 60초, 제한 창 1초)은 애플리케이션 기본값이고 허용 횟수는 위 `max-requests`다.
 - 실험 A의 조회: 반복마다 `GET /api/v1/sales/{id}`를 `DETAIL_VIEWS`(5)번 연달아 보낸 뒤 주문·결제한다. 조회에는 로그인한 사용자의 세션 쿠키를 붙인다. 공개 엔드포인트라 쿠키가 필요 없지만 브라우저는 같은 출처 요청에 쿠키를 항상 보내고, 쿠키가 있으면 서버가 세션 확인 때문에 Redis를 부르므로(`PublicSessionFallbackFilter`) 캐시를 끈 조건에서도 이 Redis 호출이 남는다. 두 조건에서 같은 비용을 지불하므로 차이는 판매 이벤트 캐시만 반영한다.
-- 실험 B의 남용 사용자: 정상 시나리오와 별도 k6 scenario(`abuse`)로 같은 k6 실행에 들어가며 사용자당 VU 수는 `ABUSER_VUS`(`b`는 1, `b2`는 5)다. 처음 설계(`b`)는 남용 요청이 행 잠금 대기열에 서서 요청당 약 1.6초가 걸려 회원당 약 0.5회/초밖에 못 보내 한도(1초 5회)에 닿지 못했다. `b2`는 한 회원의 VU들이 같은 세션(쿠키·CSRF)을 공유해 병렬로 보내는 봇을 흉내 낸다. 정상 시나리오는 `shared-iterations` VU 500 그대로다. 각 남용 VU는 기다림 없이 매번 `crypto.randomUUID()` 새 요청 키로 `POST /api/v1/orders`를 반복한다. 429를 받아도 `Retry-After`를 무시하고 바로 다음 요청을 보낸다. 주문이 생성되면(201) 정상 사용자처럼 결제를 한 번 하고 계속 반복한다(그래야 생성된 주문이 종료 상태에 이른다). 정상 시나리오의 반복이 모두 끝나면 멈춘다. 남용 VU는 반복 하나를 그 시점까지 이어서 돌리므로 `exec.instance.iterationsCompleted`가 정상 반복 수에 도달하면 끝난다.
+- 실험 B의 남용 사용자: 정상 시나리오와 별도 k6 scenario(`abuse`)로 같은 k6 실행에 들어가며 사용자당 VU 수는 `ABUSER_VUS`(`b`는 1, `b2`는 5)다. 처음 설계(`b`)는 남용 요청이 행 잠금 대기열에 서서 요청당 약 1.6초가 걸려 회원당 약 0.5회/초밖에 못 보내 한도(당시 기본값 1초 5회)에 닿지 못했다. `b2`는 한 회원의 VU들이 같은 세션(쿠키·CSRF)을 공유해 병렬로 보내는 봇을 흉내 낸다. 정상 시나리오는 `shared-iterations` VU 500 그대로다. 각 남용 VU는 기다림 없이 매번 `crypto.randomUUID()` 새 요청 키로 `POST /api/v1/orders`를 반복한다. 429를 받아도 `Retry-After`를 무시하고 바로 다음 요청을 보낸다. 주문이 생성되면(201) 정상 사용자처럼 결제를 한 번 하고 계속 반복한다(그래야 생성된 주문이 종료 상태에 이른다). 정상 시나리오의 반복이 모두 끝나면 멈춘다. 남용 VU는 반복 하나를 그 시점까지 이어서 돌리므로 `exec.instance.iterationsCompleted`가 정상 반복 수에 도달하면 끝난다.
 - 검증기 입력: 정상 사용자는 1-11처럼 사전에 고정한 요청 1건씩이다. 남용 요청은 키가 무작위이고 k6가 요청별 기록을 남기지 않으므로 서버가 저장한 `order_request_results`에서 남용 회원의 행을 시도로 만든다(429는 기록되지 않는 것이 정책이다). 허용 결과는 생성·거절, 거절 사유는 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`, 최종 상태는 `CONFIRMED`다. 클라이언트가 센 남용 응답과 서버 기록의 수가 같은지 따로 대조한다.
 - 통과 기준(`checks`, 모든 실행): k6 종료 코드 0, 정상 반복 완료·누락 0, 5xx·연결 오류 0, 기대 외 상태 코드(200·201·202·409·429 밖; 남용·조회 포함) 0, 주문 종료 상태 수렴, 확정 수=재고(1,000)·잔여 0, `verify.py`·`reconcile.sql` 위반 0, k6가 센 생성 수=DB 주문 수, 생성 주문마다 결제 요청 1건(정상·남용 따로), 두 인스턴스가 주문 요청을 모두 처리하고 합이 k6 요청 수와 같음, 서버 저장 요청 수=429를 뺀 생성 요청 수, MySQL 관측 전체 수집, 클라이언트가 센 429=`order_rate_limit_total{result=rejected}`, `bypassed` 0, 제한을 끈 조건은 제한 지표 증가 0, 켠 조건은 모든 생성 요청이 제한에서 판정됨, 실험 A는 조회가 전부 200이고 캐시를 켠 조건은 조회마다 캐시 조회 1회·오류 0, 캐시를 끈 조건은 캐시 지표 없음. 429·409는 업무 거절로 따로 센다. 기준을 완화하는 옵션은 없다.
 - 기록: `<출력>/<조건>/run-N.json`(커밋)에 1-11과 같은 환경·처리량·엔드포인트별 지연(`order_create`·`order_payment`는 정상 사용자만, `sale_detail`, `abuse_order_create`·`abuse_order_payment`)·상태·업무 코드 건수·관리 포트·MySQL 전후 차이·통과 기준에 더해 캐시 적중·미적중·오류, 제한 허용·거절·통과(`operation`별), 남용 요청의 서버 기록(상태별·거절 사유별·확정 수), 파생 값(적중률, 실제 주문 처리량=확정 수÷부하 시간과 ÷정상 시나리오 종료 시각, 남용 거절률)이 들어간다. `<조건>/aggregate.json`(커밋)은 지표별 중앙값·최소·최대·실행별 값이다. 원본은 `<조건>/raw/run-N/`에 두고 `.gitignore`로 제외한다. `dirty`는 이 도구가 쓰는 결과 파일을 포함한 값이고 `dirty_excluding_results`는 그것을 뺀 값이다.

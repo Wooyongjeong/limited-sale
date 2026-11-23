@@ -97,8 +97,9 @@ class ConditionsTest(unittest.TestCase):
                           'b2-off': (True, False, 0, 100, 5), 'b2-on': (True, True, 0, 100, 5),
                           'b3-off': (True, False, 0, 100, 5), 'b3-on': (True, True, 0, 100, 5)})
         self.assertEqual({name: c.rate_limit_max_requests for name, c in CONDITIONS.items()},
-                         {'a-off': None, 'a-on': None, 'b-off': None, 'b-on': None, 'b2-off': None, 'b2-on': None,
+                         {'a-off': 5, 'a-on': 5, 'b-off': 5, 'b-on': 5, 'b2-off': 5, 'b2-on': 5,
                           'b3-off': 1, 'b3-on': 1})
+        self.assertEqual([name for name, c in CONDITIONS.items() if c.expects_rejections], ['b3-on'])
         self.assertEqual(DEFAULT_CONDITIONS, ('a-off', 'a-on', 'b-off', 'b-on'))
         self.assertEqual(policy_plan(CONDITIONS['b2-on']), Plan(10000, 1000, 500, 0, 100, 5))
         self.assertEqual(policy_plan(CONDITIONS['a-on']), Plan(10000, 1000, 500, 5, 0))
@@ -259,17 +260,23 @@ class EvaluateTest(unittest.TestCase):
 
 
 class SettingsRecordTest(unittest.TestCase):
-    def test_the_override_is_listed_apart_from_the_untouched_defaults(self):
-        from run_comparison import settings_record
-        for name in ('b3-off', 'b3-on'):
-            record = settings_record(CONDITIONS[name])
-            self.assertEqual((record['order_rate_limit_max_requests'], record['order_rate_limit_window']), (1, '1s'))
-            self.assertEqual(record['overridden_application_defaults'],
-                             {'order_rate_limit_max_requests': {'value': 1, 'application_default': 5}})
+    def test_every_condition_passes_max_requests_explicitly_and_the_record_shows_it(self):
+        from run_comparison import settings_record, sales_extra_env
+        for name, condition in CONDITIONS.items():
+            expected = '1' if name.startswith('b3') else '5'
+            self.assertEqual(sales_extra_env(condition)['LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS'], expected, name)
+            record = settings_record(condition)
+            self.assertEqual((record['order_rate_limit_max_requests'], record['order_rate_limit_window']),
+                             (int(expected), '1s'), name)
+            self.assertTrue(record['order_rate_limit_max_requests_passed_explicitly'])
             self.assertNotIn('order_rate_limit_max_requests', record['defaults_not_overridden'])
-        record = settings_record(CONDITIONS['b2-on'])
-        self.assertEqual(record['order_rate_limit_max_requests'], 5)
-        self.assertEqual(record['overridden_application_defaults'], {})
+
+    def test_only_values_that_differ_from_the_current_default_of_one_count_as_overrides(self):
+        from run_comparison import settings_record
+        for name in ('b-on', 'b2-on', 'a-on'):
+            self.assertEqual(settings_record(CONDITIONS[name])['overridden_application_defaults'],
+                             {'order_rate_limit_max_requests': {'value': 5, 'application_default': 1}}, name)
+        self.assertEqual(settings_record(CONDITIONS['b3-on'])['overridden_application_defaults'], {})
 
 
 class CountersTest(unittest.TestCase):

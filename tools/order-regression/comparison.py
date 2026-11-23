@@ -23,8 +23,11 @@ class Condition:
     detail_views: int
     abusers: int
     abuser_vus_per_member: int = 1
-    # Experimental override of limited-sale.order.rate-limit.max-requests; None keeps the application default.
-    rate_limit_max_requests: int = None
+    # Always passed to the sales JVMs, so a result keeps its condition when the application default changes: 5 was
+    # the default when a, b and b2 were measured; b3 uses one request per window.
+    rate_limit_max_requests: int = 5
+    # True for the condition whose limit is low enough that abusive members must be rejected at least once.
+    expects_rejections: bool = False
 
 
 @dataclass(frozen=True)
@@ -59,7 +62,7 @@ CONDITIONS = {
 CONDITIONS['b3-off'] = Condition('b3-off', 'B', sale_cache=True, order_rate_limit=False, detail_views=0, abusers=100,
                                  abuser_vus_per_member=5, rate_limit_max_requests=1)
 CONDITIONS['b3-on'] = Condition('b3-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100,
-                                abuser_vus_per_member=5, rate_limit_max_requests=1)
+                                abuser_vus_per_member=5, rate_limit_max_requests=1, expects_rejections=True)
 DEFAULT_CONDITIONS = ('a-off', 'a-on', 'b-off', 'b-on')
 
 
@@ -239,7 +242,7 @@ def evaluate(result, condition, plan):
     if condition.order_rate_limit:
         check('every_create_was_counted_by_the_limit', create_requests,
               limit['create']['allowed'] + limit['create']['rejected'])
-        if condition.rate_limit_max_requests is not None:
+        if condition.expects_rejections:
             check('rate_limit_override_reached_the_jvms', True, limit['create']['rejected'] > 0)
     else:
         check('rate_limit_off_counts_nothing', 0, sum(sum(row.values()) for row in limit.values()))

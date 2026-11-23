@@ -33,15 +33,15 @@ from run_balanced import INSTANCE_NAMES, reconciliation_rows
 from run_baseline import (K6_TIMEOUT_SECONDS, Sampler, converge, environment_record, management_snapshot,
                           mysql_observe, prepare_sessions)
 from run_oversubscription import expect, observe_sale_open, rows, save
-from service_env import inherited_environment
+from service_env import inherited_environment, order_rate_limit_max_requests_setting
 from snapshot import collect
 
 K6_SCRIPT = ROOT / 'tests/load/comparison-order.js'
 CACHE_SWITCH = 'LIMITED_SALE_SALE_CACHE_ENABLED'
-MAX_REQUESTS = 'LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS'
-# The sales JVMs use these application defaults except the two switches and, for b3, max-requests; the values are
-# recorded from the code defaults (RedisSaleCache, RedisOrderRateLimit) rather than read back from the JVMs.
-APPLICATION_DEFAULTS = {'sale_cache_ttl': 'PT60S', 'order_rate_limit_max_requests': 5, 'order_rate_limit_window': '1s'}
+# The sales JVMs use these application defaults except the two switches and max-requests, which every condition passes
+# explicitly; the values are recorded from the code defaults (RedisSaleCache, RedisOrderRateLimit) rather than read
+# back from the JVMs. The max-requests default was 5 until stage 2-6 b3 and is 1 now.
+APPLICATION_DEFAULTS = {'sale_cache_ttl': 'PT60S', 'order_rate_limit_max_requests': 1, 'order_rate_limit_window': '1s'}
 
 
 def write_sessions(clients, normal, plan):
@@ -206,27 +206,31 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
 
 
 def settings_record(condition):
-    """Effective switch and limit values; an experimental override is listed apart from the untouched defaults."""
+    """Effective switch and limit values; max-requests is passed explicitly and differs from today's default or not."""
     defaults = dict(APPLICATION_DEFAULTS)
+    default_max = defaults.pop('order_rate_limit_max_requests')
     overridden = {}
-    if condition.rate_limit_max_requests is not None:
-        overridden['order_rate_limit_max_requests'] = {
-            'value': condition.rate_limit_max_requests,
-            'application_default': defaults.pop('order_rate_limit_max_requests')}
-    max_requests = condition.rate_limit_max_requests or APPLICATION_DEFAULTS['order_rate_limit_max_requests']
+    if condition.rate_limit_max_requests != default_max:
+        overridden['order_rate_limit_max_requests'] = {'value': condition.rate_limit_max_requests,
+                                                       'application_default': default_max}
+    max_requests = condition.rate_limit_max_requests
     return {'sale_cache_enabled': condition.sale_cache, 'order_rate_limit_enabled': condition.order_rate_limit,
-            'order_rate_limit_max_requests': max_requests,
+            'order_rate_limit_max_requests': max_requests, 'order_rate_limit_max_requests_passed_explicitly': True,
             'order_rate_limit_window': APPLICATION_DEFAULTS['order_rate_limit_window'],
             'overridden_application_defaults': overridden, 'defaults_not_overridden': defaults}
+
+
+def sales_extra_env(condition):
+    """Settings passed to every sales JVM; max-requests is explicit so old and new conditions stay comparable."""
+    return {CACHE_SWITCH: 'true' if condition.sale_cache else 'false',
+            **order_rate_limit_max_requests_setting(condition.rate_limit_max_requests)}
 
 
 def run_one(root, condition, plan, index, label, prepare_concurrency):
     """One fresh environment and one measured run; the result is always written, passed or failed."""
     raw = Path(root) / condition.name / 'raw' / f'run-{index}'
     env = Isolated(raw, instances=INSTANCE_NAMES, load_balancer=True, order_rate_limit=condition.order_rate_limit,
-                   sales_extra_env={CACHE_SWITCH: 'true' if condition.sale_cache else 'false'}
-                   | ({MAX_REQUESTS: str(condition.rate_limit_max_requests)}
-                      if condition.rate_limit_max_requests is not None else {}))
+                   sales_extra_env=sales_extra_env(condition))
     started = time.monotonic()
     try:
         env.start()

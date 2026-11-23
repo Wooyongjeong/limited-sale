@@ -34,7 +34,7 @@ from redis_outage import (CACHE_TTL_SECONDS, CACHE_VOLATILE_FIELDS, MAX_RELOGINS
 from run_balanced import INSTANCE_NAMES, reconciliation_rows
 from run_baseline import Sampler, converge, management_snapshot
 from run_oversubscription import expect, observe_sale_open, prepare_user, rows, save
-from service_env import redis_timeout_settings, tomcat_metrics_setting
+from service_env import order_rate_limit_max_requests_setting, redis_timeout_settings, tomcat_metrics_setting
 from snapshot import collect
 
 DEFAULT_USERS = 1000
@@ -597,7 +597,8 @@ async def run_once(env, args, label):
 def run_one(output, args, index, label):
     raw = Path(output) / 'raw' / f'run-{index}'
     env = Isolated(raw, instances=INSTANCE_NAMES, load_balancer=True, order_rate_limit=True,
-                   sales_extra_env=redis_timeout_settings(args.redis_timeout) | tomcat_metrics_setting(),
+                   sales_extra_env=redis_timeout_settings(args.redis_timeout) | tomcat_metrics_setting()
+                   | order_rate_limit_max_requests_setting(5),
                    fixed_redis_port=True)
     started = time.monotonic()
     try:
