@@ -1,0 +1,1815 @@
+{
+  "scenario": "redis-outage",
+  "label": null,
+  "status": "failed",
+  "failures": [
+    "connection_errors"
+  ],
+  "checks": [
+    {
+      "name": "confirmed",
+      "passed": true,
+      "expected": 300,
+      "actual": 300
+    },
+    {
+      "name": "remaining",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "orders_converged_to_terminal",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "verifier_violations",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "reconciliation_violations",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "duplicate_orders_per_request_key",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "rejected_requests_left_no_record_or_order",
+      "passed": true,
+      "expected": [],
+      "actual": []
+    },
+    {
+      "name": "users_confirmed",
+      "passed": true,
+      "expected": 300,
+      "actual": 300
+    },
+    {
+      "name": "users_sold_out",
+      "passed": true,
+      "expected": 700,
+      "actual": 700
+    },
+    {
+      "name": "users_other_results",
+      "passed": true,
+      "expected": {},
+      "actual": {}
+    },
+    {
+      "name": "completed_within_deadline",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "server_errors_other_than_503_authentication_unavailable",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "connection_errors",
+      "passed": false,
+      "expected": 0,
+      "actual": 1
+    },
+    {
+      "name": "outage_was_seen_by_clients",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "public_detail_probes_during_outage_not_empty",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "public_detail_probes_during_outage_all_200",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "public_detail_probe_errors",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "sale_cache_error_counter_increased",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "cache_regenerated_after_recovery",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "cache_matches_database",
+      "passed": true,
+      "expected": [],
+      "actual": []
+    },
+    {
+      "name": "rate_limit_rejections_match_clients",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "management_health_up_after_recovery",
+      "passed": true,
+      "expected": {
+        "sales1": true,
+        "sales2": true
+      },
+      "actual": {
+        "sales1": true,
+        "sales2": true
+      }
+    },
+    {
+      "name": "clock_guard",
+      "passed": true,
+      "expected": [],
+      "actual": []
+    }
+  ],
+  "parameters": {
+    "users": 1000,
+    "stock": 300,
+    "per_member_limit": 1,
+    "concurrency": 100,
+    "outage_seconds": 15,
+    "outage_after_fraction_of_users_finished": 0.25,
+    "deadline_seconds_after_outage": 120,
+    "redis_timeout": "2s",
+    "probe_interval_seconds": 0.5,
+    "request_timeout_seconds": 30,
+    "backoff": {
+      "base_seconds": 0.25,
+      "factor": 2.0,
+      "cap_seconds": 1.0,
+      "jitter": 0.2,
+      "seed": "2-5"
+    },
+    "max_relogins_per_request": 3,
+    "order_rate_limit_enabled": true,
+    "sessions_prepared_before_load": true
+  },
+  "environment": {
+    "os": "macOS-26.7-arm64-arm-64bit-Mach-O",
+    "cpu_model": "Apple M4 Pro",
+    "cpu_count": 14,
+    "memory_bytes": 51539607552,
+    "java_version": "openjdk version \"25.0.1\" 2025-10-21",
+    "mysql_version": "mysql  Ver 8.4.7 for Linux on aarch64 (MySQL Community Server - GPL)",
+    "redis_version": "Redis server v=7.4.12 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=6d565d4e3893fa59",
+    "docker_version": "29.8.0",
+    "instances": [
+      "sales1",
+      "sales2"
+    ],
+    "head": "5a557061f980ab77e6ee921332367f5d9111a457",
+    "jar_sha256": {
+      "sales": "b71995f15378d0cf36cd07d2464e97911c08ac52bdd4d066f25a8b3691c83459",
+      "pg": "b70898738c0af134749999fd4f8fb906e0c8fc34b78985306a8a34b7b7cae36b"
+    },
+    "order_rate_limit_enabled": true,
+    "sales_extra_env": {
+      "SPRING_DATA_REDIS_TIMEOUT": "2s",
+      "SPRING_DATA_REDIS_CONNECT_TIMEOUT": "2s",
+      "SERVER_TOMCAT_MBEANREGISTRY_ENABLED": "true"
+    },
+    "fixed_redis_port": true,
+    "tomcat_mbean_registry_enabled_for_thread_metrics": true,
+    "dirty": false,
+    "dirty_note": "tracked changes or untracked files outside benchmarks/redis-outage/",
+    "redis_command_and_connect_timeout": "2s",
+    "redis_command_and_connect_timeout_seconds": 2.0,
+    "docker_vm_cpus": 14,
+    "local_resources_shared": true
+  },
+  "outage": {
+    "users_finished_at_stop": 250,
+    "stop_issued_s": 5.947627708,
+    "stop_returned_s": 6.229593708,
+    "start_issued_s": 21.23012275,
+    "start_returned_s": 21.379322333,
+    "redis_down_seconds": 15.432,
+    "nominal_outage_seconds": 15,
+    "stop_issued_wall": "2026-11-23T02:23:53.466953+00:00",
+    "stop_returned_wall": "2026-11-23T02:23:53.748919+00:00",
+    "start_issued_wall": "2026-11-23T02:24:08.749448+00:00",
+    "start_returned_wall": "2026-11-23T02:24:08.898647+00:00"
+  },
+  "requests": {
+    "by_phase": {
+      "before": {
+        "attempts": 551,
+        "status_code": {
+          "200 PAYMENT_SUCCEEDED": 248,
+          "201 ORDER_CREATED": 300,
+          "409 SALE_SOLD_OUT": 3
+        }
+      },
+      "during": {
+        "attempts": 422,
+        "status_code": {
+          "200 PAYMENT_SUCCEEDED": 10,
+          "409 SALE_SOLD_OUT": 12,
+          "503 AUTHENTICATION_UNAVAILABLE": 399,
+          "error TruncatedResponse": 1
+        }
+      },
+      "after": {
+        "attempts": 818,
+        "status_code": {
+          "200 PAYMENT_SUCCEEDED": 42,
+          "409 SALE_SOLD_OUT": 685,
+          "503 AUTHENTICATION_UNAVAILABLE": 91
+        }
+      }
+    },
+    "by_step": {
+      "create": {
+        "before": {
+          "201 ORDER_CREATED": 300,
+          "409 SALE_SOLD_OUT": 3
+        },
+        "during": {
+          "409 SALE_SOLD_OUT": 12,
+          "503 AUTHENTICATION_UNAVAILABLE": 232
+        },
+        "after": {
+          "409 SALE_SOLD_OUT": 685,
+          "503 AUTHENTICATION_UNAVAILABLE": 54
+        }
+      },
+      "payment": {
+        "before": {
+          "200 PAYMENT_SUCCEEDED": 248
+        },
+        "during": {
+          "200 PAYMENT_SUCCEEDED": 10,
+          "503 AUTHENTICATION_UNAVAILABLE": 167,
+          "error TruncatedResponse": 1
+        },
+        "after": {
+          "200 PAYMENT_SUCCEEDED": 42,
+          "503 AUTHENTICATION_UNAVAILABLE": 37
+        }
+      }
+    },
+    "by_class": {
+      "before": {
+        "business": 551
+      },
+      "during": {
+        "auth_unavailable": 399,
+        "business": 22,
+        "connection_error": 1
+      },
+      "after": {
+        "auth_unavailable": 91,
+        "business": 727
+      }
+    },
+    "auth_unavailable_latency": {
+      "before": {
+        "count": 0,
+        "p50_ms": null,
+        "p95_ms": null,
+        "p99_ms": null,
+        "max_ms": null
+      },
+      "during": {
+        "count": 399,
+        "p50_ms": 2008.2,
+        "p95_ms": 7224.1,
+        "p99_ms": 7459.6,
+        "max_ms": 8820.0
+      },
+      "after": {
+        "count": 91,
+        "p50_ms": 2006.9,
+        "p95_ms": 2012.2,
+        "p99_ms": 2021.2,
+        "max_ms": 2021.2
+      },
+      "all": {
+        "count": 490,
+        "p50_ms": 2007.9,
+        "p95_ms": 7205.7,
+        "p99_ms": 7446.9,
+        "max_ms": 8820.0
+      }
+    }
+  },
+  "users": {
+    "results": {
+      "CONFIRMED": 300,
+      "SOLD_OUT": 700
+    },
+    "relogins": 0,
+    "users_relogged_in": 0,
+    "retries_total": 491,
+    "retries_by_reason": {
+      "connection_error": 1,
+      "unavailable": 490
+    },
+    "users_retried": 100,
+    "max_requests_per_user": 8
+  },
+  "throughput": {
+    "before": {
+      "seconds": 5.95,
+      "responses": 551,
+      "responses_per_second": 92.6,
+      "business_responses": 551,
+      "business_responses_per_second": 92.6,
+      "users_finished": 251,
+      "users_finished_per_second": 42.2
+    },
+    "during": {
+      "seconds": 15.43,
+      "responses": 422,
+      "responses_per_second": 27.3,
+      "business_responses": 22,
+      "business_responses_per_second": 1.4,
+      "users_finished": 22,
+      "users_finished_per_second": 1.4
+    },
+    "after": {
+      "seconds": 4.68,
+      "responses": 818,
+      "responses_per_second": 174.9,
+      "business_responses": 727,
+      "business_responses_per_second": 155.4,
+      "users_finished": 727,
+      "users_finished_per_second": 155.4
+    }
+  },
+  "recovery": {
+    "first_authenticated_success_seconds_after_outage_end": 2.121,
+    "health": {
+      "sales1": {
+        "last_sample_up": true,
+        "down_observed": true,
+        "samples": 87,
+        "up_since_s": 23.484,
+        "seconds_after_outage": 2.105
+      },
+      "sales2": {
+        "last_sample_up": true,
+        "down_observed": true,
+        "samples": 85,
+        "up_since_s": 23.501,
+        "seconds_after_outage": 2.122
+      }
+    },
+    "health_up_wait_succeeded": true
+  },
+  "probes": {
+    "interval_note": "one probe is launched every interval whether or not the previous one has finished",
+    "total": 52,
+    "by_phase": {
+      "before": {
+        "count": 12,
+        "status": {
+          "200 SALE_FOUND": 12
+        },
+        "errors": 0,
+        "latency": {
+          "count": 12,
+          "p50_ms": 4.4,
+          "p95_ms": 733.4,
+          "p99_ms": 733.4,
+          "max_ms": 733.4
+        }
+      },
+      "during": {
+        "count": 27,
+        "status": {
+          "200 SALE_FOUND": 27
+        },
+        "errors": 0,
+        "latency": {
+          "count": 27,
+          "p50_ms": 2014.8,
+          "p95_ms": 2022.4,
+          "p99_ms": 2028.2,
+          "max_ms": 2028.2
+        }
+      },
+      "after": {
+        "count": 13,
+        "status": {
+          "200 SALE_FOUND": 13
+        },
+        "errors": 0,
+        "latency": {
+          "count": 13,
+          "p50_ms": 948.2,
+          "p95_ms": 2016.9,
+          "p99_ms": 2016.9,
+          "max_ms": 2016.9
+        }
+      }
+    },
+    "non_200_during_outage": 0
+  },
+  "cache": {
+    "initial_entry_present": true,
+    "initial_entry_written_after_recovery": false,
+    "initial_mismatched_fields": [
+      "soldQuantity",
+      "version",
+      "updatedAt"
+    ],
+    "waited_for_expiry_seconds": 33.5,
+    "public_get_status": 200,
+    "regenerated_after_recovery": true,
+    "final_mismatched_fields": [],
+    "error_delta": 30.0,
+    "requests_delta": {
+      "hit": 20.0,
+      "miss": 3.0,
+      "error": 30.0
+    },
+    "evictions_delta": {
+      "success": 0,
+      "error": 1.0
+    },
+    "volatile_fields_allowed_stale": [
+      "soldQuantity",
+      "version",
+      "updatedAt"
+    ]
+  },
+  "server_records": {
+    "created_users": 300,
+    "rejected_users": 700,
+    "unanswered_users": 0,
+    "stored_results": 1000,
+    "orders": 300,
+    "duplicate_orders_per_key": 0,
+    "errors": []
+  },
+  "db": {
+    "orders": 300,
+    "confirmed": 300,
+    "remaining": 0,
+    "converged": true
+  },
+  "verifier_violations": 0,
+  "sql_violations": 0,
+  "attempt_failures": {
+    "other_5xx": 0,
+    "connection_errors": 1,
+    "by_phase": {
+      "before": {
+        "other_5xx": 0,
+        "connection_errors": 0
+      },
+      "during": {
+        "other_5xx": 0,
+        "connection_errors": 1
+      },
+      "after": {
+        "other_5xx": 0,
+        "connection_errors": 0
+      }
+    },
+    "samples": [
+      {
+        "seq": 524,
+        "user": 231,
+        "step": "payment",
+        "started_s": 4.5781,
+        "finished_s": 8.137,
+        "latency_ms": 3558.9,
+        "status_seen": 200,
+        "error": "TruncatedResponse"
+      }
+    ]
+  },
+  "load_balancer": {
+    "requests_by_instance": {
+      "create": {
+        "sales1": 639,
+        "sales2": 647
+      },
+      "payment": {
+        "sales1": 257,
+        "sales2": 247,
+        "null": 1
+      }
+    },
+    "attempts_missing_from_access_log": 0,
+    "caddy_errors": {
+      "count": 4,
+      "by_message": {
+        "admin endpoint disabled": 1,
+        "HTTP/2 skipped because it requires TLS": 1,
+        "HTTP/3 skipped because it requires TLS": 1,
+        "reading: unexpected EOF": 1
+      },
+      "samples": [
+        {
+          "ts": 1795400607.8956969,
+          "level": "warn",
+          "logger": "admin",
+          "msg": "admin endpoint disabled"
+        },
+        {
+          "ts": 1795400607.8978226,
+          "level": "warn",
+          "logger": "http",
+          "msg": "HTTP/2 skipped because it requires TLS"
+        },
+        {
+          "ts": 1795400607.8978512,
+          "level": "warn",
+          "logger": "http",
+          "msg": "HTTP/3 skipped because it requires TLS"
+        },
+        {
+          "ts": 1795400635.6546006,
+          "level": "warn",
+          "logger": "http.handlers.reverse_proxy",
+          "msg": "aborting with incomplete response",
+          "error": "reading: unexpected EOF",
+          "duration": 1.520267043,
+          "seq": 524
+        }
+      ]
+    },
+    "status_differs_from_client": 0
+  },
+  "metrics": {
+    "management": {
+      "instances": {
+        "sales1": {
+          "http_server": [
+            {
+              "method": "GET",
+              "uri": "/api/v1/sales/{id}",
+              "status": "200",
+              "count": 25,
+              "mean_ms": 1231.583
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "201",
+              "count": 145,
+              "mean_ms": 696.59
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "409",
+              "count": 345,
+              "mean_ms": 236.076
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "500",
+              "count": 31,
+              "mean_ms": 6544.708
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders/{id}/payment",
+              "status": "200",
+              "count": 159,
+              "mean_ms": 1205.202
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders/{id}/payment",
+              "status": "500",
+              "count": 20,
+              "mean_ms": 7301.44
+            },
+            {
+              "method": "POST",
+              "uri": "UNKNOWN",
+              "status": "500",
+              "count": 197,
+              "mean_ms": 2003.967
+            }
+          ],
+          "hikari": {
+            "acquire_count": 1292,
+            "acquire_mean_ms": 245.397,
+            "acquire_max_ms_peak": 895.0,
+            "active_peak": 10.0,
+            "pending_peak": 43.0,
+            "max_connections": 10.0
+          },
+          "jvm": {
+            "gc_pause_count": 2,
+            "gc_pause_seconds": 0.017,
+            "heap_used_bytes_peak": 391982808.0,
+            "threads_live_peak": 130.0,
+            "tomcat_threads_busy_peak": 54.0,
+            "tomcat_threads_max": 200.0,
+            "cpu_seconds": 14.14,
+            "process_cpu_usage_peak": 0.12865845684041208,
+            "process_cpu_usage_mean": 0.0174,
+            "system_cpu_usage_peak": 0.9978813559322034,
+            "system_cpu_usage_mean": 0.6329
+          },
+          "business": {
+            "order_creation": {
+              "created": 145,
+              "sale_sold_out": 376
+            },
+            "order_payment": {
+              "payment_succeeded": 179
+            },
+            "order_unfinished_after": 0.0,
+            "order_requires_review_after": 0.0
+          },
+          "samples": 60
+        },
+        "sales2": {
+          "http_server": [
+            {
+              "method": "GET",
+              "uri": "/api/v1/sales/{id}",
+              "status": "200",
+              "count": 28,
+              "mean_ms": 1271.205
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "201",
+              "count": 155,
+              "mean_ms": 650.184
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "409",
+              "count": 355,
+              "mean_ms": 270.83
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders",
+              "status": "500",
+              "count": 27,
+              "mean_ms": 6488.599
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders/{id}/payment",
+              "status": "200",
+              "count": 142,
+              "mean_ms": 1220.39
+            },
+            {
+              "method": "POST",
+              "uri": "/api/v1/orders/{id}/payment",
+              "status": "500",
+              "count": 21,
+              "mean_ms": 7178.618
+            },
+            {
+              "method": "POST",
+              "uri": "UNKNOWN",
+              "status": "500",
+              "count": 194,
+              "mean_ms": 2003.777
+            }
+          ],
+          "hikari": {
+            "acquire_count": 1268,
+            "acquire_mean_ms": 241.376,
+            "acquire_max_ms_peak": 1077.0,
+            "active_peak": 10.0,
+            "pending_peak": 44.0,
+            "max_connections": 10.0
+          },
+          "jvm": {
+            "gc_pause_count": 2,
+            "gc_pause_seconds": 0.011,
+            "heap_used_bytes_peak": 463037432.0,
+            "threads_live_peak": 139.0,
+            "tomcat_threads_busy_peak": 54.0,
+            "tomcat_threads_max": 200.0,
+            "cpu_seconds": 13.95,
+            "process_cpu_usage_peak": 0.11952342168843053,
+            "process_cpu_usage_mean": 0.0179,
+            "system_cpu_usage_peak": 0.9978813559322034,
+            "system_cpu_usage_mean": 0.6327
+          },
+          "business": {
+            "order_creation": {
+              "created": 155,
+              "sale_sold_out": 382
+            },
+            "order_payment": {
+              "payment_succeeded": 163
+            },
+            "order_unfinished_after": 0.0,
+            "order_requires_review_after": 0.0
+          },
+          "samples": 60
+        }
+      },
+      "combined": {
+        "http_server": [
+          {
+            "method": "GET",
+            "uri": "/api/v1/sales/{id}",
+            "status": "200",
+            "count": 53,
+            "mean_ms": 1252.515
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders",
+            "status": "201",
+            "count": 300,
+            "mean_ms": 672.614
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders",
+            "status": "409",
+            "count": 700,
+            "mean_ms": 253.701
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders",
+            "status": "500",
+            "count": 58,
+            "mean_ms": 6518.588
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders/{id}/payment",
+            "status": "200",
+            "count": 301,
+            "mean_ms": 1212.367
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders/{id}/payment",
+            "status": "500",
+            "count": 41,
+            "mean_ms": 7238.531
+          },
+          {
+            "method": "POST",
+            "uri": "UNKNOWN",
+            "status": "500",
+            "count": 391,
+            "mean_ms": 2003.873
+          }
+        ],
+        "hikari": {
+          "acquire_count": 2560,
+          "acquire_mean_ms": 243.405,
+          "acquire_max_ms_peak": 1077.0,
+          "active_peak": 10.0,
+          "pending_peak": 44.0,
+          "max_connections": 10.0
+        },
+        "jvm": {
+          "gc_pause_count": 4,
+          "gc_pause_seconds": 0.028,
+          "heap_used_bytes_peak": 463037432.0,
+          "threads_live_peak": 139.0,
+          "tomcat_threads_busy_peak": 54.0,
+          "cpu_seconds": 28.09,
+          "process_cpu_usage_peak": 0.12865845684041208,
+          "system_cpu_usage_peak": 0.9978813559322034,
+          "system_cpu_usage_mean": 0.6328
+        },
+        "business": {
+          "order_creation": {
+            "created": 300,
+            "sale_sold_out": 758
+          },
+          "order_payment": {
+            "payment_succeeded": 342
+          }
+        }
+      }
+    },
+    "counter_deltas": {
+      "combined": [
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "CLIENT",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 12.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "EVAL",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 14.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "EVALSHA",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1400.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "EXISTS",
+            "db_system": "redis",
+            "error": "CancellationException",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "EXISTS",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 2601.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "GET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 23.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "HELLO",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 12.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "HGETALL",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 2701.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "HMSET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1400.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "INFO",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 160.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "PEXPIREAT",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1400.0
+        },
+        {
+          "name": "lettuce_seconds_count",
+          "labels": {
+            "db_operation": "SET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 3.0
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "CLIENT",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.024146
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "EVAL",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.019679
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "EVALSHA",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.758225
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "EXISTS",
+            "db_system": "redis",
+            "error": "CancellationException",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 2.005547
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "EXISTS",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1.125029
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "GET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.030953
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "HELLO",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 69.244856
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "HGETALL",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 1.443145
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "HMSET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.696817
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "INFO",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.184467
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "PEXPIREAT",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.683952
+        },
+        {
+          "name": "lettuce_seconds_sum",
+          "labels": {
+            "db_operation": "SET",
+            "db_system": "redis",
+            "error": "none",
+            "net_sock_peer_addr": "localhost",
+            "net_sock_peer_port": "64545",
+            "net_transport": "IP.TCP"
+          },
+          "delta": 0.003396
+        },
+        {
+          "name": "order_rate_limit_total",
+          "labels": {
+            "operation": "create",
+            "result": "allowed"
+          },
+          "delta": 1058.0
+        },
+        {
+          "name": "order_rate_limit_total",
+          "labels": {
+            "operation": "payment",
+            "result": "allowed"
+          },
+          "delta": 342.0
+        },
+        {
+          "name": "sale_cache_evictions_total",
+          "labels": {
+            "result": "error"
+          },
+          "delta": 1.0
+        },
+        {
+          "name": "sale_cache_requests_total",
+          "labels": {
+            "result": "error"
+          },
+          "delta": 30.0
+        },
+        {
+          "name": "sale_cache_requests_total",
+          "labels": {
+            "result": "hit"
+          },
+          "delta": 20.0
+        },
+        {
+          "name": "sale_cache_requests_total",
+          "labels": {
+            "result": "miss"
+          },
+          "delta": 3.0
+        }
+      ],
+      "instances": {
+        "sales1": [
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "CLIENT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 6.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EVAL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 5.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EVALSHA",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "CancellationException",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 1.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 1297.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "GET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 12.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HELLO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 6.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HGETALL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 1349.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HMSET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "INFO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 81.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "PEXPIREAT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "SET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 3.0
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "CLIENT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.009936
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EVAL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.003817
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EVALSHA",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.374496
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "CancellationException",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 2.005547
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.573343
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "GET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.023955
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HELLO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 34.617726
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HGETALL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.752713
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HMSET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.349841
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "INFO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.093371
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "PEXPIREAT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.343379
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "SET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.003396
+          },
+          {
+            "name": "order_rate_limit_total",
+            "labels": {
+              "operation": "create",
+              "result": "allowed"
+            },
+            "delta": 521.0
+          },
+          {
+            "name": "order_rate_limit_total",
+            "labels": {
+              "operation": "payment",
+              "result": "allowed"
+            },
+            "delta": 179.0
+          },
+          {
+            "name": "sale_cache_evictions_total",
+            "labels": {
+              "result": "error"
+            },
+            "delta": 1.0
+          },
+          {
+            "name": "sale_cache_requests_total",
+            "labels": {
+              "result": "error"
+            },
+            "delta": 13.0
+          },
+          {
+            "name": "sale_cache_requests_total",
+            "labels": {
+              "result": "hit"
+            },
+            "delta": 9.0
+          },
+          {
+            "name": "sale_cache_requests_total",
+            "labels": {
+              "result": "miss"
+            },
+            "delta": 3.0
+          }
+        ],
+        "sales2": [
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "CLIENT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 6.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EVAL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 9.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EVALSHA",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 1304.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "GET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 11.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HELLO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 6.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HGETALL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 1352.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "HMSET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "INFO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 79.0
+          },
+          {
+            "name": "lettuce_seconds_count",
+            "labels": {
+              "db_operation": "PEXPIREAT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 700.0
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "CLIENT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.01421
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EVAL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.015862
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EVALSHA",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.383729
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "EXISTS",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.551686
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "GET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.006998
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HELLO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 34.62713
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HGETALL",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.690432
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "HMSET",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.346976
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "INFO",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.091096
+          },
+          {
+            "name": "lettuce_seconds_sum",
+            "labels": {
+              "db_operation": "PEXPIREAT",
+              "db_system": "redis",
+              "error": "none",
+              "net_sock_peer_addr": "localhost",
+              "net_sock_peer_port": "64545",
+              "net_transport": "IP.TCP"
+            },
+            "delta": 0.340573
+          },
+          {
+            "name": "order_rate_limit_total",
+            "labels": {
+              "operation": "create",
+              "result": "allowed"
+            },
+            "delta": 537.0
+          },
+          {
+            "name": "order_rate_limit_total",
+            "labels": {
+              "operation": "payment",
+              "result": "allowed"
+            },
+            "delta": 163.0
+          },
+          {
+            "name": "sale_cache_requests_total",
+            "labels": {
+              "result": "error"
+            },
+            "delta": 17.0
+          },
+          {
+            "name": "sale_cache_requests_total",
+            "labels": {
+              "result": "hit"
+            },
+            "delta": 11.0
+          }
+        ]
+      }
+    },
+    "rate_limit_rejections": {
+      "clients_saw_429": 0,
+      "server_rejected_delta": 0
+    }
+  },
+  "host_tcp_peaks": {
+    "total": {
+      "ESTABLISHED": 659,
+      "CLOSE_WAIT": 6,
+      "FIN_WAIT_2": 2,
+      "LISTEN": 68,
+      "SYN_SENT": 1,
+      "TIME_WAIT": 7201,
+      "FIN_WAIT_1": 1
+    },
+    "by_port": {
+      "64634": {
+        "ESTABLISHED": 104,
+        "LISTEN": 1,
+        "TIME_WAIT": 6675
+      },
+      "64557": {
+        "ESTABLISHED": 54,
+        "LISTEN": 1,
+        "TIME_WAIT": 260
+      },
+      "64558": {
+        "ESTABLISHED": 57,
+        "LISTEN": 1,
+        "TIME_WAIT": 249,
+        "FIN_WAIT_1": 1
+      }
+    }
+  },
+  "durations_seconds": {
+    "prepare_seconds": 10.94,
+    "load_seconds": 26.06,
+    "convergence_seconds": 0.06,
+    "post_load_seconds": 35.7,
+    "verify_seconds": 0.33,
+    "total_seconds": 76.45,
+    "environment_start_seconds": 25.33
+  },
+  "started_at": "2026-11-23T02:23:08.526943+00:00",
+  "run_id": "ls175-38a9451fe3e1",
+  "run": 2,
+  "raw_directory": "benchmarks/redis-outage/timeout-2s/raw/run-2"
+}
