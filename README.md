@@ -8,7 +8,7 @@
 
 `GET /api/v1/csrf` 응답의 `data.token`을 변경 요청의 `X-CSRF-TOKEN` 헤더에 넣고 세션 쿠키를 함께 보낸다. 회원가입과 `POST /api/v1/sessions` 로그인 전에도 토큰을 조회한다. 로그인 또는 `DELETE /api/v1/sessions/current` 성공 후 다음 변경 요청 전에 토큰을 다시 조회한다. `GET /api/v1/members/me`는 현재 회원의 이메일·닉네임·역할을 반환한다.
 
-로그인 실패는 정규화 이메일과 직접 연결 IP별로 첫 실패부터 5분간 집계한다. 다섯 번째 실패부터 429이며 구간 만료 전 올바른 비밀번호도 차단된다. 제한 전에 성공하면 해당 조합의 기록을 지운다. 기본 유휴 세션 시간은 30분이며 `SPRING_SESSION_TIMEOUT`, 실패 구간은 `LIMITED_SALE_AUTH_FAILURE_WINDOW`, 실패 횟수는 양의 정수인 `LIMITED_SALE_AUTH_FAILURE_LIMIT`으로 조정할 수 있다. Redis 주소는 `REDIS_HOST`, `REDIS_PORT`로 설정한다. 주문의 미결제 만료 시간은 기본 5분이며 `LIMITED_SALE_ORDER_EXPIRATION`으로 양의 기간(예: `PT5M`)을 설정한다. 쿠키는 HttpOnly·SameSite=Lax이며 HTTPS 요청에는 Secure가 적용된다. Redis 장애 시 인증과 CSRF 처리는 503으로 실패하고 복구 뒤 재시도한다.
+로그인 실패는 정규화 이메일과 직접 연결 IP별로 첫 실패부터 5분간 집계한다. 다섯 번째 실패부터 429이며 구간 만료 전 올바른 비밀번호도 차단된다. 제한 전에 성공하면 해당 조합의 기록을 지운다. 기본 유휴 세션 시간은 30분이며 `SPRING_SESSION_TIMEOUT`, 실패 구간은 `LIMITED_SALE_AUTH_FAILURE_WINDOW`, 실패 횟수는 양의 정수인 `LIMITED_SALE_AUTH_FAILURE_LIMIT`으로 조정할 수 있다. Redis 주소는 `REDIS_HOST`, `REDIS_PORT`로 설정한다. Redis 명령·연결 타임아웃은 각각 2초(`spring.data.redis.timeout`, `spring.data.redis.connect-timeout`)이고 세션 키는 `limited-sale:session` 아래에 저장한다. Compose Redis는 `maxmemory 256mb`, `noeviction`이다. 주문의 미결제 만료 시간은 기본 5분이며 `LIMITED_SALE_ORDER_EXPIRATION`으로 양의 기간(예: `PT5M`)을 설정한다. 쿠키는 HttpOnly·SameSite=Lax이며 HTTPS 요청에는 Secure가 적용된다. Redis 장애 시 인증과 CSRF 처리는 503으로 실패하고 복구 뒤 재시도한다.
 
 ## 제품 등록과 조회
 
@@ -94,14 +94,16 @@ curl -i -H 'X-Request-Id: demo-1' http://localhost:8080/api/v1/products   # 응�
 
 모든 요청에 `X-Request-Id`가 붙는다. 영문·숫자·`-`·`_` 1~64자면 그대로 쓰고, 아니면 새 UUID로 바꾼다. 응답 헤더로 돌려주고 콘솔 로그 `[요청ID]`에 남는다. 업무 지표는 `order_creation_results_total{result}`, `order_payment_results_total{result}`, `order_unfinished`, `order_requires_review`이며 라벨에 회원·주문·요청 ID를 쓰지 않는다. 미완료·확인 필요 주문 수는 `limited-sale.observability.backlog-interval`(기본 `PT10S`)마다 DB에서 센다.
 
-Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)는 `monitoring` 프로필로만 뜬다. 기본 `docker compose up`은 MySQL·Redis만 띄운다. 판매 앱을 먼저 실행한 뒤 시작한다. Prometheus는 `host.docker.internal:8090`을 5초마다 읽으므로 앱이 `127.0.0.1`에 묶여 있어도 Docker Desktop에서 수집된다. Linux는 `extra_hosts`의 `host-gateway`가 같은 이름을 연결한다. 다른 관리 포트를 쓰면 `infra/prometheus/prometheus.yml`의 대상 주소를 맞춘다.
+Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`), Redis 지표를 내는 redis_exporter(`127.0.0.1:9121`)는 `monitoring` 프로필로만 뜬다. 기본 `docker compose up`은 MySQL·Redis만 띄운다. 판매 앱을 먼저 실행한 뒤 시작한다. Prometheus는 `host.docker.internal:8090`을 5초마다 읽으므로 앱이 `127.0.0.1`에 묶여 있어도 Docker Desktop에서 수집된다. Linux는 `extra_hosts`의 `host-gateway`가 같은 이름을 연결한다. 다른 관리 포트를 쓰면 `infra/prometheus/prometheus.yml`의 대상 주소를 맞춘다.
 
 ```sh
-docker compose --profile monitoring up -d prometheus grafana
-# 포트 충돌 시 PROMETHEUS_PORT, GRAFANA_PORT 환경변수로 바꾼다. 모두 선택 값이다.
+docker compose --profile monitoring up -d redis-exporter prometheus grafana
+# 포트 충돌 시 PROMETHEUS_PORT, GRAFANA_PORT, REDIS_EXPORTER_PORT 환경변수로 바꾼다. 모두 선택 값이다.
 open http://127.0.0.1:3000/d/limited-sale-overview   # 익명 Viewer, 로그인 불필요
 docker compose --profile monitoring down              # 볼륨은 보존한다
 ```
+
+Redis 서버 상태는 `redis_up`·`redis_memory_used_bytes`·`redis_connected_clients`, 앱의 Redis 명령 지연은 Spring Boot가 자동으로 내는 `lettuce_seconds`로 본다. 대시보드의 Redis 행에 모았다.
 
 Grafana는 로컬 전용이며 익명 접근을 Viewer로만 허용한다. 데이터 소스와 대시보드(`infra/grafana/dashboards/limited-sale.json`)는 파일로 프로비저닝하고 저장소에 비밀번호는 없다. 관리자 계정은 Grafana 기본값이므로 필요하면 첫 로그인에서 바꾼다.
 

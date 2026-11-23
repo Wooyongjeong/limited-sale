@@ -6,7 +6,7 @@
 
 ## 상태
 
-2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2 이후는 구현 전이다.
+2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2 정책 확정·구현·검증·위키 갱신 완료. 2-3 이후는 구현 전이다.
 
 ## 확정한 방향
 
@@ -53,14 +53,52 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 | 6 | 알고리즘·임계값 | Lua 스크립트로 원자적으로 증가·만료하는 고정 창. 기본 회원당 1초 5회, 설정으로 변경 | 보여줄 핵심은 여러 인스턴스가 한 카운터를 원자적으로 공유하는 것이다. 창 경계의 순간 2배 허용은 알려진 한계로 기록한다 |
 | 7 | 거절 응답 | HTTP 429, 코드 `ORDER_RATE_LIMITED`, `Retry-After` 헤더. 요청 키를 기록하지 않고 수량을 차감하지 않는다. 같은 요청 키의 재시도도 횟수에 포함한다 | 거절된 요청은 주문이 아니므로 같은 키로 다시 보내면 정상 처리된다. 재시도를 빼면 제한을 우회할 수 있다 |
 | 8 | 요청 제한 장애 | Redis 실패·타임아웃이면 제한 없이 통과시키고 지표를 남긴다 | 정합성은 MySQL이 지킨다. Redis가 완전히 중단되면 세션 인증이 먼저 실패해 주문할 수 없으므로 이 정책은 일시 지연·타임아웃에 적용된다. 인증 실패를 DB로 우회하지 않는 기존 정책은 유지한다 |
-| 9 | 키·인스턴스 | 기존 Redis 인스턴스 하나에 접두사로 구분한다. 캐시 `ls:cache:sale:{id}`, 요청 제한 `ls:rl:order:{memberId}:{창}`, 세션은 기존 Spring Session 접두사. 모든 캐시·제한 키에 TTL을 둔다. `maxmemory-policy noeviction` | 메모리가 부족할 때 세션이 밀려나 삭제되는 일을 막는다. 인스턴스 분리는 장애 격리가 낫지만 로컬 포트폴리오에는 과하다 |
+| 9 | 키·인스턴스 | 기존 Redis 인스턴스 하나에 접두사로 구분한다. 2-2에서 접두사를 `limited-sale:`로 모으기로 수정했다(아래 "2-2 확정 정책"). 캐시 `limited-sale:cache:sale:{id}`, 요청 제한 `limited-sale:rate-limit:order:{memberId}:{창}`, 세션 `limited-sale:session`, 기존 로그인 실패 `limited-sale:login-failure:`. 모든 캐시·제한 키에 TTL을 둔다. `maxmemory-policy noeviction` | 메모리가 부족할 때 세션이 밀려나 삭제되는 일을 막는다. 인스턴스 분리는 장애 격리가 낫지만 로컬 포트폴리오에는 과하다 |
 | 10 | 관측 | 앱의 Redis 명령 지연·실패 지표, 캐시 적중·미적중·실패 카운터, 요청 제한 허용·거절·통과(장애) 카운터, `redis_exporter`로 메모리·연결 수 | 캐시·제한의 효과와 장애를 지표로 구분해야 한다. 회원 ID는 지표 라벨로 쓰지 않는다 |
 
 ### 후속 소단계에 미친 영향
 
+- 2-2에서 #9의 접두사를 `limited-sale:`로 수정했다.
+
 - 2-2 전에 기준선 재측정을 별도 작업으로 한다.
 - 2-3은 #2~#4, 2-4는 #5~#8, 2-2는 #9~#10의 연결·관측 부분을 따른다.
 - 2-6에는 조회·주문 혼합 시나리오와 남용 사용자 혼합 시나리오를 추가한다. 세부 부하 조건은 2-6에서 정한다.
+
+## 2-2 확정 정책
+
+2026-11-23 사용자와 확정했다. 2-2는 Redis 연결·설정·관측만 다루고 업무 기능을 Redis에 새로 의존시키지 않는다.
+
+### 출발점이 된 사실
+
+- 1-4의 로그인 실패 제한은 이미 `limited-sale:login-failure:{해시}`를 쓴다. 2-1 #9의 `ls:` 접두사와 달랐다. 세션은 Spring Session 기본 `spring:session`이었다.
+- Redis 명령·연결 타임아웃이 설정되지 않아 Lettuce 기본 60초가 적용됐다. Redis가 응답하지 않으면 인증 요청이 최대 60초 동안 Tomcat 스레드를 붙잡는다.
+- Compose Redis에 `maxmemory`가 없고, 이미지 기본 RDB 스냅샷만 있으며 명시적 볼륨이 없다.
+- Prometheus는 판매 앱만 수집하고 Redis exporter가 없다.
+
+| # | 항목 | 확정 내용 | 이유 |
+|---|---|---|---|
+| 1 | 키 접두사 | 앱이 쓰는 모든 Redis 키를 `limited-sale:` 아래에 둔다. 세션 네임스페이스를 `limited-sale:session`으로 바꾼다. 2-1 #9의 `ls:`를 대체한다 | 한 접두사로 `SCAN`·메모리 분석이 쉽고 기존 로그인 실패 키를 옮기지 않아도 된다. 세션 이동으로 배포 시 기존 세션은 사라져 다시 로그인해야 한다. 로컬 환경이라 영향이 작다 |
+| 2 | 메모리 | `maxmemory 256mb`, `maxmemory-policy noeviction`. Compose와 부하 실험 격리 환경(`tools/order-regression`)에 적용하고 Testcontainers에는 적용하지 않는다 | 세션이 밀려나 삭제되는 일을 막는다. 세션 1만 개는 수십 MB로 추정하고 캐시·제한 키는 TTL이 짧다. 실험 환경을 운영 형태와 맞춘다 |
+| 3 | 영속성 | 현재 기본 동작을 유지한다. Redis 재시작 후 세션 유지를 보장하지 않는다 | 세션을 잃으면 다시 로그인하면 된다. 캐시는 재생성되고 제한 카운터는 초기화된다. 정합성은 MySQL이 지킨다 |
+| 4 | 타임아웃 | 명령 타임아웃 2초(임시), 연결 타임아웃도 같은 값. 세션·로그인 제한·캐시·요청 제한 전체에 적용한다. 2-5 장애 실험 결과로 최종 값을 확정한다 | 60초 대기를 없앤다. 평소 지연은 1ms 미만이다. 사용자가 1초를 짧다고 보아 2초로 시작하고 측정 후 정하기로 했다. 캐시 전용 값이 필요한지는 2-3에서 본다 |
+| 5 | 연결 실패 관측 | redis_exporter(`redis_up`·메모리·연결 수), Spring Boot의 Lettuce 명령 지연 지표, 기존 HTTP 503 건수. 새 앱 코드는 추가하지 않는다 | 로컬 단일 호스트에서는 Redis 서버 상태로 충분하다. 앱→Redis 경로만 끊긴 경우는 직접 보지 못하는 한계를 기록한다 |
+| 6 | 대시보드 | 기존 `infra/grafana/dashboards/limited-sale.json`에 Redis 행(up·메모리·연결 수·명령 지연)을 추가한다 | 한 대시보드에서 앱과 Redis를 함께 본다 |
+
+### 완료 기준
+
+- 위 설정이 Compose·격리 실험 환경·앱 설정에 적용되고, 세션 키가 `limited-sale:session` 아래에 생긴다.
+- Redis 재시작 후 앱이 자동으로 다시 연결되고 health가 복구된다.
+- Redis를 멈추면 지표(`redis_up`, 503 건수)에서 장애가 보이고, 인증 요청이 60초가 아니라 타임아웃 근처에서 503으로 끝난다.
+- 기존 `./gradlew clean build`와 Python 도구 테스트가 통과한다.
+
+### 2-2 구현과 검증
+
+- 설정: `application.yml`의 `spring.data.redis.timeout: 2s`, `spring.data.redis.connect-timeout: 2s`, `spring.session.data.redis.namespace: limited-sale:session`. Compose Redis와 `tools/order-regression/isolated.py`의 Redis에 `--maxmemory 256mb --maxmemory-policy noeviction`. Compose `monitoring` 프로필에 `oliver006/redis_exporter:v1.98.0`(127.0.0.1:9121)과 Prometheus `redis` job. 대시보드에 Redis 행과 패널 4개를 추가했고 기존 패널은 바꾸지 않았다.
+- Lettuce 지표는 Spring Boot 4.1.2의 `LettuceObservationAutoConfiguration`이 자동으로 내며 새 코드는 없다. 이름은 `lettuce_seconds_*`, 라벨은 `db_operation`·`db_system`·`error`·`net_sock_peer_addr`·`net_sock_peer_port`·`net_transport`다. 히스토그램 버킷은 켜지 않아 대시보드는 평균과 최대만 보인다.
+- 테스트: `RedisConnectionIntegrationTest` 5개. 실제 `application.yml`을 덮어쓰지 않고 로드해 세션·로그인 실패 키가 `limited-sale:` 아래에만 생김, 바인딩된 타임아웃 2초, Redis pause 중 인증 요청이 약 2초(실측 2,008~2,020ms) 뒤 503, Redis stop/start 후 앱 재시작 없이 health UP과 새 로그인 성공, Lettuce 지표 라벨에 회원·세션 값이 없음을 확인한다. 워커가 `application.yml`을 이전 상태로 되돌리면 설정 관련 4개가 실패함을 확인했다.
+- 워커 실측: Compose Redis `maxmemory` 268435456·`noeviction`, Prometheus `redis` 대상 up, `redis_up` 1. 앱 실행 중 Redis를 멈추면 `redis_up` 0, health DOWN, CSRF 조회 503(2,238ms), 다시 켜면 복구.
+- 주 에이전트 독립 검증: diff 리뷰, `./gradlew clean build` 직접 실행(판매 앱 단위 97·통합 138, Mock PG 11·15, Python 77, 실패·오류·건너뜀 0), `docker compose --profile monitoring config` 유효, 대시보드 JSON의 Redis 패널·질의 확인, `git diff --check` 통과. 저장소에 `spring:session`을 가정한 코드가 남지 않았음을 확인했다.
+- 한계: redis_exporter는 앱→Redis 경로만 끊긴 경우를 보지 못한다. Redis 중단 중 연결 실패는 `lettuce_seconds`의 `error` 라벨에 나타나지 않았다. 장애 감지는 `redis_up`과 503 건수에 의존한다. 타임아웃 2초는 2-5에서 확정한다. 격리 실험 전체는 새 Redis 인자로 다시 돌리지 않았고 단독 `docker run`으로 인자 적용만 확인했다.
 
 ## 기준선 재측정 결과
 
@@ -111,10 +149,11 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 
 ### 2-2. Redis 용도 확장과 관측
 
-- [ ] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-23, 위 "2-2 확정 정책")
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(선택지 "지금 시작")
+- [x] 지정 워커(Sonnet high)의 해당 범위 구현과 검증 결과 수령
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(아래 "2-2 구현과 검증")
+- [x] 위키 갱신과 검증
 
 ### 2-3. 판매 조회 캐시
 
