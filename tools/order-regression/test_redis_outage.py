@@ -9,6 +9,7 @@ os.environ.setdefault('JAVA_HOME', '/unused')
 from redis_outage import (Backoff, Decision, Outcome, cache_mismatches, classify, counter_deltas, decide,
                           dirty_outside_results, distribution, evaluate, failures, first_success_after,
                           instant_micros, labelled_delta, lb_attempt_index, lb_error_entries, non_policy_failures,
+                          parse_netstat, tcp_peaks,
                           parse_retry_after, parse_timeout_seconds, percentile, phase_of, probe_summary,
                           server_record_check, summarize_attempts, throughput, timeout_label, trailing_up,
                           user_summary)
@@ -287,6 +288,25 @@ class CaddyErrorTest(unittest.TestCase):
         entries = lb_error_entries('\n'.join([info, error, 'not json']))
         self.assertEqual([{'ts': 1.5, 'level': 'error', 'logger': 'http.log.error', 'msg': 'dial tcp: i/o timeout',
                            'status': 502, 'seq': 7}], entries)
+
+
+class NetstatTest(unittest.TestCase):
+    def test_states_are_counted_in_total_and_per_watched_local_port(self):
+        text = '\n'.join([
+            'Active Internet connections (including servers)',
+            'Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)',
+            'tcp4       0      0  127.0.0.1.51349        127.0.0.1.62001        TIME_WAIT',
+            'tcp4       0      0  127.0.0.1.51349        127.0.0.1.62002        ESTABLISHED',
+            'tcp4       0      0  127.0.0.1.62001        127.0.0.1.51349        TIME_WAIT',
+            'tcp46      0      0  *.8000                 *.*                    LISTEN',
+            'udp4       0      0  *.5353                 *.*'])
+        result = parse_netstat(text, [51349, 8000, 1])
+        self.assertEqual({'TIME_WAIT': 2, 'ESTABLISHED': 1, 'LISTEN': 1}, result['total'])
+        self.assertEqual({'TIME_WAIT': 1, 'ESTABLISHED': 1}, result['by_port']['51349'])
+        self.assertEqual({}, result['by_port']['1'])
+        peaks = tcp_peaks([result, {'total': {'TIME_WAIT': 9}, 'by_port': {'51349': {'ESTABLISHED': 3}}}])
+        self.assertEqual({'TIME_WAIT': 9, 'ESTABLISHED': 1, 'LISTEN': 1}, peaks['total'])
+        self.assertEqual({'TIME_WAIT': 1, 'ESTABLISHED': 3}, peaks['by_port']['51349'])
 
 
 class MetricsTest(unittest.TestCase):

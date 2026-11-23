@@ -29,8 +29,8 @@ from load_summary import Scenario, build_manifest, build_requests
 from redis_outage import (CACHE_TTL_SECONDS, CACHE_VOLATILE_FIELDS, MAX_RELOGINS_PER_REQUEST, Backoff, Outcome,
                           cache_mismatches, classify, counter_deltas, decide, dirty_outside_results, evaluate, failures,
                           first_success_after, labelled_delta, lb_attempt_index, lb_error_entries, non_policy_failures,
-                          parse_retry_after, parse_timeout_seconds, probe_summary, server_record_check,
-                          summarize_attempts, throughput, trailing_up, user_summary)
+                          parse_netstat, parse_retry_after, parse_timeout_seconds, probe_summary, server_record_check,
+                          summarize_attempts, tcp_peaks, throughput, trailing_up, user_summary)
 from run_balanced import INSTANCE_NAMES, reconciliation_rows
 from run_baseline import Sampler, converge, management_snapshot
 from run_oversubscription import expect, observe_sale_open, prepare_user, rows, save
@@ -272,6 +272,32 @@ class HealthMonitor:
             thread.join(timeout=15)
 
 
+class TcpMonitor:
+    """Host socket counts by state once a second: ephemeral port exhaustion or a full accept queue would show here."""
+
+    def __init__(self, ports, clock):
+        self.ports, self.clock = ports, clock
+        self.samples = []
+        self.stopped = threading.Event()
+        self.thread = threading.Thread(target=self.loop, daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def loop(self):
+        while not self.stopped.is_set():
+            try:
+                text = subprocess.run(['netstat', '-an', '-p', 'tcp'], capture_output=True, text=True, timeout=20).stdout
+            except (OSError, subprocess.TimeoutExpired):
+                return
+            self.samples.append({'t': round(self.clock.now(), 2), **parse_netstat(text, self.ports)})
+            self.stopped.wait(1.0)
+
+    def finish(self):
+        self.stopped.set()
+        self.thread.join(timeout=25)
+
+
 def redis_cli(env, *args):
     return command('docker', 'exec', env.containers[2], 'redis-cli', *args)
 
@@ -423,8 +449,10 @@ async def run_once(env, args, label):
     health = HealthMonitor({name: env.ports[name + '_management'] for name in env.instances}, clock,
                            HEALTH_INTERVAL_SECONDS)
     stop_probes = asyncio.Event()
+    tcp = TcpMonitor([env.ports['lb'], *(env.ports[name] for name in env.instances)], clock)
     sampler.start()
     health.start()
+    tcp.start()
     semaphore = asyncio.Semaphore(args.concurrency)
     flow_tasks = [asyncio.create_task(experiment.flow(p['client'], clients[p['client']], p['key'], semaphore))
                   for p in plan]
@@ -456,6 +484,8 @@ async def run_once(env, args, label):
     after = management_snapshot(env, out, 'after')
     sampler.finish()
     health.finish()
+    tcp.finish()
+    save(out / 'tcp-samples.json', tcp.samples)
     save(out / 'management-samples.json', sampler.series)
     save(out / 'health-samples.json', health.samples)
     phases['post_load_seconds'] = round(time.monotonic() - phase, 2)
@@ -559,6 +589,7 @@ async def run_once(env, args, label):
                     'counter_deltas': {'combined': combined_deltas, 'instances': deltas},
                     'rate_limit_rejections': {'clients_saw_429': client_429,
                                               'server_rejected_delta': result['server_rate_limited']}},
+        'host_tcp_peaks': tcp_peaks(tcp.samples),
         'durations_seconds': phases, 'started_at': env.started_at, 'run_id': env.run_id,
     }
 

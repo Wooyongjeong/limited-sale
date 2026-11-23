@@ -456,6 +456,37 @@ def lb_error_entries(log_text):
     return entries
 
 
+def parse_netstat(text, ports):
+    """Socket counts by state for all TCP sockets and for the sockets local to the given ports (macOS netstat -an).
+
+    A line looks like: tcp4 0 0 127.0.0.1.51349 127.0.0.1.62001 TIME_WAIT
+    """
+    total, per_port = Counter(), {str(port): Counter() for port in ports}
+    for line in text.splitlines():
+        fields = line.split()
+        if len(fields) < 6 or not fields[0].startswith('tcp'):
+            continue
+        state = fields[-1]
+        total[state] += 1
+        local_port = fields[3].rsplit('.', 1)[-1]
+        if local_port in per_port:
+            per_port[local_port][state] += 1
+    return {'total': dict(total), 'by_port': {port: dict(counts) for port, counts in per_port.items()}}
+
+
+def tcp_peaks(samples):
+    """Largest count of each state seen over the samples, for all sockets and for each watched port."""
+    peaks = {'total': {}, 'by_port': {}}
+    for sample_ in samples:
+        for state, count in sample_['total'].items():
+            peaks['total'][state] = max(peaks['total'].get(state, 0), count)
+        for port, counts in sample_['by_port'].items():
+            mine = peaks['by_port'].setdefault(port, {})
+            for state, count in counts.items():
+                mine[state] = max(mine.get(state, 0), count)
+    return peaks
+
+
 # ---- metrics ----
 
 def counter_deltas(before, after, prefixes):
