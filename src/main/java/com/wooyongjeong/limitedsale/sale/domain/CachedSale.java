@@ -1,7 +1,5 @@
-package com.wooyongjeong.limitedsale.sale.application;
+package com.wooyongjeong.limitedsale.sale.domain;
 
-import com.wooyongjeong.limitedsale.sale.domain.Sale;
-import com.wooyongjeong.limitedsale.sale.domain.SaleTerms;
 import java.time.Instant;
 import java.util.Objects;
 

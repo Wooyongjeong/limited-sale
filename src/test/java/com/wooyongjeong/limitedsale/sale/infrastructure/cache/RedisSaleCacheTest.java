@@ -1,7 +1,7 @@
 package com.wooyongjeong.limitedsale.sale.infrastructure.cache;
 
-import com.wooyongjeong.limitedsale.sale.application.CachedSale;
-import com.wooyongjeong.limitedsale.sale.application.SaleCache;
+import com.wooyongjeong.limitedsale.sale.domain.CachedSale;
+import com.wooyongjeong.limitedsale.sale.domain.SaleCache;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;

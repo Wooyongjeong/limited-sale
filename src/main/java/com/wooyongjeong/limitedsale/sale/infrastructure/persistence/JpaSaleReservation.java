@@ -2,7 +2,7 @@ package com.wooyongjeong.limitedsale.sale.infrastructure.persistence;
 
 import com.wooyongjeong.limitedsale.sale.api.SaleAllocation;
 import com.wooyongjeong.limitedsale.sale.api.SaleReservation;
-import com.wooyongjeong.limitedsale.sale.application.SaleCache;
+import com.wooyongjeong.limitedsale.sale.domain.SaleCache;
 import java.time.Instant;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;

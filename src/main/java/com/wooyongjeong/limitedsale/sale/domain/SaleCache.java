@@ -1,4 +1,4 @@
-package com.wooyongjeong.limitedsale.sale.application;
+package com.wooyongjeong.limitedsale.sale.domain;
 
 /**
  * Read-through cache for the sale detail query. It only speeds up display: order allocation and payment never read
