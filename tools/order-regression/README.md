@@ -57,7 +57,8 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario und
 - 통과 기준(`checks`): k6 종료 코드 0, 반복 완료 수와 누락 0, 5xx·연결 오류 0, 기대 외 상태 코드(200·201·202·409 밖) 0, 모든 주문의 종료 상태 수렴, 확정 수·잔여 수량(`baseline` 확정 1,000·잔여 0, `under-demand` 확정 800), `verify.py`·`reconcile.sql` 위반 0, k6가 센 생성·품절 건수와 DB 일치, 생성 주문마다 결제 요청 1건, 두 인스턴스의 주문 요청 수 합이 사용자 수와 같고 모두 처리, MySQL 관측 전체 수집. 품절 409는 오류가 아니라 업무 거절이다.
 - 검증기 입력: k6는 요청별 기록을 남기지 않으므로 `verify.py`의 시도 결과는 서버가 모든 판정마다 저장하는 `order_request_results`에서 만든다. 클라이언트 관점은 k6 상태·업무 코드 건수를 DB와 대조해 교차 검증한다.
 - 지표 수집: 부하 전후 두 관리 포트(`/actuator/prometheus`) 스냅샷의 차이(HTTP 서버, Hikari 획득, GC, 업무 카운터, JVM CPU 시간)와, 부하·수렴 동안 1초 간격으로 읽은 게이지의 최대·평균(Hikari 사용·대기, 프로세스·시스템 CPU, 힙, 스레드). Hikari 사용·대기 게이지는 HikariCP가 1초 단위로 캐시하므로 부하 직후 단발 스냅샷 값은 신뢰하지 않고 최대값만 쓴다. `scripts/mysql-observe.sh` 전후 차이(행 잠금 대기 수·시간, 교착·시간 초과, 소요 시간 상위 다이제스트)와 k6 프로세스의 CPU 시간을 함께 기록한다. 부하 생성기·JVM·MySQL이 한 컴퓨터를 나눠 쓰므로 CPU 값은 병목 해석에 함께 본다.
-- 환경: CPU·메모리·OS·Java·MySQL·Redis·Docker·k6 버전, Docker VM 자원, git 커밋과 dirty 여부, JAR SHA-256, JAR에 들어간 Micrometer·Prometheus·HikariCP 라이브러리 버전.
+- 환경: CPU·메모리·OS·Java·MySQL·Redis·Docker·k6 버전, Docker VM 자원, git 커밋과 dirty 여부, JAR SHA-256, JAR에 들어간 Micrometer·Prometheus·HikariCP 라이브러리 버전, 회원별 주문 요청 제한 설정(`order_rate_limit_enabled`).
+- 요청 제한: 이 도구가 만드는 판매 JVM은 모두 `LIMITED_SALE_ORDER_RATE_LIMIT_ENABLED=false`로 시작한다. 한 사용자의 연속 요청이 429로 거절되면 "제한 없음" 기준과 비교할 수 없기 때문이다. 셸에 같은 변수를 내보내도 JVM에는 전달되지 않는다. `Isolated(order_rate_limit=True)`로만 켠다.
 
 출력 디렉터리는 없으면 만든다. 같은 시나리오의 `<시나리오>-aggregate.json`이 이미 있으면 거부한다.
 
