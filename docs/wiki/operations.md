@@ -21,7 +21,7 @@ Java 25와 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 판매 앱의 지표는 공개 포트가 아니라 관리 포트(기본 `127.0.0.1:8090`)의 `/actuator/prometheus`에서 나온다. 공개 포트에는 `/actuator/health`의 상태만 있다. 관리 포트를 따로 둔 이유는 지표를 공개 API 보안 규칙과 섞지 않고 로컬 수집기만 읽게 하려는 것이다. 두 번째 인스턴스는 `MANAGEMENT_SERVER_PORT=8092`처럼 다른 포트를 준다.
 
-`docker compose --profile monitoring up -d prometheus grafana`로 Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)를 띄운다. Prometheus는 `host.docker.internal:8090`과 `8092`를 5초마다 읽는다. Grafana의 `limited-sale-overview` 대시보드는 파일로 준비되며 로그인 없이 볼 수 있다. 설정은 [prometheus.yml](../../infra/prometheus/prometheus.yml)과 [대시보드 JSON](../../infra/grafana/dashboards/limited-sale.json)이다.
+`docker compose --profile monitoring up -d redis-exporter prometheus grafana`로 redis_exporter(`127.0.0.1:9121`), Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)를 띄운다. Prometheus는 `host.docker.internal:8090`과 `8092`의 판매 앱, Compose 네트워크의 `redis-exporter:9121`을 5초마다 읽는다. 대시보드의 Redis 행은 `redis_up`, 사용 메모리와 `maxmemory`, 연결된 클라이언트 수, 앱의 Redis 명령 지연(`lettuce_seconds` 평균·최대)을 보여준다. redis_exporter는 Redis 서버만 보므로 앱과 Redis 사이 경로만 끊긴 경우는 `redis_up`에 나타나지 않는다. 그때는 HTTP 503 건수로 본다. 중단 중의 연결 실패는 `lettuce_seconds`의 `error` 라벨에도 잡히지 않았다. Compose Redis는 `maxmemory 256mb`, `noeviction`이다. 메모리가 차면 세션을 밀어내는 대신 쓰기가 실패한다. Grafana의 `limited-sale-overview` 대시보드는 파일로 준비되며 로그인 없이 볼 수 있다. 설정은 [prometheus.yml](../../infra/prometheus/prometheus.yml)과 [대시보드 JSON](../../infra/grafana/dashboards/limited-sale.json)이다.
 
 | 보고 싶은 것 | 지표 |
 |---|---|
@@ -54,7 +54,7 @@ MySQL 잠금과 느린 쿼리는 `scripts/mysql-observe.sh`로 본다. `performa
 | MySQL 통합 | [MySqlSchemaIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java), [MemberIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java) | 마이그레이션, 제약, 가입 저장 |
 | 판매 이벤트 MySQL·HTTP 통합 | [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java) | 기간·상태·필터·수정 버전·실제 행 잠금 대기 |
 | 주문 MySQL·HTTP 통합 | [OrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderIntegrationTest.java) | 원자적 점유·요청 키 경쟁·거절 재생·롤백·소유권 |
-| HTTP 및 Redis 통합 | [SessionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java), [ProductIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java) | 세션, 권한, 제품 계약, 장애 |
+| HTTP 및 Redis 통합 | [SessionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java), [ProductIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java), [RedisConnectionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/RedisConnectionIntegrationTest.java) | 세션, 권한, 제품 계약, 장애, Redis 키 접두사·타임아웃·재연결 |
 
 현재 노출된 Actuator 엔드포인트 설정은 health다. Prometheus·Grafana 관측과 k6 부하 실험은 [전체 계획](../project-plan.md)의 향후 범위이며 이미 구축된 관측 체계로 간주하지 않는다.
 

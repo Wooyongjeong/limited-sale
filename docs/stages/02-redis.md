@@ -6,7 +6,7 @@
 
 ## 상태
 
-2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2 이후는 구현 전이다.
+2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2 정책 확정·구현·검증·위키 갱신 완료. 2-3 이후는 구현 전이다.
 
 ## 확정한 방향
 
@@ -91,6 +91,15 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 - Redis를 멈추면 지표(`redis_up`, 503 건수)에서 장애가 보이고, 인증 요청이 60초가 아니라 타임아웃 근처에서 503으로 끝난다.
 - 기존 `./gradlew clean build`와 Python 도구 테스트가 통과한다.
 
+### 2-2 구현과 검증
+
+- 설정: `application.yml`의 `spring.data.redis.timeout: 2s`, `spring.data.redis.connect-timeout: 2s`, `spring.session.data.redis.namespace: limited-sale:session`. Compose Redis와 `tools/order-regression/isolated.py`의 Redis에 `--maxmemory 256mb --maxmemory-policy noeviction`. Compose `monitoring` 프로필에 `oliver006/redis_exporter:v1.98.0`(127.0.0.1:9121)과 Prometheus `redis` job. 대시보드에 Redis 행과 패널 4개를 추가했고 기존 패널은 바꾸지 않았다.
+- Lettuce 지표는 Spring Boot 4.1.2의 `LettuceObservationAutoConfiguration`이 자동으로 내며 새 코드는 없다. 이름은 `lettuce_seconds_*`, 라벨은 `db_operation`·`db_system`·`error`·`net_sock_peer_addr`·`net_sock_peer_port`·`net_transport`다. 히스토그램 버킷은 켜지 않아 대시보드는 평균과 최대만 보인다.
+- 테스트: `RedisConnectionIntegrationTest` 5개. 실제 `application.yml`을 덮어쓰지 않고 로드해 세션·로그인 실패 키가 `limited-sale:` 아래에만 생김, 바인딩된 타임아웃 2초, Redis pause 중 인증 요청이 약 2초(실측 2,008~2,020ms) 뒤 503, Redis stop/start 후 앱 재시작 없이 health UP과 새 로그인 성공, Lettuce 지표 라벨에 회원·세션 값이 없음을 확인한다. 워커가 `application.yml`을 이전 상태로 되돌리면 설정 관련 4개가 실패함을 확인했다.
+- 워커 실측: Compose Redis `maxmemory` 268435456·`noeviction`, Prometheus `redis` 대상 up, `redis_up` 1. 앱 실행 중 Redis를 멈추면 `redis_up` 0, health DOWN, CSRF 조회 503(2,238ms), 다시 켜면 복구.
+- 주 에이전트 독립 검증: diff 리뷰, `./gradlew clean build` 직접 실행(판매 앱 단위 97·통합 138, Mock PG 11·15, Python 77, 실패·오류·건너뜀 0), `docker compose --profile monitoring config` 유효, 대시보드 JSON의 Redis 패널·질의 확인, `git diff --check` 통과. 저장소에 `spring:session`을 가정한 코드가 남지 않았음을 확인했다.
+- 한계: redis_exporter는 앱→Redis 경로만 끊긴 경우를 보지 못한다. Redis 중단 중 연결 실패는 `lettuce_seconds`의 `error` 라벨에 나타나지 않았다. 장애 감지는 `redis_up`과 503 건수에 의존한다. 타임아웃 2초는 2-5에서 확정한다. 격리 실험 전체는 새 Redis 인자로 다시 돌리지 않았고 단독 `docker run`으로 인자 적용만 확인했다.
+
 ## 기준선 재측정 결과
 
 2-1 결정 #1에 따라 1-11의 시나리오·실행 모델·통과 기준을 그대로 두고 Java 25·Spring Boot 4.1.2에서 다시 측정했다. 2단계 비교의 기준선은 이 값이다. 1-11 값은 [benchmarks/load-baseline](../../benchmarks/load-baseline/)에 그대로 두었다.
@@ -141,9 +150,10 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 ### 2-2. Redis 용도 확장과 관측
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-23, 위 "2-2 확정 정책")
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(선택지 "지금 시작")
+- [x] 지정 워커(Sonnet high)의 해당 범위 구현과 검증 결과 수령
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(아래 "2-2 구현과 검증")
+- [x] 위키 갱신과 검증
 
 ### 2-3. 판매 조회 캐시
 
