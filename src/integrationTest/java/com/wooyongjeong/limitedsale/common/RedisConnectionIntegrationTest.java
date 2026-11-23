@@ -142,16 +142,16 @@ class RedisConnectionIntegrationTest {
     }
 
     @Test
-    void shippedTimeoutsAreTwoSecondsNotLettuceDefault() {
+    void shippedTimeoutsAreOneSecondNotLettuceDefault() {
         assertThat(context.getEnvironment().getProperty("spring.data.redis.timeout", Duration.class))
-                .isEqualTo(Duration.ofSeconds(2));
+                .isEqualTo(Duration.ofSeconds(1));
         assertThat(context.getEnvironment().getProperty("spring.data.redis.connect-timeout", Duration.class))
-                .isEqualTo(Duration.ofSeconds(2));
+                .isEqualTo(Duration.ofSeconds(1));
 
         var configuration = context.getBean(LettuceConnectionFactory.class).getClientConfiguration();
-        assertThat(configuration.getCommandTimeout()).isEqualTo(Duration.ofSeconds(2));
+        assertThat(configuration.getCommandTimeout()).isEqualTo(Duration.ofSeconds(1));
         assertThat(configuration.getClientOptions().orElseThrow().getSocketOptions().getConnectTimeout())
-                .isEqualTo(Duration.ofSeconds(2));
+                .isEqualTo(Duration.ofSeconds(1));
     }
 
     @Test
@@ -169,7 +169,7 @@ class RedisConnectionIntegrationTest {
 
             assertCode(response, AuthenticationResponseCode.AUTHENTICATION_UNAVAILABLE);
             // A hung Redis is only given up on after the command timeout, and far sooner than Lettuce's 60 s default.
-            assertThat(elapsed).isGreaterThanOrEqualTo(Duration.ofMillis(1500)).isLessThan(Duration.ofSeconds(10));
+            assertThat(elapsed).isGreaterThanOrEqualTo(Duration.ofMillis(800)).isLessThan(Duration.ofSeconds(10));
         } finally {
             docker.unpauseContainerCmd(REDIS.getContainerId()).exec();
         }

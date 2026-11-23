@@ -96,6 +96,12 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario bas
 
 현재 기준값과 병목 분석은 [1-11 단계 문서](../stages/01-11-baseline-load-test.md)에 있다. 기준 시나리오의 HTTP 처리량은 약 295 req/s였다. Java 25·Spring Boot 4.1.2에서 같은 시나리오로 다시 잰 2단계 비교 기준선은 약 311 req/s이며 병목 형태는 같다([재측정 결과](../stages/02-redis.md#기준선-재측정-결과)). 이 값을 정한 것은 CPU가 아니라 판매 이벤트 행 하나의 잠금이다. 주문 생성이 모두 같은 행을 `FOR UPDATE`로 잠그므로 요청이 이 행 앞에 한 줄로 선다. 잠금을 기다리는 트랜잭션이 커넥션을 쥐고 있어 커넥션 풀 대기도 함께 늘었다. 부하 생성기와 서버가 같은 컴퓨터를 쓰므로 숫자는 같은 컴퓨터에서 다음 단계와 비교할 때만 쓴다.
 
+### Redis 장애 실험 (2-5)
+
+[run_redis_outage.py](../../tools/order-regression/run_redis_outage.py)는 1-10 격리 환경(판매 앱 2개·Caddy·Mock PG·전용 MySQL·Redis)에 주문 요청 제한을 켜고, 사용자 1,000명이 재고 300에 주문·결제하는 도중 Redis를 15초 동안 멈췄다가 다시 켠다. 클라이언트는 503이면 잠깐 기다리고, 429면 `Retry-After`만큼 기다리고, 401·403 `CSRF_INVALID`면 다시 로그인한 뒤 같은 요청 키로 재시도한다. 장애 중에는 쿠키 없이 판매 상세 조회도 계속 보낸다. 끝나면 [verify.py](../../tools/order-regression/verify.py)와 [reconcile.sql](../../tools/reconciliation/reconcile.sql)로 판정하고, 복구 후 캐시 값을 MySQL과 비교한다. 실행 방법과 통과 기준은 [실험 도구 안내](../../tools/order-regression/README.md)를 본다. 결과는 [benchmarks/redis-outage](../../benchmarks/redis-outage/)에 있다.
+
+타임아웃 1초·2초로 각각 두 번 돌렸다. 모든 실행에서 확정 300·품절 700·대조 위반 0이었다. 장애 중 인증 요청은 503(p50 1초 또는 2초)으로 끝났고, 판매 상세 조회는 MySQL로 모두 200이었다. 복구는 값과 상관없이 약 2초 걸렸다. 2초 2차 실행 한 번은 장애가 시작되는 순간 처리 중이던 결제 응답의 본문이 잘려 연결 오류 기준에서 실패했다. 주문은 커밋됐고 재시도로 결과를 받았다. 동시성 200에서는 Caddy가 판매 인스턴스에 연결하지 못한 502가 났고 원인은 찾지 못했다. 공식 실행은 동시성 100이다.
+
 ## 증상에서 코드 찾기
 
 먼저 HTTP 상태를 확인한 다음 응답의 `code`로 원인을 좁힌다. 예를 들어 403이라도 토큰 오류와 권한 부족은 서로 다른 코드다. 아래 클래스는 확인을 시작할 위치이며 모든 장애 원인을 망라하지 않는다.
