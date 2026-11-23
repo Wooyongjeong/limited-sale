@@ -8,8 +8,9 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       # Without these Lettuce waits its 60 s default, holding a request thread when Redis stops answering.
-      timeout: 2s
-      connect-timeout: 2s
+      # 1 s over 2 s per the stage 2-5 outage runs: 503 latency p50 about 1 s instead of 2 s, recovery time unchanged.
+      timeout: 1s
+      connect-timeout: 1s
   session:
     timeout: 30m
     data:
