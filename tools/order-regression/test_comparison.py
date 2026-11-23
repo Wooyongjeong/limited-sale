@@ -1,6 +1,6 @@
 import unittest
 
-from comparison import (CONDITIONS, Plan, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
+from comparison import (CONDITIONS, DEFAULT_CONDITIONS, Plan, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
                         derived, evaluate, execution_order, failures, headline, hit_rate, labeled_deltas, policy_plan,
                         rate_limit_counts, verifier_requests, with_overrides)
 from load_summary import build_requests
@@ -24,10 +24,11 @@ def k6_a():
                 'abuse_order_create': endpoint(), 'abuse_order_payment': endpoint()}}
 
 
-def k6_b(rate_limited):
+def k6_b(rate_limited, vus_per_member=1):
     abuse = {'201': 40, '409': 3000, **({'429': 60000} if rate_limited else {})}
     abuse_requests = sum(abuse.values())
     return {'exit_code': 0, 'iterations_completed': 10000, 'dropped_iterations': 0, 'server_errors_5xx': 0,
+            'abuser_vus_per_member': vus_per_member,
             'connection_errors': 0, 'duration_seconds': 50.0, 'normal_duration_seconds': 49.0,
             'http_requests_per_second': 3000.0,
             'endpoints': {
@@ -57,7 +58,7 @@ def passing(name):
                 'cache': {'hit': 0, 'miss': 0, 'error': 0} if not condition.sale_cache
                 else {'hit': 49990, 'miss': 10, 'error': 0}}
     limited = condition.order_rate_limit
-    k6 = k6_b(limited)
+    k6 = k6_b(limited, condition.abuser_vus_per_member)
     abuse_total = k6['endpoints']['abuse_order_create']['count']
     create_requests = 10000 + abuse_total
     rate_limit = NO_LIMIT
@@ -89,10 +90,13 @@ def change(result, path, value):
 
 class ConditionsTest(unittest.TestCase):
     def test_policy_conditions(self):
-        self.assertEqual({name: (c.sale_cache, c.order_rate_limit, c.detail_views, c.abusers)
+        self.assertEqual({name: (c.sale_cache, c.order_rate_limit, c.detail_views, c.abusers, c.abuser_vus_per_member)
                           for name, c in CONDITIONS.items()},
-                         {'a-off': (False, False, 5, 0), 'a-on': (True, False, 5, 0),
-                          'b-off': (True, False, 0, 100), 'b-on': (True, True, 0, 100)})
+                         {'a-off': (False, False, 5, 0, 1), 'a-on': (True, False, 5, 0, 1),
+                          'b-off': (True, False, 0, 100, 1), 'b-on': (True, True, 0, 100, 1),
+                          'b2-off': (True, False, 0, 100, 5), 'b2-on': (True, True, 0, 100, 5)})
+        self.assertEqual(DEFAULT_CONDITIONS, ('a-off', 'a-on', 'b-off', 'b-on'))
+        self.assertEqual(policy_plan(CONDITIONS['b2-on']), Plan(10000, 1000, 500, 0, 100, 5))
         self.assertEqual(policy_plan(CONDITIONS['a-on']), Plan(10000, 1000, 500, 5, 0))
         self.assertEqual(policy_plan(CONDITIONS['b-off']), Plan(10000, 1000, 500, 0, 100))
 
@@ -102,6 +106,10 @@ class ConditionsTest(unittest.TestCase):
         b = with_overrides(policy_plan(CONDITIONS['b-on']), users=500, stock=100, vus=50, detail_views=2, abusers=10)
         self.assertEqual(b, Plan(500, 100, 50, 0, 10))
         self.assertEqual(with_overrides(policy_plan(CONDITIONS['b-on'])), policy_plan(CONDITIONS['b-on']))
+        smoke = with_overrides(policy_plan(CONDITIONS['b2-on']), abusers=10, abuser_vus_per_member=3)
+        self.assertEqual((smoke.abusers, smoke.abuser_vus_per_member), (10, 3))
+        a = with_overrides(policy_plan(CONDITIONS['a-on']), abuser_vus_per_member=3)
+        self.assertEqual(a.abuser_vus_per_member, 1)
 
     def test_execution_order_interleaves_the_conditions_in_every_round(self):
         order = execution_order(['a-off', 'a-on', 'b-off', 'b-on'], 3)
@@ -204,6 +212,16 @@ class EvaluateTest(unittest.TestCase):
         result = change(passing('a-on'), 'k6.endpoints.sale_detail.status_counts', {'200': 49999})
         self.assertIn('detail_reads_all_200', names(evaluate(result, on, policy_plan(on))))
 
+    def test_b2_conditions_pass_with_five_vus_per_member_and_fail_if_k6_ran_another_number(self):
+        for name in ('b2-off', 'b2-on'):
+            condition = CONDITIONS[name]
+            plan = policy_plan(condition)
+            ran = passing(name)
+            self.assertEqual(ran['k6']['abuser_vus_per_member'], 5)
+            self.assertEqual(names(evaluate(ran, condition, plan)), [], name)
+            ran['k6']['abuser_vus_per_member'] = 1
+            self.assertIn('abuser_vus_per_member_as_planned', names(evaluate(ran, condition, plan)), name)
+
     def test_abusers_must_actually_run_in_experiment_b(self):
         on = CONDITIONS['b-on']
         result = change(passing('b-on'), 'k6.endpoints.abuse_order_create', endpoint())
@@ -237,7 +255,9 @@ class CountersTest(unittest.TestCase):
         db = {'confirmed': 1000}
         cache = {'hit': 0, 'miss': 0, 'error': 0}
         limit = {'create': {'allowed': 3000, 'rejected': 60000, 'bypassed': 0}}
-        values = derived(k6, db, cache, limit)
+        values = derived(k6, db, cache, limit, 100)
+        self.assertEqual(values['abuse_requests_per_member_per_second'], round(63040 / 100 / 49.0, 3))
+        self.assertIsNone(derived(k6, db, cache, limit)['abuse_requests_per_member_per_second'])
         self.assertEqual(values['actual_order_throughput_per_second'], 20.0)
         self.assertEqual(values['actual_order_throughput_per_normal_second'], round(1000 / 49.0, 3))
         self.assertEqual(values['abuse_rejection_rate'], round(60000 / 63040, 4))
@@ -299,6 +319,14 @@ class AbuseVerifierInputTest(unittest.TestCase):
 
     def test_the_verifier_accepts_a_consistent_run_with_abusive_users(self):
         data, *_ = self.snapshot(self.ABUSE_RESULTS)
+        self.assertEqual(verify(data), [])
+
+    def test_many_requests_from_a_member_sharing_one_session_are_accepted(self):
+        # Five VUs of one member race: one creates, the rest are rejected by the limit of one per member.
+        crowd = [{'member_id': 201, 'key': f'abuse-x{i}', 'sale_id': 1, 'quantity': 1, 'outcome': 'REJECTED',
+                  'order_id': None, 'rejection_reason': 'PURCHASE_LIMIT_EXCEEDED'} for i in range(500)]
+        data, abuse, *_ = self.snapshot([*self.ABUSE_RESULTS, *crowd])
+        self.assertEqual(len(abuse), 503)
         self.assertEqual(verify(data), [])
 
     def test_an_unconfirmed_abusive_order_is_a_violation(self):
