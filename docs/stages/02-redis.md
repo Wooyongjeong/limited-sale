@@ -6,7 +6,7 @@
 
 ## 상태
 
-2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2 정책 확정·구현·검증·위키 갱신 완료. 2-3 이후는 구현 전이다.
+2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2·2-3 정책 확정·구현·검증·위키 갱신 완료. 2-4 이후는 구현 전이다.
 
 ## 확정한 방향
 
@@ -92,6 +92,18 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 - 주문 생성·결제는 캐시를 읽지 않는다. 캐시 값과 무관하게 MySQL 판정을 따른다.
 - 지표: 조회 결과(적중·미적중·오류)와 무효화 결과(성공·오류) 카운터. 회원·이벤트 ID를 라벨로 쓰지 않는다.
 - 기존 `./gradlew clean build`가 통과한다.
+
+### 2-3 구현과 검증
+
+- 구조: 포트 `sale.domain.SaleCache`(`find`가 `Hit`·`Miss`·`Failure`를 반환, `put`, `evictAfterCommit`), 값 `sale.domain.CachedSale`, 구현 `sale.infrastructure.cache.RedisSaleCache`(`StringRedisTemplate`, 전용 Jackson 3 매퍼), `common.time.ClockConfiguration`(`Clock.systemUTC()`). `SaleService.get`은 트랜잭션을 열지 않는다. 열면 적중해도 커넥션을 쓰기 때문이다.
+- 무효화: patch·stop·resume·delete가 커밋 후 삭제를 등록한다. 변경이 없는 요청도 등록해 실패한 삭제를 같은 요청으로 복구할 수 있다. 품절 전환은 `SaleEntity.finish`가 확정 전 미품절·확정 후 품절일 때만 true를 돌려주고 `JpaSaleReservation`이 그때만 삭제를 등록한다.
+- 지표: `sale_cache_requests_total{result=hit|miss|error}`, `sale_cache_evictions_total{result=success|error}`. 저장 실패도 `requests{result=error}`로 센다. 조회가 실패한 요청은 저장을 시도하지 않는다(장애 중 타임아웃을 두 번 기다리지 않는다). 손상 값은 `miss`로 세고 키를 지운다.
+- 테스트: 단위 6개(`RedisSaleCacheTest`), 통합 19개(`SaleCacheIntegrationTest` 15·`SaleCacheOrderIntegrationTest` 4). MySQL을 pause해도 적중 조회가 1초 안에 200, TTL 만료 후 재조회, 변경별 무효화와 롤백 시 유지, 마지막 확정에서만 삭제(정확히 1회), 제어 시계로 시작·종료 정각 전환, Redis pause 중 DB 응답과 오류 지표, 삭제 거부(`ACL SETUSER default -del`) 시 옛 값이 TTL 안에 남고 반복 요청으로 복구, 캐시가 ENDED·품절·OPEN을 주장해도 주문·결제는 MySQL을 따름을 확인한다. 워커가 `@Transactional` 복원, 품절 감지 항상 true, 즉시 삭제, DB 시각 사용으로 바꾸면 각각 해당 테스트가 실패함을 확인했다.
+- 리뷰 보완: 첫 구현은 `sale.infrastructure.persistence`가 `sale.application.SaleCache`를 참조하는 계층 역전이 있었다. 같은 워커가 포트와 값을 `sale.domain`으로 옮겼다(동작 변경 없음).
+- 주 에이전트 독립 검증: diff 리뷰, 보완 후 `./gradlew clean build` 직접 실행(판매 앱 단위 103·통합 157, Mock PG 11·15, Python 77, 실패·오류·건너뜀 0), `git diff --check` 통과, `sale.infrastructure`·`sale.domain`에 `sale.application` 참조 없음 확인.
+- 사용자 확정(리뷰 중): `version`·`updatedAt`은 주문 점유·결제 확정마다 JPA `@Version`으로 바뀌지만 캐시를 지우지 않으므로 판매 중 최대 TTL만큼 늦게 보인다. 허용하고 기록한다. 판매 중 관리자 PATCH가 주문의 version 변경과 충돌하는 것은 캐시 전부터 있던 동작이다.
+- 관찰(이번 범위 밖): "infrastructure는 application에 의존하지 않는다" 규칙을 ArchitectureTest에 넣으면 `member.infrastructure.AdminInitializer`(관리자 초기화 진입점)가 `member.application.MemberService`를 참조해 위반한다. 규칙은 추가하지 않았다.
+- 미검증: 부하 중 적중률·지연과 스탬피드는 2-6에서 측정한다.
 
 ## 2-2 확정 정책
 
@@ -187,9 +199,10 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 ### 2-3. 판매 조회 캐시
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-23, 위 "2-3 확정 정책")
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(선택지 "지금 시작")
+- [x] 지정 워커(Sonnet high)의 해당 범위 구현과 검증 결과 수령, 리뷰 지적 1건 보완
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(위 "2-3 구현과 검증")
+- [x] 위키 갱신과 검증
 
 ### 2-4. 분산 요청 제한
 

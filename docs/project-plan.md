@@ -89,7 +89,7 @@ API 응답은 HTTP 상태 코드, 도메인별 enum 성공·오류 코드, 제�
 |---|---|---|
 | 0 | [프로젝트 뼈대](stages/00-project-bootstrap.md) | 구현·실제 MySQL·주 에이전트 독립 검증 완료 |
 | 1 | [MySQL 주문·Mock PG](stages/01-mysql-order.md) | 1-1 확정·1-2~1-6 구현·검증 완료. 1-6은 사용자 지시로 직접 구현 |
-| 2 | [Redis](stages/02-redis.md) | 2-1 정책 확정·Java 25 기준선 재측정·2-2 구현·검증 완료. 2-3 이후 구현 전 |
+| 2 | [Redis](stages/02-redis.md) | 2-1 정책 확정·Java 25 기준선 재측정·2-2·2-3 구현·검증 완료. 2-4 이후 구현 전 |
 | 3 | [Kafka](stages/03-kafka.md) | 착수 전 |
 | 4 | [장애 검증과 정리](stages/04-reliability.md) | 착수 전 |
 

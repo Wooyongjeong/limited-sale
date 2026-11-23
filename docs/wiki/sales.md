@@ -41,7 +41,19 @@
 
 예를 들어 시작 전 중단 이벤트는 STOPPED이며 재개하면 SCHEDULED다. 판매 기간 안에 수량이 전부 점유됐어도 확정 수량이 총수량보다 적으면 OPEN이다. 이는 주문 성공을 보장하지 않는다. 수량 확보는 주문 유스케이스가 소유하는 트랜잭션에서 sale.api를 호출해 판정한다.
 
-`GET /api/v1/sales?productId=1&status=OPEN&page=0&size=20`은 제품과 상태 조건을 모두 적용한다. 목록은 ID 내림차순이며 기본 20·최대 100개다. 상세는 `GET /api/v1/sales/{id}`로 조회한다. 목록에서는 설명을 제외하고, 두 응답 모두 구매 가능·점유·확정 수량을 직접 노출하지 않는다. 상태 필터와 응답은 같은 DB 기준 시각을 사용하지만 READ COMMITTED에서 count와 목록 내용이 동시 변경의 같은 스냅샷이라고 보장하지는 않는다.
+`GET /api/v1/sales?productId=1&status=OPEN&page=0&size=20`은 제품과 상태 조건을 모두 적용한다. 목록은 ID 내림차순이며 기본 20·최대 100개다. 상세는 `GET /api/v1/sales/{id}`로 조회한다. 목록에서는 설명을 제외하고, 두 응답 모두 구매 가능·점유·확정 수량을 직접 노출하지 않는다. 목록의 상태 필터와 응답은 같은 DB 기준 시각을 사용하지만 READ COMMITTED에서 count와 목록 내용이 동시 변경의 같은 스냅샷이라고 보장하지는 않는다.
+
+## 상세 조회 캐시
+
+상세 조회만 Redis에 캐시한다. [SaleService.get](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java)은 트랜잭션을 열지 않고 먼저 [SaleCache](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleCache.java)를 읽는다. 적중하면 MySQL을 쓰지 않는다. 미적중이면 MySQL에서 읽어 [CachedSale](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/CachedSale.java)로 저장한다. 키는 `limited-sale:cache:sale:v1:{id}`, TTL은 기본 60초(`limited-sale.sale.cache.ttl`)다. 404는 캐시하지 않는다.
+
+캐시에는 조건·중단 여부·확정 수량 같은 저장 값만 넣고 상태는 넣지 않는다. 상태는 적중·미적중 모두 앱 시계(UTC, [ClockConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/common/time/ClockConfiguration.java))로 읽을 때 계산한다. 그래서 캐시된 값도 시작·종료 정각에 SCHEDULED→OPEN→ENDED로 바뀐다. 목록·관리자 응답과 주문 판정은 계속 MySQL 시각을 쓴다. 표시 상태와 주문 판정은 경계에서 두 시계의 차이만큼 다를 수 있으며 주문 결과는 MySQL 판정을 따른다.
+
+수정·중단·재개·삭제는 트랜잭션 커밋 후 키를 지운다. 결제 확정으로 확정 수량이 총수량에 처음 도달한 트랜잭션도 커밋 후 지운다([JpaSaleReservation](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/persistence/JpaSaleReservation.java)). 롤백되면 지우지 않는다. 구현은 [RedisSaleCache](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/cache/RedisSaleCache.java)다.
+
+Redis 조회·저장이 실패하면 MySQL 결과로 응답하고, 커밋 후 삭제가 실패해도 요청은 성공한다. 모두 로그와 `sale_cache_requests_total{result=hit|miss|error}`, `sale_cache_evictions_total{result=success|error}`에 남는다. 삭제가 실패하면 TTL 동안 옛 값이 보일 수 있고, 같은 중단·재개 요청을 다시 보내면 지워진다. 캐시를 읽지 않는 주문·결제는 캐시 값과 무관하게 MySQL 판정을 따른다.
+
+허용한 지연: 미적중 조회 중에 변경이 커밋되면 옛 값이 다시 채워져 TTL 동안 보일 수 있다. `version`·`updatedAt`은 주문 점유·결제 확정마다 바뀌지만 캐시를 지우지 않으므로 판매 중에는 최대 TTL만큼 늦다. 검증은 [SaleCacheIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleCacheIntegrationTest.java)와 [SaleCacheOrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleCacheOrderIntegrationTest.java)를 본다.
 
 [SaleTerms](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleTerms.java)는 이름·가격·수량·기간을 검증한다. 시각은 오프셋을 포함해 입력하고 DB 마이크로초 정밀도를 넘으면 400이다. [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java)는 실제 MySQL의 잠금 대기·동시 수정·시각·필터와 HTTP 계약을 검사한다. 정책 및 한계는 [1-6 상세 문서](../stages/01-6-sale-management-and-query.md)를 따른다.
 
