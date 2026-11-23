@@ -1,7 +1,7 @@
 import unittest
 
-from service_env import (inherited_environment, order_rate_limit_setting, redis_timeout_settings,
-                         tomcat_metrics_setting)
+from service_env import (inherited_environment, order_rate_limit_max_requests_setting, order_rate_limit_setting,
+                         redis_timeout_settings, tomcat_metrics_setting)
 
 
 class ServiceEnvironmentTest(unittest.TestCase):
@@ -19,6 +19,10 @@ class ServiceEnvironmentTest(unittest.TestCase):
     def test_the_order_rate_limit_is_always_stated_explicitly(self):
         self.assertEqual({'LIMITED_SALE_ORDER_RATE_LIMIT_ENABLED': 'false'}, order_rate_limit_setting(False))
         self.assertEqual({'LIMITED_SALE_ORDER_RATE_LIMIT_ENABLED': 'true'}, order_rate_limit_setting(True))
+
+    def test_the_allowed_request_count_is_passed_as_a_string_the_application_binds(self):
+        self.assertEqual({'LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS': '5'}, order_rate_limit_max_requests_setting(5))
+        self.assertEqual({}, inherited_environment({'LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS': '1'}))
 
     def test_redis_timeouts_set_both_the_command_and_the_connect_timeout(self):
         self.assertEqual({'SPRING_DATA_REDIS_TIMEOUT': '1s', 'SPRING_DATA_REDIS_CONNECT_TIMEOUT': '1s'},

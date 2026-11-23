@@ -10,3 +10,4 @@ build/
 benchmarks/load-baseline/raw/
 benchmarks/load-baseline-java25/raw/
 benchmarks/redis-outage/*/raw/
+benchmarks/redis-comparison/*/raw/

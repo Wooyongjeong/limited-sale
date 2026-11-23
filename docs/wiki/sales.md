@@ -45,7 +45,7 @@
 
 ## 상세 조회 캐시
 
-상세 조회만 Redis에 캐시한다. [SaleService.get](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java)은 트랜잭션을 열지 않고 먼저 [SaleCache](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleCache.java)를 읽는다. 적중하면 MySQL을 쓰지 않는다. 미적중이면 MySQL에서 읽어 [CachedSale](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/CachedSale.java)로 저장한다. 키는 `limited-sale:cache:sale:v1:{id}`, TTL은 기본 60초(`limited-sale.sale.cache.ttl`)다. 404는 캐시하지 않는다.
+상세 조회만 Redis에 캐시한다. [SaleService.get](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java)은 트랜잭션을 열지 않고 먼저 [SaleCache](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleCache.java)를 읽는다. 적중하면 MySQL을 쓰지 않는다. 미적중이면 MySQL에서 읽어 [CachedSale](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/CachedSale.java)로 저장한다. 키는 `limited-sale:cache:sale:v1:{id}`, TTL은 기본 60초(`limited-sale.sale.cache.ttl`)다. 404는 캐시하지 않는다. `limited-sale.sale.cache.enabled=false`면 [DisabledSaleCache](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/cache/DisabledSaleCache.java)가 대신 등록돼 Redis를 호출하지 않고 항상 MySQL로 조회한다. 2-6 비교 실험의 캐시 끔 조건에 쓴다.
 
 캐시에는 조건·중단 여부·확정 수량 같은 저장 값만 넣고 상태는 넣지 않는다. 상태는 적중·미적중 모두 앱 시계(UTC, [ClockConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/common/time/ClockConfiguration.java))로 읽을 때 계산한다. 그래서 캐시된 값도 시작·종료 정각에 SCHEDULED→OPEN→ENDED로 바뀐다. 목록·관리자 응답과 주문 판정은 계속 MySQL 시각을 쓴다. 표시 상태와 주문 판정은 경계에서 두 시계의 차이만큼 다를 수 있으며 주문 결과는 MySQL 판정을 따른다.
 

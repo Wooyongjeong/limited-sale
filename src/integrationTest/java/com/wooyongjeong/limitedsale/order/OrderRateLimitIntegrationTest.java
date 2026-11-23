@@ -110,9 +110,18 @@ class OrderRateLimitIntegrationTest {
         SALES.stop();
     }
 
-    /** Uses the shipped application.yml; only the limit window is shortened to what a test can wait for. */
+    /**
+     * Uses the shipped application.yml; the limit window is shortened to what a test can wait for. The tests below
+     * count to five and six requests, so they pin max-requests to 5 instead of depending on the application default,
+     * which is one; the default has its own test.
+     */
     private static ConfigurableApplicationContext salesApplication(boolean limitEnabled) {
-        return new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+        return salesApplication(limitEnabled, "5");
+    }
+
+    /** A null maxRequests leaves the application default in place. */
+    private static ConfigurableApplicationContext salesApplication(boolean limitEnabled, String maxRequests) {
+        List<String> arguments = new ArrayList<>(List.of("--server.port=0",
             "--management.server.port=0", "--limited-sale.order.rate-limit.enabled=" + limitEnabled,
             "--limited-sale.order.rate-limit.window=" + WINDOW,
             "--spring.config.additional-location=file:src/main/resources/application.yml",
@@ -122,7 +131,11 @@ class OrderRateLimitIntegrationTest {
             "--MOCK_PG_BASE_URL=http://localhost:" + pgPort, "--spring.datasource.url=" + SALES.getJdbcUrl(),
             "--spring.datasource.username=" + SALES.getUsername(),
             "--spring.datasource.password=" + SALES.getPassword(),
-            "--spring.data.redis.host=" + REDIS.getHost(), "--spring.data.redis.port=" + REDIS.getMappedPort(6379));
+            "--spring.data.redis.host=" + REDIS.getHost(), "--spring.data.redis.port=" + REDIS.getMappedPort(6379)));
+        if (maxRequests != null) {
+            arguments.add("--limited-sale.order.rate-limit.max-requests=" + maxRequests);
+        }
+        return new SpringApplicationBuilder(LimitedSaleApplication.class).run(arguments.toArray(String[]::new));
     }
 
     private static int port(ConfigurableApplicationContext context) {
@@ -267,6 +280,22 @@ class OrderRateLimitIntegrationTest {
         assertThat(requestRows(member.id)).isEqualTo(requests + 1);
         assertThat(reserved(saleId)).isEqualTo(6);
         assertCode(member.order(portA, newKey(), saleId, 1), OrderResponseCode.ORDER_CREATED);
+    }
+
+    @Test
+    void theApplicationDefaultAllowsOneRequestPerWindowAndRejectsTheSecond() throws Exception {
+        try (var defaults = salesApplication(true, null)) {
+            int defaultPort = port(defaults);
+            var member = new Member(defaultPort);
+            long saleId = sale(100, 100);
+
+            assertCode(member.order(defaultPort, newKey(), saleId, 1), OrderResponseCode.ORDER_CREATED);
+            assertRateLimited(member.order(defaultPort, newKey(), saleId, 1));
+
+            assertThat(redis.opsForValue().get(member.createKey())).isEqualTo("2");
+            assertThat(orderRows(member.id)).isEqualTo(1);
+            assertThat(reserved(saleId)).isEqualTo(1);
+        }
     }
 
     @Test

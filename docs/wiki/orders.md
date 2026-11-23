@@ -24,15 +24,15 @@
 
 ## 회원별 요청 제한
 
-주문 생성(`POST /api/v1/orders`)과 결제(`POST /api/v1/orders/{id}/payment`)는 회원마다 기본 1초 5회로 제한한다. 두 요청은 따로 센다. 그래서 주문 요청을 몰아 보내도 이미 받은 주문의 결제는 막히지 않는다. 검사는 [OrderService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderService.java)·[OrderPaymentService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderPaymentService.java)의 맨 앞에서 [OrderRateLimiter](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderRateLimiter.java)가 한다. 인증·CSRF·입력 검증을 통과한 요청만 세고, 요청 키 조회와 DB 트랜잭션보다 먼저 끝난다. 조회 GET과 자동 복구에는 적용하지 않는다.
+주문 생성(`POST /api/v1/orders`)과 결제(`POST /api/v1/orders/{id}/payment`)는 회원마다 기본 1초 1회로 제한한다. 2-6 비교 실험에서 1초 5회는 부하 중 남용 요청을 거의 거르지 못해 낮췄다([결과](../stages/02-redis.md#2-6-실험-결과와-검증)). 두 요청은 따로 센다. 그래서 주문 요청을 몰아 보내도 이미 받은 주문의 결제는 막히지 않는다. 검사는 [OrderService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderService.java)·[OrderPaymentService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderPaymentService.java)의 맨 앞에서 [OrderRateLimiter](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderRateLimiter.java)가 한다. 인증·CSRF·입력 검증을 통과한 요청만 세고, 요청 키 조회와 DB 트랜잭션보다 먼저 끝난다. 조회 GET과 자동 복구에는 적용하지 않는다.
 
 카운터는 Redis 키 `limited-sale:rate-limit:order:{create|payment}:{memberId}` 하나다. [RedisOrderRateLimit](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/redis/RedisOrderRateLimit.java)의 Lua 스크립트가 `INCR`, 첫 요청의 `PEXPIRE`, 남은 시간 조회를 한 번에 처리한다. 창은 첫 요청부터 시작하므로 인스턴스끼리 시계를 맞출 필요가 없다. 두 인스턴스로 나뉜 요청도 같은 키를 쓰므로 합산된다. 만료가 없는 비정상 키를 만나면 만료를 다시 건다.
 
-6번째 요청은 429 `ORDER_RATE_LIMITED`와 `Retry-After`(남은 시간을 초 단위로 올림, 최소 1)를 받는다. 이때 요청 키·주문·수량을 건드리지 않는다. 그래서 창이 지난 뒤 같은 키로 다시 보내면 처음 요청처럼 처리된다. 같은 키의 재시도도 한 번으로 센다.
+창 안의 2번째 요청은 429 `ORDER_RATE_LIMITED`와 `Retry-After`(남은 시간을 초 단위로 올림, 최소 1)를 받는다. 이때 요청 키·주문·수량을 건드리지 않는다. 그래서 창이 지난 뒤 같은 키로 다시 보내면 처음 요청처럼 처리된다. 같은 키의 재시도도 한 번으로 센다.
 
 Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남긴다. 수량과 구매 한도는 MySQL이 계속 지킨다. 다만 Redis가 완전히 멈추면 세션 인증이 먼저 503으로 실패한다. 값이 숫자가 아닌 키가 생기면 해당 회원은 키가 만료되거나 지워질 때까지 계속 통과한다. 지표는 `order_rate_limit_total{operation=create|payment, result=allowed|rejected|bypassed}`다. 거절된 요청은 `order_creation_results_total`·`order_payment_results_total`에 들어가지 않는다.
 
-설정은 `limited-sale.order.rate-limit.enabled`(기본 `true`), `max-requests`(기본 5), `window`(기본 `1s`)다. 정합성·기준 부하 실험 도구는 "요청 제한 없음" 조건을 지키려고 판매 JVM을 끈 상태로 띄우고 결과에 그 값을 기록한다. 검증은 [OrderRateLimitIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderRateLimitIntegrationTest.java)를 본다.
+설정은 `limited-sale.order.rate-limit.enabled`(기본 `true`), `max-requests`(기본 1), `window`(기본 `1s`)다. 정합성·기준 부하 실험 도구는 "요청 제한 없음" 조건을 지키려고 판매 JVM을 끈 상태로 띄우고 결과에 그 값을 기록한다. 검증은 [OrderRateLimitIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderRateLimitIntegrationTest.java)를 본다.
 
 ## 잠금 뒤에 주문 가능 여부를 판정하는 이유
 

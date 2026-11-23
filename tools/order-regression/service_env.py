@@ -12,6 +12,12 @@ def order_rate_limit_setting(enabled):
     return {ORDER_RATE_LIMIT_VARIABLE: 'true' if enabled else 'false'}
 
 
+def order_rate_limit_max_requests_setting(max_requests):
+    # The application default changed from 5 to 1 after the stage 2-5 and 2-6 measurements, so runners whose results
+    # were taken at 5 pass it explicitly and stay reproducible.
+    return {'LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS': str(max_requests)}
+
+
 def redis_timeout_settings(timeout):
     # Spring Data Redis applies the command timeout and the connect timeout separately; both take the same value.
     return {'SPRING_DATA_REDIS_TIMEOUT': timeout, 'SPRING_DATA_REDIS_CONNECT_TIMEOUT': timeout}

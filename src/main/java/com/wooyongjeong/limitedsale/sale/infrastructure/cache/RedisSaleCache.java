@@ -8,6 +8,7 @@ import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -21,8 +22,12 @@ import tools.jackson.databind.json.JsonMapper;
  * the JSON fields change so entries written by an older build are never read as the new shape.
  *
  * <p>The metrics carry only the outcome, never a sale or member identifier.
+ *
+ * <p>Active unless `limited-sale.sale.cache.enabled` is false, in which case {@link DisabledSaleCache} replaces it.
  */
 @Component
+@ConditionalOnProperty(prefix = "limited-sale.sale.cache", name = "enabled", havingValue = "true",
+    matchIfMissing = true)
 public class RedisSaleCache implements SaleCache {
     private static final Logger log = LoggerFactory.getLogger(RedisSaleCache.class);
     private static final String KEY_PREFIX = "limited-sale:cache:sale:v1:";
