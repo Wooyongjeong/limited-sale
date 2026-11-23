@@ -9,3 +9,4 @@ build/
 .DS_Store
 benchmarks/load-baseline/raw/
 benchmarks/load-baseline-java25/raw/
+benchmarks/redis-outage/*/raw/
