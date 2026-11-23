@@ -10,7 +10,7 @@
 
 실패 횟수는 정규화 이메일과 직접 연결 IP 조합으로 Redis에 기록한다. 첫 실패부터 5분 동안 세고, 1~4번째는 401, 5번째부터는 429다. 차단 중에는 올바른 비밀번호도 거절한다. 입력 형식 오류 400이나 CSRF 오류 403은 비밀번호 불일치와 다른 경로다.
 
-Redis를 사용할 수 없어 인증을 확인할 수 없으면 503이다. Redis가 멈춰 응답하지 않으면 명령 타임아웃 2초가 지난 뒤 503이 된다. 이때 사용자를 로그인된 것으로 추정하지 않는다. 제품·판매 이벤트 공개 GET은 가능한 범위에서 계속 제공한다. [인증 상세](authentication.md)와 [AuthenticationService](../../src/main/java/com/wooyongjeong/limitedsale/member/application/AuthenticationService.java)를 함께 본다.
+Redis를 사용할 수 없어 인증을 확인할 수 없으면 503이다. Redis가 멈춰 응답하지 않으면 명령 타임아웃 1초가 지난 뒤 503이 된다. 클라이언트는 짧게 기다린 뒤 같은 요청 키로 다시 보내면 된다. 세션이 사라졌으면 POST는 CSRF 토큰도 함께 사라져 403 `CSRF_INVALID`가 먼저 나온다. 이때는 다시 로그인한 뒤 같은 요청 키로 보낸다. 2-5 실험에서 15초 Redis 중단 중에도 이 방식으로 중복 주문 없이 재고 300개가 모두 확정됐다. 이때 사용자를 로그인된 것으로 추정하지 않는다. 제품·판매 이벤트 공개 GET은 가능한 범위에서 계속 제공한다. [인증 상세](authentication.md)와 [AuthenticationService](../../src/main/java/com/wooyongjeong/limitedsale/member/application/AuthenticationService.java)를 함께 본다.
 
 ## 사례 2. 조회 때 OPEN이었는데 주문이 거절됐다
 
