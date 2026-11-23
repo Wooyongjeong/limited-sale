@@ -27,6 +27,7 @@ Java 25와 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 |---|---|
 | 요청 수, 오류, 지연 백분위 | `http_server_requests_seconds` (상태·URI 템플릿 라벨) |
 | 업무 거절과 시스템 오류 | `order_creation_results_total{result}`, `order_payment_results_total{result}`와 5xx 비율 |
+| 요청 제한 | `order_rate_limit_total{operation,result}`. `bypassed`는 Redis 장애로 제한 없이 통과시킨 요청 |
 | 결과를 모르는 주문이 쌓이는지 | `order_unfinished`, `order_requires_review` |
 | PG 응답 지연·실패 | `http_client_requests_seconds` (`status=IO_ERROR`는 시간 초과·연결 실패) |
 | 커넥션 풀 고갈 | `hikaricp_connections_active`, `_pending`, `_acquire_seconds` |
@@ -105,7 +106,8 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario bas
 
 - 401: 로그인 필요 또는 자격 증명 실패를 [인증 코드](../../src/main/java/com/wooyongjeong/limitedsale/member/presentation/code/AuthenticationResponseCode.java)로 구분하고 세션 쿠키와 입력을 확인한다.
 - 403: CSRF 토큰 누락·불일치인지 역할 부족인지 응답 코드를 확인하고 [SecurityConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/SecurityConfiguration.java)을 본다.
-- 429: 정규화 이메일과 직접 연결 IP의 실패 구간을 [RedisLoginAttemptLimit](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisLoginAttemptLimit.java)에서 확인한다.
+- 429 로그인: 정규화 이메일과 직접 연결 IP의 실패 구간을 [RedisLoginAttemptLimit](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisLoginAttemptLimit.java)에서 확인한다.
+- 429 주문·결제: `ORDER_RATE_LIMITED`는 회원별 요청 제한이다. `Retry-After`만큼 기다린 뒤 같은 요청 키로 다시 보내면 된다. `order_rate_limit_total{operation,result}`와 [주문 페이지의 요청 제한](orders.md#회원별-요청-제한)을 확인한다.
 - 503: 인증 저장소 장애와 자동 닉네임 생성 소진은 서로 다른 코드다. [RedisFailureFilter](../../src/main/java/com/wooyongjeong/limitedsale/member/infrastructure/security/RedisFailureFilter.java) 또는 [MemberService](../../src/main/java/com/wooyongjeong/limitedsale/member/application/MemberService.java)를 확인한다.
 - 409 주문: `IDEMPOTENCY_CONFLICT`는 같은 키의 입력 변경이다. 판매 조건 거절은 같은 키로 재시도해도 유지된다. [OrderResponseCode](../../src/main/java/com/wooyongjeong/limitedsale/order/presentation/code/OrderResponseCode.java)와 [주문 페이지](orders.md)를 확인한다.
 - 409 닉네임 충돌: 수동 입력 중복인지 자동 생성 경쟁인지 [회원 가입](member.md)의 비교 키와 트랜잭션 설명을 확인한다.

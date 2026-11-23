@@ -6,7 +6,7 @@
 
 ## 상태
 
-2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2·2-3 정책 확정·구현·검증·위키 갱신 완료. 2-4 이후는 구현 전이다.
+2-1 정책 확정(2026-11-23). 사용자가 주 에이전트 추천안 10개를 "전부 추천안"으로 확정했다. Java 25 기준선 재측정 완료. 2-2~2-4 정책 확정·구현·검증·위키 갱신 완료. 2-5 이후는 구현 전이다.
 
 ## 확정한 방향
 
@@ -85,6 +85,16 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 - Redis 장애(명령 실패) 시 주문이 통과하고 `bypassed`가 늘어난다. 인증 자체가 Redis에 의존하는 한계는 2-1 #8대로 기록한다.
 - 설정으로 끄면 제한하지 않는다. 기준선 실행기가 끈 상태로 실행된다.
 - 기존 `./gradlew clean build`와 Python 도구 테스트가 통과한다.
+
+### 2-4 구현과 검증
+
+- 구조: 포트 `order.domain.OrderRateLimit`(`hit`이 `Allowed`·`Rejected(retryAfter)`·`Unavailable`을 반환), 구현 `order.infrastructure.redis.RedisOrderRateLimit`, 정책 적용 `order.application.OrderRateLimiter`. 검사는 `OrderService.create`와 `OrderPaymentService.pay`의 첫 줄이다. 거절은 `OrderResult.Kind.RATE_LIMITED`로 돌아가 컨트롤러가 429와 `Retry-After`를 만든다.
+- Lua: `INCR` → `PTTL` → 첫 요청이거나 만료가 없으면 `PEXPIRE(창)` → `{횟수, 남은 ms}` 반환. 거절 판정(횟수 > 허용)은 Java에서 한다.
+- 설정: `limited-sale.order.rate-limit.enabled`(기본 true), `limited-sale.order.rate-limit.max-requests`(기본 5), `limited-sale.order.rate-limit.window`(기본 1s). 허용 횟수·창의 프로퍼티 이름은 워커가 정했다.
+- 실험 도구: `tools/order-regression`의 `Isolated`가 기본으로 판매 JVM을 `LIMITED_SALE_ORDER_RATE_LIMIT_ENABLED=false`로 띄우고 `resources.json`·기준선 환경 기록에 남긴다. 같은 클래스를 쓰는 모든 실행기에 적용된다. 셸 환경변수로는 바꿀 수 없고 2-6에서 `Isolated(order_rate_limit=True)`로 켠다. 워커가 제한을 끈 기준선 스모크(사용자 200·재고 50·VU 50)가 통과함을 확인했다.
+- 테스트: `OrderRateLimitIntegrationTest` 10개(실제 MySQL·Redis·Mock PG, 판매 앱 2개). 6번째 429와 `Retry-After`, 같은 키 재시도도 계산, 거절 후 요청 기록·주문·점유 수량 불변, 창이 지난 뒤 같은 키로 201, 결제의 별도 카운터, 다른 회원 무영향, 두 인스턴스 합산, 동시 20건 중 정확히 201 5건·429 15건·주문 5건, GET·400은 세지 않음, Redis 명령 실패(WRONGTYPE 키) 시 통과와 `bypassed`, 비활성 시 키 없음, 만료 없는 키 복구, 지표 라벨. 단위 테스트로 거절 시 트랜잭션·게이트웨이 무호출, `Retry-After` 올림 경계, 설정 검증을 확인한다. 한 회원이 연속 요청을 보내는 기존 통합 테스트 5개는 제한을 끄고 실행한다.
+- 주 에이전트 독립 검증: diff 리뷰, `./gradlew clean build` 직접 실행(판매 앱 단위 118·통합 167, Mock PG 11·15, Python 81, 실패·오류·건너뜀 0), `git diff --check`, 위키 링크 검사 통과.
+- 한계: 값이 숫자가 아닌 제한 키는 `INCR` 오류로 해당 회원을 계속 통과시킨다(영구 차단이 아니라 영구 통과). 앱만 쓰는 키라 수동 조작 외에는 생기지 않는다. 명령 타임아웃(2초) 상황은 세션이 먼저 실패하므로 2-5에서 다룬다. 장애 중 경고 로그는 요청마다 남는다.
 
 ## 2-3 확정 정책
 
@@ -229,9 +239,10 @@ Redis 활용 경험을 포트폴리오에 포함하고 MySQL 기반 결과와 �
 ### 2-4. 분산 요청 제한
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-23, 위 "2-4 확정 정책")
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(선택지 "지금 시작")
+- [x] 지정 워커(Sonnet high)의 해당 범위 구현과 검증 결과 수령
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(위 "2-4 구현과 검증")
+- [x] 위키 갱신과 검증
 
 ### 2-5. 장애와 데이터 대조
 
