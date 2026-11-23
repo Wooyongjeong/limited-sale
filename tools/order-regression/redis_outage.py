@@ -431,6 +431,31 @@ def lb_attempt_index(log_text):
     return served
 
 
+def lb_error_entries(log_text):
+    """Error and warning lines of Caddy's own log reduced to the fields that explain them.
+
+    The full lines carry the request headers, including the CSRF token, so only the attempt number is kept.
+    """
+    entries = []
+    for line in log_text.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get('level') not in ('error', 'warn'):
+            continue
+        kept = {key: entry[key] for key in ('ts', 'level', 'logger', 'msg', 'error', 'duration', 'status')
+                if entry.get(key) is not None}
+        values = ((entry.get('request') or {}).get('headers') or {}).get('X-Attempt-Seq')
+        if values:
+            try:
+                kept['seq'] = int(values[0])
+            except ValueError:
+                pass
+        entries.append(kept)
+    return entries
+
+
 # ---- metrics ----
 
 def counter_deltas(before, after, prefixes):

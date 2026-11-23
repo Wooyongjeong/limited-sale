@@ -28,7 +28,7 @@ from load_metrics import combine_management, management_summary, parse_prometheu
 from load_summary import Scenario, build_manifest, build_requests
 from redis_outage import (CACHE_TTL_SECONDS, CACHE_VOLATILE_FIELDS, MAX_RELOGINS_PER_REQUEST, Backoff, Outcome,
                           cache_mismatches, classify, counter_deltas, decide, dirty_outside_results, evaluate, failures,
-                          first_success_after, labelled_delta, lb_attempt_index, non_policy_failures,
+                          first_success_after, labelled_delta, lb_attempt_index, lb_error_entries, non_policy_failures,
                           parse_retry_after, parse_timeout_seconds, probe_summary, server_record_check,
                           summarize_attempts, throughput, trailing_up, user_summary)
 from run_balanced import INSTANCE_NAMES, reconciliation_rows
@@ -476,7 +476,9 @@ async def run_once(env, args, label):
     save(out / 'clock-guard.json', clock_guard)
 
     # Which instance served each attempt comes from the load balancer log, joined by the attempt header.
-    access_log, _ = env.load_balancer_logs()
+    access_log, caddy_log = env.load_balancer_logs()
+    lb_errors = lb_error_entries(caddy_log)
+    save(out / 'lb-errors.json', lb_errors)
     upstream_names = {upstream: name for upstream, name in zip(env.upstreams(), env.instances)}
     served = lb_attempt_index(access_log)
     unmatched = status_mismatch = 0
@@ -548,6 +550,10 @@ async def run_once(env, args, label):
         'db': result['db'], 'verifier_violations': verifier_violations, 'sql_violations': len(violations),
         'attempt_failures': attempt_failures,
         'load_balancer': {'requests_by_instance': by_step_instance, 'attempts_missing_from_access_log': unmatched,
+                          'caddy_errors': {'count': len(lb_errors),
+                                           'by_message': dict(Counter(e.get('error') or e.get('msg')
+                                                                      for e in lb_errors).most_common(5)),
+                                           'samples': lb_errors[:5]},
                           'status_differs_from_client': status_mismatch},
         'metrics': {'management': {'instances': instances, 'combined': combine_management(instances)},
                     'counter_deltas': {'combined': combined_deltas, 'instances': deltas},
