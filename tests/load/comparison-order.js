@@ -8,13 +8,14 @@
 //   ITERATIONS    normal users, one iteration each (default 10000)
 //   VUS           concurrent virtual users of the normal scenario (default 500)
 //   DETAIL_VIEWS  GET /api/v1/sales/{id} requests, with the session cookie, before each normal order (default 0)
-//   ABUSERS       abusive users, one VU each; 0 leaves them out (default 0)
+//   ABUSERS       abusive users; 0 leaves them out (default 0)
+//   ABUSER_VUS    concurrent VUs per abusive user, all sharing that user's session (default 1)
 //   BASE_URL      load balancer address (default http://127.0.0.1:8000)
 //   SALE_ID       sale to order from (required)
 //   SESSIONS_FILE JSON array of {cookies, csrf, key} with ITERATIONS + ABUSERS entries (required)
 //   SUMMARY_PATH  where handleSummary writes the JSON summary (required)
 //
-// An abusive user loops without waiting: every POST /api/v1/orders carries a new Idempotency-Key, a 429 is
+// Each abusive VU loops without waiting: every POST /api/v1/orders carries a new Idempotency-Key, a 429 is
 // followed at once by the next request and Retry-After is ignored. When an order is created it is paid once, as
 // a real user would, so every created order can reach a final state. The loop ends when the normal scenario has
 // completed all its iterations: abusive VUs finish a single iteration only at that point, so the instance's
@@ -28,6 +29,7 @@ const ITERATIONS = Number(__ENV.ITERATIONS || 10000);
 const VUS = Number(__ENV.VUS || 500);
 const DETAIL_VIEWS = Number(__ENV.DETAIL_VIEWS || 0);
 const ABUSERS = Number(__ENV.ABUSERS || 0);
+const ABUSER_VUS = Number(__ENV.ABUSER_VUS || 1);
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8000';
 const SALE_ID = Number(__ENV.SALE_ID);
 const SUMMARY_PATH = __ENV.SUMMARY_PATH;
@@ -47,8 +49,8 @@ if (ABUSERS > 0) {
   scenarios.abuse = {
     executor: 'shared-iterations',
     exec: 'abuse',
-    iterations: ABUSERS,
-    vus: ABUSERS,
+    iterations: ABUSERS * ABUSER_VUS,
+    vus: ABUSERS * ABUSER_VUS,
     maxDuration: __ENV.MAX_DURATION || '10m',
   };
 }
@@ -181,7 +183,8 @@ export function normal() {
 }
 
 export function abuse() {
-  const session = sessions[ITERATIONS + exec.scenario.iterationInTest];
+  // Consecutive iteration numbers go to the same member, so a member's VUs share one session (cookie and CSRF).
+  const session = sessions[ITERATIONS + Math.floor(exec.scenario.iterationInTest / ABUSER_VUS)];
   const jar = new http.CookieJar();
   while (exec.instance.iterationsCompleted < ITERATIONS) {
     const created = createOrder(session, jar, crypto.randomUUID(), 'abuse_order_create');
@@ -235,6 +238,7 @@ export function handleSummary(data) {
     vus: VUS,
     detail_views: DETAIL_VIEWS,
     abusers: ABUSERS,
+    abuser_vus_per_member: ABUSER_VUS,
     duration_seconds: seconds,
     normal_duration_seconds: normalEnd === undefined ? undefined : normalEnd / 1000,
     iterations_completed: counterValue(data, 'normal_iterations'),

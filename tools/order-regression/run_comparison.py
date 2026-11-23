@@ -22,7 +22,7 @@ import uuid
 
 from balanced import parse_access_log, split, summarize_access_log
 from clock_guard import record, sample
-from comparison import (CONDITIONS, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
+from comparison import (CONDITIONS, DEFAULT_CONDITIONS, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
                         derived, evaluate, execution_order, failures, labeled_deltas, policy_plan, rate_limit_counts,
                         verifier_requests, with_overrides)
 from http_client import Client
@@ -59,7 +59,8 @@ def write_sessions(clients, normal, plan):
 def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path):
     k6_env = inherited_environment(os.environ) | {
         'K6_NO_USAGE_REPORT': 'true', 'ITERATIONS': str(plan.users), 'VUS': str(plan.vus),
-        'DETAIL_VIEWS': str(plan.detail_views), 'ABUSERS': str(plan.abusers), 'SALE_ID': str(sale_id),
+        'DETAIL_VIEWS': str(plan.detail_views), 'ABUSERS': str(plan.abusers),
+        'ABUSER_VUS': str(plan.abuser_vus_per_member), 'SALE_ID': str(sale_id),
         'SESSIONS_FILE': sessions_path, 'SUMMARY_PATH': str(summary_path),
         'BASE_URL': f"http://127.0.0.1:{env.ports['lb']}"}
     with open(log_path, 'w') as log:
@@ -189,11 +190,10 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
     return {
         'condition': condition.name, 'experiment': condition.experiment, 'label': None,
         'status': 'passed' if not failures(checks) else 'failed',
-        'plan': {'users': plan.users, 'stock': plan.stock, 'vus': plan.vus, 'detail_views': plan.detail_views,
-                 'abusers': plan.abusers},
+        'plan': plan.__dict__,
         'checks': checks, 'failures': failures(checks),
         'k6': k6_summary, 'load_generator': load_generator, 'db': db, 'abuse': abuse_server,
-        'cache': cache, 'rate_limit': rate_limit, 'derived': derived(k6_summary, db, cache, rate_limit),
+        'cache': cache, 'rate_limit': rate_limit, 'derived': derived(k6_summary, db, cache, rate_limit, plan.abusers),
         'verifier_violations': verifier_violations, 'sql_violations': len(violations),
         'order_create_by_instance': order_create_by_instance,
         'load_balancer_access': {'order_create_split': split(access['order_creates']),
@@ -249,13 +249,15 @@ def aggregate_file(condition, plan, label, summaries, order):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--conditions', default=','.join(CONDITIONS),
-                        help='comma separated, run in this order every round; default all four')
+    parser.add_argument('--conditions', default=','.join(DEFAULT_CONDITIONS),
+                        help='comma separated, run in this order every round; default a-off,a-on,b-off,b-on')
+    parser.add_argument('--order-file', default='execution-order.json',
+                        help='where the run order is written inside --output; refused if it exists')
     parser.add_argument('--rounds', type=int, default=1, help='runs per condition, interleaved round by round')
     parser.add_argument('--output', required=True, help='results root; one directory per condition is created in it')
     parser.add_argument('--label', default=None, help='free text stored in every result')
     parser.add_argument('--prepare-concurrency', type=int, default=16)
-    for name in ('users', 'stock', 'vus', 'detail-views', 'abusers'):
+    for name in ('users', 'stock', 'vus', 'detail-views', 'abusers', 'abuser-vus-per-member'):
         parser.add_argument(f'--{name}', type=int, help='smoke-test override of the plan; marks the result unofficial')
     args = parser.parse_args()
     names = args.conditions.split(',')
@@ -263,13 +265,16 @@ def main():
     if unknown or args.rounds < 1:
         parser.error(f'unknown condition {unknown}' if unknown else '--rounds must be at least 1')
     root = Path(args.output)
+    if (root / args.order_file).exists():
+        parser.error(f'{root / args.order_file} already exists; use another --order-file')
     for name in names:
         if (root / name / 'aggregate.json').exists():
             parser.error(f'{root / name / "aggregate.json"} already exists; use another --output')
     plans, labels = {}, {}
     for name in names:
         policy = policy_plan(CONDITIONS[name])
-        plans[name] = with_overrides(policy, args.users, args.stock, args.vus, args.detail_views, args.abusers)
+        plans[name] = with_overrides(policy, args.users, args.stock, args.vus, args.detail_views, args.abusers,
+                                   args.abuser_vus_per_member)
         labels[name] = args.label if plans[name] == policy else ' | '.join(
             filter(None, [args.label, f'UNOFFICIAL override {plans[name]}']))
     summaries = {name: [] for name in names}
@@ -282,7 +287,7 @@ def main():
         summaries[name].append(summary)
         order.append({'position': len(order) + 1, 'condition': name, 'run': index, 'status': summary['status'],
                       'started_at': summary.get('started_at')})
-        save(root / 'execution-order.json', order)
+        save(root / args.order_file, order)
         print(json.dumps({'condition': name, 'run': index, 'status': summary['status'],
                           'failures': summary['failures'],
                           'throughput': summary.get('k6', {}).get('http_requests_per_second')}), flush=True)

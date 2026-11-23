@@ -22,6 +22,7 @@ class Condition:
     order_rate_limit: bool
     detail_views: int
     abusers: int
+    abuser_vus_per_member: int = 1
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class Plan:
     vus: int
     detail_views: int
     abusers: int
+    abuser_vus_per_member: int = 1
 
     @property
     def expected_confirmed(self):
@@ -44,18 +46,28 @@ CONDITIONS = {
     'a-on': Condition('a-on', 'A', sale_cache=True, order_rate_limit=False, detail_views=5, abusers=0),
     'b-off': Condition('b-off', 'B', sale_cache=True, order_rate_limit=False, detail_views=0, abusers=100),
     'b-on': Condition('b-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100),
+    # Experiment B redesigned: every abusive member sends five requests at once from the same session.
+    'b2-off': Condition('b2-off', 'B', sale_cache=True, order_rate_limit=False, detail_views=0, abusers=100,
+                        abuser_vus_per_member=5),
+    'b2-on': Condition('b2-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100,
+                       abuser_vus_per_member=5),
 }
+DEFAULT_CONDITIONS = ('a-off', 'a-on', 'b-off', 'b-on')
 
 
 def policy_plan(condition):
-    return Plan(users=10_000, stock=1_000, vus=500, detail_views=condition.detail_views, abusers=condition.abusers)
+    return Plan(users=10_000, stock=1_000, vus=500, detail_views=condition.detail_views, abusers=condition.abusers,
+                abuser_vus_per_member=condition.abuser_vus_per_member)
 
 
-def with_overrides(plan, users=None, stock=None, vus=None, detail_views=None, abusers=None):
+def with_overrides(plan, users=None, stock=None, vus=None, detail_views=None, abusers=None,
+                   abuser_vus_per_member=None):
     """Smoke-test overrides; reads and abusers belong to one experiment each, so a zero in the plan stays zero."""
     return replace(plan, users=users or plan.users, stock=stock or plan.stock, vus=vus or plan.vus,
                    detail_views=detail_views if detail_views is not None and plan.detail_views else plan.detail_views,
-                   abusers=abusers if abusers is not None and plan.abusers else plan.abusers)
+                   abusers=abusers if abusers is not None and plan.abusers else plan.abusers,
+                   abuser_vus_per_member=(abuser_vus_per_member if abuser_vus_per_member is not None and plan.abusers
+                                          else plan.abuser_vus_per_member))
 
 
 def execution_order(conditions, rounds):
@@ -186,6 +198,8 @@ def evaluate(result, condition, plan):
     check('payments_requested_for_every_created_order', [created, abuse_created],
           [payment['count'], abuse_payment['count']])
     check('abusers_ran_only_when_planned', plan.abusers > 0, abuse_create['count'] > 0)
+    check('abuser_vus_per_member_as_planned', plan.abuser_vus_per_member if plan.abusers else None,
+          k6.get('abuser_vus_per_member') if plan.abusers else None)
 
     create_requests = create['count'] + abuse_create['count']
     check('every_order_request_reached_an_instance', create_requests, sum(result['order_create_by_instance'].values()))
@@ -264,7 +278,7 @@ def headline(summary):
     return flat
 
 
-def derived(k6, db, cache, rate_limit):
+def derived(k6, db, cache, rate_limit, abusers=0):
     """Ratios the comparison reports; each is None when its denominator is zero."""
     endpoints = k6['endpoints']
     duration = k6['duration_seconds']
@@ -278,6 +292,9 @@ def derived(k6, db, cache, rate_limit):
         'detail_requests_per_second': round(endpoints['sale_detail']['count'] / duration, 3) if duration else None,
         'cache_hit_rate': hit_rate(cache),
         'abuse_requests_per_second': round(abuse_create['count'] / duration, 3) if duration else None,
+        # Attempts per abusive member per second, over the time the abusers ran (the normal scenario's length).
+        'abuse_requests_per_member_per_second': round(abuse_create['count'] / abusers / normal, 3)
+        if abusers and normal else None,
         'abuse_rejection_rate': rejection_rate(status_total(abuse_create, '429'), abuse_create['count']),
         'create_rejection_rate_by_server': rejection_rate(limit['rejected'], decided),
     }
