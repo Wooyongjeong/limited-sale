@@ -105,6 +105,8 @@ python3 -B tools/order-regression/run_redis_outage.py --redis-timeout 1s --users
 | `b-on` | 같음 | 켬(기본) | 켬(기본값 회원당 1초 5회) |
 | `b2-off` | `b-off`와 같으나 남용 사용자 100명이 각각 동시 VU 5개(총 500) | 켬(기본) | 끔 |
 | `b2-on` | `b2-off`와 같음 | 켬(기본) | 켬(기본값 회원당 1초 5회) |
+| `b3-off` | `b2-off`와 같음 | 켬(기본) | 끔(실험용 `max-requests=1`을 같이 전달) |
+| `b3-on` | `b2-off`와 같음 | 켬(기본) | 켬, 실험용으로만 `limited-sale.order.rate-limit.max-requests=1`(창 1초). 앱 기본값은 그대로다 |
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
@@ -113,8 +115,9 @@ caffeinate -ims python3 -B tools/order-regression/run_comparison.py --rounds 3 -
 python3 -B tools/order-regression/run_comparison.py --users 500 --stock 100 --vus 50 --abusers 10 --output /tmp/redis-comparison-smoke
 ```
 
-- 인자: `--conditions`(쉼표 구분, 기본 `a-off,a-on,b-off,b-on`), `--rounds`(조건당 실행 횟수), `--output`(없으면 만들고 조건별 하위 디렉터리를 만든다), `--users`·`--stock`·`--vus`·`--detail-views`(실험 A만)·`--abusers`(실험 B만)·`--abuser-vus-per-member`(실험 B만, 남용 사용자당 동시 VU 수)는 스모크용 덮어쓰기이며 `--label`은 모든 결과에 남는 설명 문구다. `--order-file`(기본 `execution-order.json`)은 실행 순서를 쓰는 파일이다. 같은 출력 디렉터리에 조건의 `aggregate.json`이나 순서 파일이 이미 있으면 거부한다. `b2-off`·`b2-on`은 기본 조건에 들어 있지 않아 `--conditions b2-off,b2-on --order-file execution-order-b2.json`으로 따로 실행한다.
+- 인자: `--conditions`(쉼표 구분, 기본 `a-off,a-on,b-off,b-on`), `--rounds`(조건당 실행 횟수), `--output`(없으면 만들고 조건별 하위 디렉터리를 만든다), `--users`·`--stock`·`--vus`·`--detail-views`(실험 A만)·`--abusers`(실험 B만)·`--abuser-vus-per-member`(실험 B만, 남용 사용자당 동시 VU 수)는 스모크용 덮어쓰기이며 `--label`은 모든 결과에 남는 설명 문구다. `--order-file`(기본 `execution-order.json`)은 실행 순서를 쓰는 파일이다. 같은 출력 디렉터리에 조건의 `aggregate.json`이나 순서 파일이 이미 있으면 거부한다. `b2-off`·`b2-on`·`b3-off`·`b3-on`은 기본 조건에 들어 있지 않아 `--conditions b2-off,b2-on --order-file execution-order-b2.json`처럼 따로 실행한다.
 - 실행 순서: 한 라운드마다 `--conditions` 순서대로 조건 하나씩 실행하고 라운드를 반복한다(`a-off, a-on, b-off, b-on` × 3). 시간대 편향(컴퓨터 상태가 서서히 변하는 영향)을 조건에 나눠 갖게 하려는 것이다. 실제 순서와 각 실행의 상태는 `execution-order.json`에 남는다.
+- `b3`: 판매 JVM에 `LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS=1`을 전달한다(`b3-off`도 같은 값을 전달해 환경 기록을 맞춘다). 결과의 `environment.settings`에 `order_rate_limit_max_requests`·`order_rate_limit_window`와 `overridden_application_defaults`가 남는다. 정상 사용자는 주문 1회·결제 1회를 따로 세므로 429를 받으면(`normal_users_never_rate_limited`) 실패다. `b3-on`은 429가 한 번도 없으면(`rate_limit_override_reached_the_jvms`) 설정이 JVM에 닿지 않은 것으로 보고 실패시킨다.
 - 스위치: 캐시는 판매 JVM의 `LIMITED_SALE_SALE_CACHE_ENABLED`, 요청 제한은 `Isolated(order_rate_limit=...)`로 지정하고 둘 다 `resources.json`·결과의 `environment.settings`에 남는다. 캐시가 실제로 꺼졌는지는 `sale_cache_requests_total` 계열이 지표에 없는지로 확인한다(꺼진 캐시는 지표를 만들지 않는다). 나머지 설정(캐시 TTL 60초, 제한 5회/1초)은 애플리케이션 기본값이다.
 - 실험 A의 조회: 반복마다 `GET /api/v1/sales/{id}`를 `DETAIL_VIEWS`(5)번 연달아 보낸 뒤 주문·결제한다. 조회에는 로그인한 사용자의 세션 쿠키를 붙인다. 공개 엔드포인트라 쿠키가 필요 없지만 브라우저는 같은 출처 요청에 쿠키를 항상 보내고, 쿠키가 있으면 서버가 세션 확인 때문에 Redis를 부르므로(`PublicSessionFallbackFilter`) 캐시를 끈 조건에서도 이 Redis 호출이 남는다. 두 조건에서 같은 비용을 지불하므로 차이는 판매 이벤트 캐시만 반영한다.
 - 실험 B의 남용 사용자: 정상 시나리오와 별도 k6 scenario(`abuse`)로 같은 k6 실행에 들어가며 사용자당 VU 수는 `ABUSER_VUS`(`b`는 1, `b2`는 5)다. 처음 설계(`b`)는 남용 요청이 행 잠금 대기열에 서서 요청당 약 1.6초가 걸려 회원당 약 0.5회/초밖에 못 보내 한도(1초 5회)에 닿지 못했다. `b2`는 한 회원의 VU들이 같은 세션(쿠키·CSRF)을 공유해 병렬로 보내는 봇을 흉내 낸다. 정상 시나리오는 `shared-iterations` VU 500 그대로다. 각 남용 VU는 기다림 없이 매번 `crypto.randomUUID()` 새 요청 키로 `POST /api/v1/orders`를 반복한다. 429를 받아도 `Retry-After`를 무시하고 바로 다음 요청을 보낸다. 주문이 생성되면(201) 정상 사용자처럼 결제를 한 번 하고 계속 반복한다(그래야 생성된 주문이 종료 상태에 이른다). 정상 시나리오의 반복이 모두 끝나면 멈춘다. 남용 VU는 반복 하나를 그 시점까지 이어서 돌리므로 `exec.instance.iterationsCompleted`가 정상 반복 수에 도달하면 끝난다.

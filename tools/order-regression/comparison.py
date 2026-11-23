@@ -23,6 +23,8 @@ class Condition:
     detail_views: int
     abusers: int
     abuser_vus_per_member: int = 1
+    # Experimental override of limited-sale.order.rate-limit.max-requests; None keeps the application default.
+    rate_limit_max_requests: int = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,12 @@ CONDITIONS = {
     'b2-on': Condition('b2-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100,
                        abuser_vus_per_member=5),
 }
+# Experiment B with a one-request-per-second limit (b2's abusers send only about 1.6 per second, under the default 5).
+# b3-off passes the same value although the switch is off, so both conditions record the same environment.
+CONDITIONS['b3-off'] = Condition('b3-off', 'B', sale_cache=True, order_rate_limit=False, detail_views=0, abusers=100,
+                                 abuser_vus_per_member=5, rate_limit_max_requests=1)
+CONDITIONS['b3-on'] = Condition('b3-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100,
+                                abuser_vus_per_member=5, rate_limit_max_requests=1)
 DEFAULT_CONDITIONS = ('a-off', 'a-on', 'b-off', 'b-on')
 
 
@@ -226,9 +234,13 @@ def evaluate(result, condition, plan):
     check('rate_limit_bypassed', 0, limit['create']['bypassed'] + limit['payment']['bypassed'])
     check('client_429_matches_server_rejections', [rate_limited_create, rate_limited_payment],
           [limit['create']['rejected'], limit['payment']['rejected']])
+    # Normal users send one order and one payment, counted separately, so even a limit of one never rejects them.
+    check('normal_users_never_rate_limited', 0, status_total(create, '429') + status_total(payment, '429'))
     if condition.order_rate_limit:
         check('every_create_was_counted_by_the_limit', create_requests,
               limit['create']['allowed'] + limit['create']['rejected'])
+        if condition.rate_limit_max_requests is not None:
+            check('rate_limit_override_reached_the_jvms', True, limit['create']['rejected'] > 0)
     else:
         check('rate_limit_off_counts_nothing', 0, sum(sum(row.values()) for row in limit.values()))
 
@@ -287,6 +299,8 @@ def derived(k6, db, cache, rate_limit, abusers=0):
     limit = rate_limit['create']
     decided = limit['allowed'] + limit['rejected'] + limit['bypassed']
     return {
+        'normal_rate_limited_responses': status_total(endpoints['order_create'], '429')
+        + status_total(endpoints['order_payment'], '429'),
         'actual_order_throughput_per_second': round(db['confirmed'] / duration, 3) if duration else None,
         'actual_order_throughput_per_normal_second': round(db['confirmed'] / normal, 3) if normal else None,
         'detail_requests_per_second': round(endpoints['sale_detail']['count'] / duration, 3) if duration else None,

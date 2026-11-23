@@ -38,8 +38,9 @@ from snapshot import collect
 
 K6_SCRIPT = ROOT / 'tests/load/comparison-order.js'
 CACHE_SWITCH = 'LIMITED_SALE_SALE_CACHE_ENABLED'
-# The sales JVMs use these application defaults; the runner only switches the two flags, so the values are recorded
-# from the code defaults (RedisSaleCache, RedisOrderRateLimit) rather than read back from the JVMs.
+MAX_REQUESTS = 'LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS'
+# The sales JVMs use these application defaults except the two switches and, for b3, max-requests; the values are
+# recorded from the code defaults (RedisSaleCache, RedisOrderRateLimit) rather than read back from the JVMs.
 APPLICATION_DEFAULTS = {'sale_cache_ttl': 'PT60S', 'order_rate_limit_max_requests': 5, 'order_rate_limit_window': '1s'}
 
 
@@ -205,15 +206,27 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
 
 
 def settings_record(condition):
+    """Effective switch and limit values; an experimental override is listed apart from the untouched defaults."""
+    defaults = dict(APPLICATION_DEFAULTS)
+    overridden = {}
+    if condition.rate_limit_max_requests is not None:
+        overridden['order_rate_limit_max_requests'] = {
+            'value': condition.rate_limit_max_requests,
+            'application_default': defaults.pop('order_rate_limit_max_requests')}
+    max_requests = condition.rate_limit_max_requests or APPLICATION_DEFAULTS['order_rate_limit_max_requests']
     return {'sale_cache_enabled': condition.sale_cache, 'order_rate_limit_enabled': condition.order_rate_limit,
-            'defaults_not_overridden': APPLICATION_DEFAULTS}
+            'order_rate_limit_max_requests': max_requests,
+            'order_rate_limit_window': APPLICATION_DEFAULTS['order_rate_limit_window'],
+            'overridden_application_defaults': overridden, 'defaults_not_overridden': defaults}
 
 
 def run_one(root, condition, plan, index, label, prepare_concurrency):
     """One fresh environment and one measured run; the result is always written, passed or failed."""
     raw = Path(root) / condition.name / 'raw' / f'run-{index}'
     env = Isolated(raw, instances=INSTANCE_NAMES, load_balancer=True, order_rate_limit=condition.order_rate_limit,
-                   sales_extra_env={CACHE_SWITCH: 'true' if condition.sale_cache else 'false'})
+                   sales_extra_env={CACHE_SWITCH: 'true' if condition.sale_cache else 'false'}
+                   | ({MAX_REQUESTS: str(condition.rate_limit_max_requests)}
+                      if condition.rate_limit_max_requests is not None else {}))
     started = time.monotonic()
     try:
         env.start()
