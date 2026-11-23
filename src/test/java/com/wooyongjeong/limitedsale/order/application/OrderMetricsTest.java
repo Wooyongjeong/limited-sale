@@ -1,6 +1,9 @@
 package com.wooyongjeong.limitedsale.order.application;
 
+import com.wooyongjeong.limitedsale.order.application.OrderMetrics.RateLimitResult;
 import com.wooyongjeong.limitedsale.order.domain.OrderBacklog;
+import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit;
+import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Operation;
 import com.wooyongjeong.limitedsale.order.domain.OrderRequestKeyCollision;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -33,12 +36,27 @@ class OrderMetricsTest {
     }
 
     @Test
-    void metricsCarryOnlyTheResultLabel() {
+    void metricsCarryOnlyTheResultLabelAndTheRateLimitOperation() {
         metrics.creation(OrderResult.Kind.SALE_SOLD_OUT);
         metrics.payment(OrderResult.Kind.PAYMENT_DECLINED);
+        metrics.rateLimit(Operation.CREATE, RateLimitResult.REJECTED);
         for (Meter meter : registry.getMeters()) {
-            assertThat(meter.getId().getTags()).extracting(tag -> tag.getKey()).containsExactly("result");
+            var labels = meter.getId().getTags().stream().map(tag -> tag.getKey()).toList();
+            assertThat(labels).as(meter.getId().getName())
+                .isEqualTo(meter.getId().getName().equals("order.rate.limit")
+                    ? java.util.List.of("operation", "result") : java.util.List.of("result"));
         }
+    }
+
+    @Test
+    void everyRateLimitOperationAndResultStartsAtZero() {
+        for (String operation : new String[] {"create", "payment"}) {
+            for (String result : new String[] {"allowed", "rejected", "bypassed"}) {
+                assertThat(registry.get("order.rate.limit").tag("operation", operation).tag("result", result)
+                    .counter().count()).as(operation + "/" + result).isZero();
+            }
+        }
+        assertThat(registry.find("order.rate.limit").counters()).hasSize(6);
     }
 
     @Test
@@ -50,7 +68,8 @@ class OrderMetricsTest {
             .thenThrow(collision);
         when(transaction.lookupRequest(1, key, 5, 1))
             .thenReturn(Optional.of(new OrderResult(OrderResult.Kind.REPLAYED, null)));
-        var service = new OrderService(transaction, metrics);
+        var limiter = new OrderRateLimiter(mock(OrderRateLimit.class), metrics, false);
+        var service = new OrderService(transaction, metrics, limiter);
         service.create(1, key, 5, 1);
         service.create(1, key, 5, 1);
         assertThat(count("order.creation.results", "sale_sold_out")).isEqualTo(1);

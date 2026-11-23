@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order.application;
 
+import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit;
 import com.wooyongjeong.limitedsale.payment.api.GatewayResult;
 import com.wooyongjeong.limitedsale.payment.api.PaymentDetails;
 import com.wooyongjeong.limitedsale.payment.api.PaymentGateway;
@@ -23,6 +24,10 @@ class OrderPaymentServiceTest {
         return new OrderMetrics(new SimpleMeterRegistry());
     }
 
+    private static OrderRateLimiter unlimited() {
+        return new OrderRateLimiter(mock(OrderRateLimit.class), metrics(), false);
+    }
+
     private static OrderPaymentTransaction transaction() {
         var transaction = mock(OrderPaymentTransaction.class);
         when(transaction.finish(anyLong(), any(), anyBoolean()))
@@ -43,7 +48,8 @@ class OrderPaymentServiceTest {
         when(gateway.charge(any(), any())).thenReturn(GatewayResult.FAILED);
         when(gateway.query(any(), any())).thenReturn(GatewayResult.FAILED);
         var registry = new SimpleMeterRegistry();
-        var service = new OrderPaymentService(transaction, gateway, new OrderMetrics(registry), Duration.ofSeconds(1));
+        var service = new OrderPaymentService(transaction, gateway, new OrderMetrics(registry), unlimited(),
+                Duration.ofSeconds(1));
         service.pay(1, id);
         service.recover(7);
         assertThat(registry.get("order.payment.results").tag("result", "payment_declined").counter().count())
@@ -61,7 +67,7 @@ class OrderPaymentServiceTest {
         when(gateway.query(any(), any())).thenReturn(GatewayResult.MISSING);
         when(transaction.afterMissing(7, idToken)).thenReturn(PaymentAttempt.Action.CLOSE);
         when(gateway.close(any(), any())).thenReturn(GatewayResult.CLOSED);
-        new OrderPaymentService(transaction, gateway, metrics(), Duration.ofSeconds(1)).pay(1, id);
+        new OrderPaymentService(transaction, gateway, metrics(), unlimited(), Duration.ofSeconds(1)).pay(1, id);
         verify(gateway, never()).charge(any(), any());
         verify(transaction).record(7, idToken, GatewayResult.CLOSED);
     }
@@ -78,7 +84,7 @@ class OrderPaymentServiceTest {
             Thread.sleep(100);
             return GatewayResult.MISSING;
         });
-        new OrderPaymentService(transaction, gateway, metrics(), Duration.ofMillis(20)).pay(1, id);
+        new OrderPaymentService(transaction, gateway, metrics(), unlimited(), Duration.ofMillis(20)).pay(1, id);
         verify(gateway, never()).charge(any(), any());
         verify(gateway, never()).close(any(), any());
         verify(transaction).record(7, idToken, GatewayResult.UNKNOWN);
@@ -98,7 +104,7 @@ class OrderPaymentServiceTest {
         });
         when(gateway.charge(any(), any())).thenReturn(GatewayResult.SUCCEEDED);
         when(transaction.afterMissing(7, idToken)).thenReturn(PaymentAttempt.Action.CHARGE);
-        var service = new OrderPaymentService(transaction, gateway, metrics(), Duration.ofSeconds(1));
+        var service = new OrderPaymentService(transaction, gateway, metrics(), unlimited(), Duration.ofSeconds(1));
         service.pay(1, orderId);
         var remaining = ArgumentCaptor.forClass(Duration.class);
         verify(gateway).charge(any(), remaining.capture());
@@ -119,7 +125,7 @@ class OrderPaymentServiceTest {
             Thread.sleep(100);
             return PaymentAttempt.Action.CHARGE;
         });
-        new OrderPaymentService(transaction, gateway, metrics(), Duration.ofMillis(20)).pay(1, id);
+        new OrderPaymentService(transaction, gateway, metrics(), unlimited(), Duration.ofMillis(20)).pay(1, id);
         verify(gateway, never()).charge(any(), any());
         verify(gateway, never()).close(any(), any());
     }

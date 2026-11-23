@@ -10,6 +10,8 @@ import com.wooyongjeong.limitedsale.order.presentation.request.OrderRequest;
 import com.wooyongjeong.limitedsale.order.presentation.request.PaymentRequest;
 import com.wooyongjeong.limitedsale.order.presentation.response.OrderPageResponse;
 import com.wooyongjeong.limitedsale.order.presentation.response.OrderViewResponse;
+import java.time.Duration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -80,9 +82,19 @@ public class OrderController {
             case PAYMENT_DECLINED -> OrderResponseCode.PAYMENT_DECLINED;
             case ORDER_EXPIRED -> OrderResponseCode.ORDER_EXPIRED;
             case ORDER_NOT_FOUND -> OrderResponseCode.ORDER_NOT_FOUND;
+            case RATE_LIMITED -> OrderResponseCode.ORDER_RATE_LIMITED;
         };
         var order = result.order() == null || result.kind() == OrderResult.Kind.PAYMENT_DECLINED
             || result.kind() == OrderResult.Kind.ORDER_EXPIRED ? null : OrderViewResponse.from(result.order());
-        return ResponseEntity.status(code.httpStatus()).body(ApiResponse.of(code, order));
+        var builder = ResponseEntity.status(code.httpStatus());
+        if (result.kind() == OrderResult.Kind.RATE_LIMITED) {
+            builder.header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds(result.retryAfter())));
+        }
+        return builder.body(ApiResponse.of(code, order));
+    }
+
+    /** Whole seconds, rounded up, because a smaller value would send the client back while the window is open. */
+    private static long retryAfterSeconds(Duration retryAfter) {
+        return Math.max(1, (retryAfter.toMillis() + 999) / 1000);
     }
 }

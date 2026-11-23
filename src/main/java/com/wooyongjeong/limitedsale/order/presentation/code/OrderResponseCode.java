@@ -16,7 +16,8 @@ public enum OrderResponseCode implements ResponseCode {
     SALE_STOPPED(409, "신규 주문이 중단됐습니다"),
     PURCHASE_LIMIT_EXCEEDED(409, "구매 한도를 초과했습니다"),
     SALE_SOLD_OUT(409, "재고가 부족합니다"),
-    IDEMPOTENCY_CONFLICT(409, "요청 키가 다른 입력에 사용됐습니다");
+    IDEMPOTENCY_CONFLICT(409, "요청 키가 다른 입력에 사용됐습니다"),
+    ORDER_RATE_LIMITED(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요");
 
     private final int status;
     private final String message;

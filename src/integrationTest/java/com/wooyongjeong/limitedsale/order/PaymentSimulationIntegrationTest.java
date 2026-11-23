@@ -61,6 +61,7 @@ class PaymentSimulationIntegrationTest {
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
         pg = pgContext.getBean(JdbcTemplate.class);
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.profiles.active=test", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
                 "--MOCK_PG_API_KEY=test-secret",
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",

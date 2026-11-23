@@ -65,6 +65,7 @@ class OrderPaymentIntegrationTest {
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
         pg = pgContext.getBean(JdbcTemplate.class);
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
                 "--MOCK_PG_API_KEY=test-secret",
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
@@ -460,6 +461,7 @@ class OrderPaymentIntegrationTest {
             };
             var service = new com.wooyongjeong.limitedsale.order.application.OrderPaymentService(
                     transaction, interrupted, salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderMetrics.class),
+                    salesContext.getBean(com.wooyongjeong.limitedsale.order.application.OrderRateLimiter.class),
                     java.time.Duration.ofSeconds(3));
             long member = sales.queryForObject("SELECT member_id FROM purchase_orders "
                     + "WHERE public_id=UNHEX(REPLACE(?, '-', ''))", Long.class, f.order());
@@ -505,7 +507,8 @@ class OrderPaymentIntegrationTest {
                     + "p.requested_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND "
                     + "WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", f == afterPaymentSaved ? "SUCCEEDED" : "PROCESSING", f.order());
         }
-        String[] arguments = {"--server.port=0", "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false",
+        String[] arguments = {"--server.port=0", "--limited-sale.order.rate-limit.enabled=false",
+                "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false",
                 "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate", "--MOCK_PG_API_KEY=test-secret",
                 "--MOCK_PG_BASE_URL=http://localhost:" + pgPort,
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
@@ -582,6 +585,7 @@ class OrderPaymentIntegrationTest {
         environment.getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("parallelPg",
                 java.util.Map.of("MOCK_PG_BASE_URL", url)));
         try (var node = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true",
                 "--spring.jpa.hibernate.ddl-auto=validate", "--MOCK_PG_API_KEY=test-secret", "--MOCK_PG_BASE_URL=" + url,
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
@@ -842,6 +846,7 @@ class OrderPaymentIntegrationTest {
         var before = sales.queryForObject("SELECT next_recovery_at FROM purchase_orders WHERE public_id=UNHEX(REPLACE(?, '-', ''))", java.sql.Timestamp.class, f.order());
         int originalPort = port;
         try (var second = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true", "--spring.jpa.hibernate.ddl-auto=validate",
                 "--MOCK_PG_API_KEY=test-secret", "--MOCK_PG_BASE_URL=http://localhost:" + pgPort,
                 "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",

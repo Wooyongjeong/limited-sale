@@ -62,6 +62,7 @@ class SaleIntegrationTest {
         DB.start();
         REDIS.start();
         context = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+            "--limited-sale.order.rate-limit.enabled=false",
             "--spring.datasource.url=" + DB.getJdbcUrl(), "--spring.datasource.username=" + DB.getUsername(),
             "--spring.datasource.password=" + DB.getPassword(), "--spring.data.redis.host=" + REDIS.getHost(),
             "--spring.data.redis.port=" + REDIS.getMappedPort(6379), "--spring.data.redis.timeout=1s",
