@@ -1,0 +1,839 @@
+{
+  "condition": "a-on",
+  "experiment": "A",
+  "label": null,
+  "settings": {
+    "sale_cache_enabled": true,
+    "order_rate_limit_enabled": false,
+    "defaults_not_overridden": {
+      "sale_cache_ttl": "PT60S",
+      "order_rate_limit_max_requests": 5,
+      "order_rate_limit_window": "1s"
+    }
+  },
+  "plan": {
+    "users": 10000,
+    "stock": 1000,
+    "vus": 500,
+    "detail_views": 5,
+    "abusers": 0
+  },
+  "runs": 3,
+  "passed": true,
+  "failures": {},
+  "execution_order": [
+    {
+      "position": 2,
+      "condition": "a-on",
+      "run": 1,
+      "status": "passed",
+      "started_at": "2026-11-23T03:58:31.200895+00:00"
+    },
+    {
+      "position": 6,
+      "condition": "a-on",
+      "run": 2,
+      "status": "passed",
+      "started_at": "2026-11-23T04:09:32.304609+00:00"
+    },
+    {
+      "position": 10,
+      "condition": "a-on",
+      "run": 3,
+      "status": "passed",
+      "started_at": "2026-11-23T04:21:27.838313+00:00"
+    }
+  ],
+  "environment": {
+    "os": "macOS-26.7-arm64-arm-64bit-Mach-O",
+    "cpu_model": "Apple M4 Pro",
+    "cpu_count": 14,
+    "memory_bytes": 51539607552,
+    "java_version": "openjdk version \"25.0.1\" 2025-10-21",
+    "mysql_version": "mysql  Ver 8.4.7 for Linux on aarch64 (MySQL Community Server - GPL)",
+    "redis_version": "Redis server v=7.4.12 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=6d565d4e3893fa59",
+    "docker_version": "29.8.0",
+    "instances": [
+      "sales1",
+      "sales2"
+    ],
+    "open_file_limit": [
+      1048576,
+      9223372036854775807
+    ],
+    "head": "52431ecd8538b2fa4fd9343684f67c34404279c9",
+    "dirty": true,
+    "jar_sha256": {
+      "sales": "e7f38637d24465f382ee3f21c6b1cfada7a38e6b5279fc56e020114a0c7eedee",
+      "pg": "b70898738c0af134749999fd4f8fb906e0c8fc34b78985306a8a34b7b7cae36b"
+    },
+    "order_rate_limit_enabled": false,
+    "k6_version": "k6 v2.1.0 (commit/devel, go1.26.4, darwin/arm64)",
+    "docker_vm": {
+      "cpus": 14,
+      "memory_bytes": 8318976000
+    },
+    "sales_jar_libraries": [
+      "HikariCP-7.0.2",
+      "micrometer-core-1.17.2",
+      "micrometer-registry-prometheus-1.17.2",
+      "mysql-connector-j-9.7.0",
+      "prometheus-metrics-core-1.7.0",
+      "tomcat-embed-core-11.0.27"
+    ],
+    "label": null,
+    "settings": {
+      "sale_cache_enabled": true,
+      "order_rate_limit_enabled": false,
+      "defaults_not_overridden": {
+        "sale_cache_ttl": "PT60S",
+        "order_rate_limit_max_requests": 5,
+        "order_rate_limit_window": "1s"
+      }
+    },
+    "dirty_excluding_results": false
+  },
+  "metrics": {
+    "abuse.confirmed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "abuse.created": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "abuse.stored_requests": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "business_codes.order_create.ORDER_CREATED": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "business_codes.order_create.SALE_SOLD_OUT": {
+      "median": 9000,
+      "min": 9000,
+      "max": 9000,
+      "values": [
+        9000,
+        9000,
+        9000
+      ]
+    },
+    "business_codes.order_payment.PAYMENT_SUCCEEDED": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "business_codes.sale_detail.SALE_FOUND": {
+      "median": 50000,
+      "min": 50000,
+      "max": 50000,
+      "values": [
+        50000,
+        50000,
+        50000
+      ]
+    },
+    "cache.error": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "cache.hit": {
+      "median": 49669,
+      "min": 49623,
+      "max": 49810,
+      "values": [
+        49810,
+        49623,
+        49669
+      ]
+    },
+    "cache.miss": {
+      "median": 331,
+      "min": 190,
+      "max": 377,
+      "values": [
+        190,
+        377,
+        331
+      ]
+    },
+    "database.confirmed": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "database.confirmed_abuse": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "database.confirmed_normal": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "database.orders": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "database.remaining": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "derived.abuse_requests_per_second": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "derived.actual_order_throughput_per_normal_second": {
+      "median": 19.437,
+      "min": 18.507,
+      "max": 19.874,
+      "values": [
+        18.507,
+        19.437,
+        19.874
+      ]
+    },
+    "derived.actual_order_throughput_per_second": {
+      "median": 19.437,
+      "min": 18.507,
+      "max": 19.874,
+      "values": [
+        18.507,
+        19.437,
+        19.874
+      ]
+    },
+    "derived.cache_hit_rate": {
+      "median": 0.9934,
+      "min": 0.9925,
+      "max": 0.9962,
+      "values": [
+        0.9962,
+        0.9925,
+        0.9934
+      ]
+    },
+    "derived.detail_requests_per_second": {
+      "median": 971.833,
+      "min": 925.331,
+      "max": 993.682,
+      "values": [
+        925.331,
+        971.833,
+        993.682
+      ]
+    },
+    "durations_seconds.convergence_seconds": {
+      "median": 0.09,
+      "min": 0.08,
+      "max": 0.1,
+      "values": [
+        0.09,
+        0.1,
+        0.08
+      ]
+    },
+    "durations_seconds.environment_start_seconds": {
+      "median": 25.67,
+      "min": 24.48,
+      "max": 25.81,
+      "values": [
+        25.81,
+        25.67,
+        24.48
+      ]
+    },
+    "durations_seconds.k6_seconds": {
+      "median": 51.77,
+      "min": 50.6,
+      "max": 54.35,
+      "values": [
+        54.35,
+        51.77,
+        50.6
+      ]
+    },
+    "durations_seconds.prepare_seconds": {
+      "median": 79.0,
+      "min": 78.89,
+      "max": 124.62,
+      "values": [
+        78.89,
+        124.62,
+        79.0
+      ]
+    },
+    "durations_seconds.total_seconds": {
+      "median": 140.65,
+      "min": 136.7,
+      "max": 183.76,
+      "values": [
+        140.65,
+        183.76,
+        136.7
+      ]
+    },
+    "durations_seconds.verify_seconds": {
+      "median": 0.53,
+      "min": 0.49,
+      "max": 0.58,
+      "values": [
+        0.58,
+        0.53,
+        0.49
+      ]
+    },
+    "endpoints.order_create.avg_ms": {
+      "median": 1586.1037640000027,
+      "min": 1390.1987911,
+      "max": 1671.5856484000105,
+      "values": [
+        1671.5856484000105,
+        1586.1037640000027,
+        1390.1987911
+      ]
+    },
+    "endpoints.order_create.count": {
+      "median": 10000,
+      "min": 10000,
+      "max": 10000,
+      "values": [
+        10000,
+        10000,
+        10000
+      ]
+    },
+    "endpoints.order_create.max_ms": {
+      "median": 3900.95,
+      "min": 3669.027,
+      "max": 4611.328,
+      "values": [
+        4611.328,
+        3900.95,
+        3669.027
+      ]
+    },
+    "endpoints.order_create.p50_ms": {
+      "median": 1622.633,
+      "min": 1560.5140000000001,
+      "max": 1650.7440000000001,
+      "values": [
+        1650.7440000000001,
+        1622.633,
+        1560.5140000000001
+      ]
+    },
+    "endpoints.order_create.p95_ms": {
+      "median": 2130.3274,
+      "min": 2079.9639500000003,
+      "max": 2434.695549999999,
+      "values": [
+        2434.695549999999,
+        2130.3274,
+        2079.9639500000003
+      ]
+    },
+    "endpoints.order_create.p99_ms": {
+      "median": 3064.4585099999995,
+      "min": 2893.9337399999995,
+      "max": 3089.5422799999997,
+      "values": [
+        3064.4585099999995,
+        3089.5422799999997,
+        2893.9337399999995
+      ]
+    },
+    "endpoints.order_payment.avg_ms": {
+      "median": 4483.789828000004,
+      "min": 4457.862955999996,
+      "max": 5114.888295000003,
+      "values": [
+        5114.888295000003,
+        4483.789828000004,
+        4457.862955999996
+      ]
+    },
+    "endpoints.order_payment.count": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "endpoints.order_payment.max_ms": {
+      "median": 8065.044,
+      "min": 7914.053,
+      "max": 9076.56,
+      "values": [
+        9076.56,
+        7914.053,
+        8065.044
+      ]
+    },
+    "endpoints.order_payment.p50_ms": {
+      "median": 4246.59,
+      "min": 4164.246499999999,
+      "max": 4965.4665,
+      "values": [
+        4965.4665,
+        4246.59,
+        4164.246499999999
+      ]
+    },
+    "endpoints.order_payment.p95_ms": {
+      "median": 6837.5107499999995,
+      "min": 6628.1456499999995,
+      "max": 7232.296149999998,
+      "values": [
+        7232.296149999998,
+        6628.1456499999995,
+        6837.5107499999995
+      ]
+    },
+    "endpoints.order_payment.p99_ms": {
+      "median": 7106.03194,
+      "min": 6891.3782599999995,
+      "max": 8260.79057,
+      "values": [
+        8260.79057,
+        6891.3782599999995,
+        7106.03194
+      ]
+    },
+    "endpoints.sale_detail.avg_ms": {
+      "median": 101.17708147999818,
+      "min": 96.91575774000047,
+      "max": 129.10526487999934,
+      "values": [
+        96.91575774000047,
+        101.17708147999818,
+        129.10526487999934
+      ]
+    },
+    "endpoints.sale_detail.count": {
+      "median": 50000,
+      "min": 50000,
+      "max": 50000,
+      "values": [
+        50000,
+        50000,
+        50000
+      ]
+    },
+    "endpoints.sale_detail.max_ms": {
+      "median": 2533.232,
+      "min": 2341.848,
+      "max": 3042.039,
+      "values": [
+        3042.039,
+        2341.848,
+        2533.232
+      ]
+    },
+    "endpoints.sale_detail.p50_ms": {
+      "median": 85.524,
+      "min": 73.0995,
+      "max": 113.4085,
+      "values": [
+        73.0995,
+        85.524,
+        113.4085
+      ]
+    },
+    "endpoints.sale_detail.p95_ms": {
+      "median": 242.88374999999996,
+      "min": 239.19004999999999,
+      "max": 328.81139999999994,
+      "values": [
+        239.19004999999999,
+        242.88374999999996,
+        328.81139999999994
+      ]
+    },
+    "endpoints.sale_detail.p99_ms": {
+      "median": 446.80251999999984,
+      "min": 432.27246999999966,
+      "max": 495.46664,
+      "values": [
+        495.46664,
+        446.80251999999984,
+        432.27246999999966
+      ]
+    },
+    "errors.connection_errors": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "errors.server_errors_5xx": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "load_generator.cpu_cores_mean": {
+      "median": 0.35,
+      "min": 0.34,
+      "max": 0.35,
+      "values": [
+        0.34,
+        0.35,
+        0.35
+      ]
+    },
+    "load_generator.cpu_seconds": {
+      "median": 18.37,
+      "min": 17.9,
+      "max": 18.62,
+      "values": [
+        18.62,
+        18.37,
+        17.9
+      ]
+    },
+    "management.gc_pause_seconds": {
+      "median": 0.052,
+      "min": 0.034,
+      "max": 0.067,
+      "values": [
+        0.034,
+        0.067,
+        0.052
+      ]
+    },
+    "management.hikari_acquire_max_ms_peak": {
+      "median": 4261.0,
+      "min": 3724.0,
+      "max": 4407.0,
+      "values": [
+        4407.0,
+        3724.0,
+        4261.0
+      ]
+    },
+    "management.hikari_acquire_mean_ms": {
+      "median": 1339.623,
+      "min": 1179.767,
+      "max": 1468.938,
+      "values": [
+        1468.938,
+        1339.623,
+        1179.767
+      ]
+    },
+    "management.hikari_active_peak": {
+      "median": 10.0,
+      "min": 10.0,
+      "max": 10.0,
+      "values": [
+        10.0,
+        10.0,
+        10.0
+      ]
+    },
+    "management.hikari_pending_peak": {
+      "median": 191.0,
+      "min": 191.0,
+      "max": 191.0,
+      "values": [
+        191.0,
+        191.0,
+        191.0
+      ]
+    },
+    "management.jvm_cpu_seconds": {
+      "median": 81.85,
+      "min": 81.59,
+      "max": 83.32,
+      "values": [
+        81.85,
+        83.32,
+        81.59
+      ]
+    },
+    "management.process_cpu_usage_peak": {
+      "median": 0.15500966544466038,
+      "min": 0.14212709552847425,
+      "max": 0.15878119668670887,
+      "values": [
+        0.14212709552847425,
+        0.15500966544466038,
+        0.15878119668670887
+      ]
+    },
+    "management.system_cpu_usage_mean": {
+      "median": 0.8889,
+      "min": 0.8831,
+      "max": 0.901,
+      "values": [
+        0.901,
+        0.8889,
+        0.8831
+      ]
+    },
+    "management.system_cpu_usage_peak": {
+      "median": 0.9907932011331445,
+      "min": 0.9807142857142858,
+      "max": 0.9971671388101983,
+      "values": [
+        0.9971671388101983,
+        0.9907932011331445,
+        0.9807142857142858
+      ]
+    },
+    "mysql.deadlocks": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "mysql.lock_timeouts": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "mysql.row_lock_time_ms": {
+      "median": 913293,
+      "min": 892449,
+      "max": 965606,
+      "values": [
+        965606,
+        913293,
+        892449
+      ]
+    },
+    "mysql.row_lock_waits": {
+      "median": 10997,
+      "min": 10997,
+      "max": 10999,
+      "values": [
+        10999,
+        10997,
+        10997
+      ]
+    },
+    "rate_limit.create.allowed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.create.bypassed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.create.rejected": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.allowed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.bypassed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.rejected": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "status_counts.order_create.201": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "status_counts.order_create.409": {
+      "median": 9000,
+      "min": 9000,
+      "max": 9000,
+      "values": [
+        9000,
+        9000,
+        9000
+      ]
+    },
+    "status_counts.order_payment.200": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "status_counts.sale_detail.200": {
+      "median": 50000,
+      "min": 50000,
+      "max": 50000,
+      "values": [
+        50000,
+        50000,
+        50000
+      ]
+    },
+    "throughput.duration_seconds": {
+      "median": 51.449155,
+      "min": 50.317904000000006,
+      "max": 54.034732000000005,
+      "values": [
+        54.034732000000005,
+        51.449155,
+        50.317904000000006
+      ]
+    },
+    "throughput.http_requests_per_second": {
+      "median": 1185.6365765385262,
+      "min": 1128.9035356000284,
+      "max": 1212.2921495299167,
+      "values": [
+        1128.9035356000284,
+        1185.6365765385262,
+        1212.2921495299167
+      ]
+    },
+    "throughput.normal_duration_seconds": {
+      "median": 51.449121,
+      "min": 50.317879999999995,
+      "max": 54.034701999999996,
+      "values": [
+        54.034701999999996,
+        51.449121,
+        50.317879999999995
+      ]
+    }
+  },
+  "median_total_run_seconds": 140.65
+}
