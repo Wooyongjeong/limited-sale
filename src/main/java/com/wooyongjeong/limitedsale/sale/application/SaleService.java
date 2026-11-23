@@ -9,11 +9,14 @@ import com.wooyongjeong.limitedsale.sale.api.SaleListItem;
 import com.wooyongjeong.limitedsale.sale.api.SalePage;
 import com.wooyongjeong.limitedsale.sale.api.SalePatch;
 import com.wooyongjeong.limitedsale.sale.api.SaleQuery;
+import com.wooyongjeong.limitedsale.sale.domain.CachedSale;
 import com.wooyongjeong.limitedsale.sale.domain.Sale;
+import com.wooyongjeong.limitedsale.sale.domain.SaleCache;
 import com.wooyongjeong.limitedsale.sale.domain.SaleException;
 import com.wooyongjeong.limitedsale.sale.domain.SaleStatus;
 import com.wooyongjeong.limitedsale.sale.domain.SaleStore;
 import com.wooyongjeong.limitedsale.sale.domain.SaleTerms;
+import java.time.Clock;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class SaleService implements SaleCommand, SaleQuery {
     private final SaleStore store;
     private final ProductQuery products;
+    private final SaleCache cache;
+    private final Clock clock;
 
-    public SaleService(SaleStore store, ProductQuery products) {
+    public SaleService(SaleStore store, ProductQuery products, SaleCache cache, Clock clock) {
         this.store = store;
         this.products = products;
+        this.cache = cache;
+        this.clock = clock;
     }
 
     @Override
@@ -62,7 +69,9 @@ public class SaleService implements SaleCommand, SaleQuery {
             input.totalQuantity() == null ? old.totalQuantity() : input.totalQuantity(),
             input.perMemberLimit() == null ? old.perMemberLimit() : input.perMemberLimit());
         Sale changed = current.revise(replacement, snapshot, restricted, input.version(), now);
-        return details(changed == current ? current : store.update(changed), now);
+        SaleDetails result = details(changed == current ? current : store.update(changed), now);
+        cache.evictAfterCommit(saleId);
+        return result;
     }
 
     @Override
@@ -71,6 +80,7 @@ public class SaleService implements SaleCommand, SaleQuery {
         Sale sale = locked(saleId);
         sale.requireDeletable(store.now());
         store.delete(saleId);
+        cache.evictAfterCommit(saleId);
     }
 
     @Override
@@ -89,16 +99,30 @@ public class SaleService implements SaleCommand, SaleQuery {
         Sale current = locked(saleId);
         Instant now = store.now();
         Sale changed = current.operate(stop, now);
-        return details(changed == current ? current : store.update(changed), now);
+        SaleDetails result = details(changed == current ? current : store.update(changed), now);
+        // Also removed when nothing changed, so a repeated request repairs an entry left by a failed removal.
+        cache.evictAfterCommit(saleId);
+        return result;
     }
 
+    /**
+     * Deliberately not transactional: a transaction would take a database connection even when the cache answers.
+     * The status uses the application clock on both paths so a cached entry changes state at the start and end
+     * boundaries without waiting for expiry.
+     */
     @Override
-    @Transactional(readOnly = true)
     public SaleDetails get(long saleId) {
         requireId(saleId, "saleId");
+        var lookup = cache.find(saleId);
+        if (lookup instanceof SaleCache.Lookup.Hit hit) {
+            return details(hit.sale().toSale(), Instant.now(clock));
+        }
         Sale sale = store.find(saleId).orElseThrow(() ->
             new SaleException(SaleException.Kind.NOT_FOUND, "판매 이벤트를 찾을 수 없습니다"));
-        return details(sale, store.now());
+        if (lookup instanceof SaleCache.Lookup.Miss) {
+            cache.put(CachedSale.from(sale));
+        }
+        return details(sale, Instant.now(clock));
     }
 
     @Override

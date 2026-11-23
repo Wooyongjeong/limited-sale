@@ -87,11 +87,14 @@ public class SaleEntity {
         updatedAt = time;
     }
 
-    void finish(int quantity, boolean confirmed, Instant time) {
+    /** True only when this call raised the confirmed quantity to the total, the change a cached status would miss. */
+    boolean finish(int quantity, boolean confirmed, Instant time) {
+        boolean wasSoldOut = soldQuantity == totalQuantity;
         var result = new AllocationQuantities(reservedQuantity, soldQuantity).finish(quantity, confirmed);
         reservedQuantity = result.reserved();
         soldQuantity = result.finalized();
         updatedAt = time;
+        return !wasSoldOut && soldQuantity == totalQuantity;
     }
 
     private void setTerms(SaleTerms terms) {

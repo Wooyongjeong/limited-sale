@@ -234,7 +234,7 @@ Java 25, Spring Boot 4.1.2, Gradle Wrapper 9.9.2와 MySQL 8.4.7의 로컬 Compos
 
 ### 2단계: Redis 캐시·분산 요청 제한
 
-1단계의 세션용 Redis를 유지하고 활용 범위를 확장한다. 판매 이벤트 조회 캐시는 `sale.infrastructure.cache`, 주문 요청 제한은 `order.infrastructure.redis`에 둔다. 요청 제한 정책과 사용 위치는 `order.application`이 소유한다.
+1단계의 세션용 Redis를 유지하고 활용 범위를 확장한다. 판매 이벤트 조회 캐시는 `sale.infrastructure.cache`, 주문 요청 제한은 `order.infrastructure.redis`에 둔다. 캐시 계약(`SaleCache`, `CachedSale`)은 `SaleStore`처럼 `sale.domain`이 소유하고, `sale.application`과 품절 전환을 아는 `sale.infrastructure.persistence`가 이를 사용한다. 요청 제한 정책과 사용 위치는 `order.application`이 소유한다.
 
 두 도메인이 Redis 키를 직접 공유하지 않는다. Redis 수량 사전 판정을 추가한다면 수량을 소유한 `sale` 안에 두고 공개 계약으로 호출한다. Redis 변경은 MySQL 롤백으로 되돌아가지 않으므로 별도의 복구 설계가 필요하다. 그 전에는 조회 캐시와 요청 제한까지만 적용한다.
 

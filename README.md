@@ -20,6 +20,8 @@ ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제
 
 `GET /api/v1/sales?productId=1&status=SCHEDULED&page=0&size=20`과 `GET /api/v1/sales/{id}`는 공개 조회다. 수량은 총수량만 공개한다. PATCH는 조회한 version을 보내야 하며 충돌 시 409다. 시작 후에는 이름·설명만 수정할 수 있다. 중단·재개는 시작 전에도 가능하며 종료 후에는 거절한다. [전체 계약](docs/stages/01-6-sale-management-and-query.md)을 참고한다.
 
+`GET /api/v1/sales/{id}`는 Redis에 저장 값을 캐시한다(키 `limited-sale:cache:sale:v1:{id}`). 상태는 읽을 때 앱 시계(UTC)로 계산한다. TTL 기본값은 60초이며 `LIMITED_SALE_SALE_CACHE_TTL`(예: `PT30S`)로 양의 기간을 설정한다. 수정·중단·재개·삭제와 마지막 수량 확정은 커밋 후 키를 지우고, Redis 장애 시에는 MySQL 결과로 응답한다. 지표는 `sale_cache_requests_total{result}`, `sale_cache_evictions_total{result}`다.
+
 ## Mock PG 시나리오
 
 두 앱에 같은 `MOCK_PG_API_KEY`를 환경변수로 설정한다. 실제 비밀값은 저장소에 기록하지 않는다. PG의 `/api/v1/payments` 결제·조회·종료와 `/api/v1/simulations/{pgKey}` 설정 요청은 `X-Mock-PG-Key` 헤더가 필요하며 health는 공개한다. 판매 서버는 `MOCK_PG_BASE_URL`로 PG 주소를 받는다.
