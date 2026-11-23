@@ -2,6 +2,7 @@ package com.wooyongjeong.limitedsale.sale.infrastructure.persistence;
 
 import com.wooyongjeong.limitedsale.sale.api.SaleAllocation;
 import com.wooyongjeong.limitedsale.sale.api.SaleReservation;
+import com.wooyongjeong.limitedsale.sale.application.SaleCache;
 import java.time.Instant;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -13,12 +14,14 @@ public class JpaSaleReservation implements SaleReservation {
     private final SaleJpaRepository sales;
     private final SaleBuyerQuantityJpaRepository buyers;
     private final SaleReservationJpaRepository reservations;
+    private final SaleCache cache;
 
     public JpaSaleReservation(SaleJpaRepository sales, SaleBuyerQuantityJpaRepository buyers,
-            SaleReservationJpaRepository reservations) {
+            SaleReservationJpaRepository reservations, SaleCache cache) {
         this.sales = sales;
         this.buyers = buyers;
         this.reservations = reservations;
+        this.cache = cache;
     }
 
     @Override
@@ -58,8 +61,12 @@ public class JpaSaleReservation implements SaleReservation {
         SaleBuyerQuantityEntity buyer = buyers.findForUpdate(saleId, memberId).orElseThrow();
         SaleReservationEntity reservation = reservations.findForUpdate(orderId).orElseThrow();
         reservation.finish(saleId, memberId, quantity, confirmed, time);
-        sale.finish(quantity, confirmed, time);
+        boolean soldOut = sale.finish(quantity, confirmed, time);
         buyer.finish(quantity, confirmed, time);
+        if (soldOut) {
+            // Only this transition changes the cached status (SOLD_OUT); other confirmations leave the entry alone.
+            cache.evictAfterCommit(saleId);
+        }
     }
 
     @Override
