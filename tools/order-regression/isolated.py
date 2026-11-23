@@ -146,7 +146,9 @@ class Isolated:
         for suffix, database in [('sales', 'limited_sale'), ('pgdb', 'mock_pg')]:
             self.container(suffix, 'mysql:8.4.7', 3306,
                            {'MYSQL_DATABASE': database, 'MYSQL_ROOT_PASSWORD': self.password})
-        self.container('redis', 'redis:7.4-alpine', 6379)
+        # Same memory limit and eviction policy as compose.yaml so experiments run against the deployed shape.
+        self.container('redis', 'redis:7.4-alpine', 6379,
+                       args=('--maxmemory', '256mb', '--maxmemory-policy', 'noeviction'))
         self.wait_mysql('sales')
         self.wait_mysql('pg')
         # Each sales instance needs its own management port; the default is fixed and would collide.

@@ -7,11 +7,15 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Without these Lettuce waits its 60 s default, holding a request thread when Redis stops answering.
+      timeout: 2s
+      connect-timeout: 2s
   session:
     timeout: 30m
     data:
       redis:
         flush-mode: immediate
+        namespace: limited-sale:session
   jackson:
     read:
       strict-duplicate-detection: true

@@ -17,6 +17,8 @@ services:
       retries: 20
   redis:
     image: redis:7.4-alpine
+    # noeviction keeps sessions from being evicted under memory pressure; writes fail instead. Persistence stays at the image default.
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -47,6 +49,16 @@ services:
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
+  redis-exporter:
+    profiles: ["monitoring"]
+    image: oliver006/redis_exporter:v1.98.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "127.0.0.1:${REDIS_EXPORTER_PORT:-9121}:9121"
   grafana:
     profiles: ["monitoring"]
     image: grafana/grafana:13.3.0

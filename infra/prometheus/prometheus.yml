@@ -9,3 +9,7 @@ scrape_configs:
       # Management ports on the host: 8090 is the default, 8092 the second instance behind the load balancer.
       # A target that is not running shows as down and does not affect the other.
       - targets: ["host.docker.internal:8090", "host.docker.internal:8092"]
+  - job_name: redis
+    static_configs:
+      # Compose-network name of the redis_exporter service (monitoring profile).
+      - targets: ["redis-exporter:9121"]
