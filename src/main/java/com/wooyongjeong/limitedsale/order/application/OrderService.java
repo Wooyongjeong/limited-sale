@@ -1,6 +1,8 @@
 package com.wooyongjeong.limitedsale.order.application;
 
+import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Operation;
 import com.wooyongjeong.limitedsale.order.domain.OrderRequestKeyCollision;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -8,13 +10,19 @@ import org.springframework.stereotype.Service;
 public class OrderService {
     private final OrderTransaction transaction;
     private final OrderMetrics metrics;
+    private final OrderRateLimiter rateLimiter;
 
-    public OrderService(OrderTransaction transaction, OrderMetrics metrics) {
+    public OrderService(OrderTransaction transaction, OrderMetrics metrics, OrderRateLimiter rateLimiter) {
         this.transaction = transaction;
         this.metrics = metrics;
+        this.rateLimiter = rateLimiter;
     }
 
     public OrderResult create(long memberId, UUID key, long saleId, int quantity) {
+        Optional<OrderResult> rejected = rateLimiter.reject(memberId, Operation.CREATE);
+        if (rejected.isPresent()) {
+            return rejected.get();
+        }
         OrderResult result;
         try {
             result = transaction.create(memberId, key, saleId, quantity);

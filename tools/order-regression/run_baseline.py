@@ -113,7 +113,8 @@ def environment_record(env, label):
     docker = json.loads(subprocess.run(['docker', 'info', '--format', '{{json .}}'], text=True,
                                        capture_output=True).stdout)
     keys = ('os', 'cpu_model', 'cpu_count', 'memory_bytes', 'java_version', 'mysql_version', 'redis_version',
-            'docker_version', 'instances', 'open_file_limit', 'head', 'dirty', 'jar_sha256')
+            'docker_version', 'instances', 'open_file_limit', 'head', 'dirty', 'jar_sha256',
+            'order_rate_limit_enabled')
     return {**{key: resources[key] for key in keys}, 'k6_version': k6_version,
             'docker_vm': {'cpus': docker.get('NCPU'), 'memory_bytes': docker.get('MemTotal')},
             'sales_jar_libraries': jar_libraries(ROOT / 'build/libs/limited-sale-0.0.1-SNAPSHOT.jar'),

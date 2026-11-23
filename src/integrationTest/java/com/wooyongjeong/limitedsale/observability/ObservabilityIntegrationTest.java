@@ -72,6 +72,7 @@ class ObservabilityIntegrationTest {
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
         // mock-pg's application.yml shadows the sales one on this classpath, so load the real one explicitly.
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+                "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.config.additional-location=file:src/main/resources/application.yml",
                 "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false",
                 "--limited-sale.observability.backlog-interval=PT0.2S", "--spring.flyway.enabled=true",
@@ -285,7 +286,7 @@ class ObservabilityIntegrationTest {
             }
         }
         assertThat(labelNames).isSubsetOf("result", "client_name", "exception", "method", "outcome", "status", "uri",
-                "error", "le");
+                "error", "le", "operation");
     }
 
     @Test

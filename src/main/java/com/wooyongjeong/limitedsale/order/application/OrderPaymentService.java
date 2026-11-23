@@ -1,8 +1,10 @@
 package com.wooyongjeong.limitedsale.order.application;
 
+import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Operation;
 import com.wooyongjeong.limitedsale.payment.api.GatewayResult;
 import com.wooyongjeong.limitedsale.payment.api.PaymentGateway;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,8 +17,10 @@ public class OrderPaymentService {
     private final PaymentGateway gateway;
     private final Duration budget;
     private final OrderMetrics metrics;
+    private final OrderRateLimiter rateLimiter;
 
     public OrderPaymentService(OrderPaymentTransaction transaction, PaymentGateway gateway, OrderMetrics metrics,
+            OrderRateLimiter rateLimiter,
             @Value("${limited-sale.payment.timeout:PT3S}") Duration budget) {
         if (budget.isZero() || budget.isNegative()) {
             throw new IllegalArgumentException("Payment timeout must be positive");
@@ -25,10 +29,15 @@ public class OrderPaymentService {
         this.gateway = gateway;
         this.budget = budget;
         this.metrics = metrics;
+        this.rateLimiter = rateLimiter;
     }
 
     @Transactional(propagation = Propagation.NEVER)
     public OrderResult pay(long memberId, UUID publicId) {
+        Optional<OrderResult> rejected = rateLimiter.reject(memberId, Operation.PAYMENT);
+        if (rejected.isPresent()) {
+            return rejected.get();
+        }
         OrderResult result = execute(transaction.begin(memberId, publicId));
         metrics.payment(result.kind());
         return result;

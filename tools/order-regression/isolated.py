@@ -21,7 +21,7 @@ import urllib.request
 import uuid
 
 from redact import redact_line
-from service_env import inherited_environment
+from service_env import inherited_environment, order_rate_limit_setting
 
 ROOT = Path(__file__).resolve().parents[2]
 JAVA = str(Path(os.environ['JAVA_HOME']) / 'bin/java')
@@ -51,9 +51,10 @@ LB_UPSTREAM_HOST = 'host.docker.internal'
 
 
 class Isolated:
-    def __init__(self, output, instances=('sales1', 'sales2'), load_balancer=False):
+    def __init__(self, output, instances=('sales1', 'sales2'), load_balancer=False, order_rate_limit=False):
         self.instances = tuple(instances)
         self.load_balancer = load_balancer
+        self.order_rate_limit = order_rate_limit
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.source_sha256 = {p.name: file_hash(p) for p in sorted((ROOT / 'tools/order-regression').iterdir())
                               if p.is_file() and p.suffix in ('.py', '.java')}
@@ -185,7 +186,7 @@ class Isolated:
         for cid in self.containers:
             inspection = json.loads(command('docker', 'inspect', cid))[0]
             mounts[cid] = [{'type': item['Type'], 'name': item.get('Name')} for item in inspection.get('Mounts', [])]
-        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'instances': list(self.instances), 'load_balancer': self.load_balancer, 'containers': self.containers, 'ports': self.ports,
+        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'instances': list(self.instances), 'load_balancer': self.load_balancer, 'order_rate_limit_enabled': self.order_rate_limit, 'containers': self.containers, 'ports': self.ports,
                     'os': platform.platform(), 'cpu_count': os.cpu_count(), 'python_version': sys.version.split()[0],
                     'cpu_model': command('sysctl', '-n', 'machdep.cpu.brand_string') if platform.system() == 'Darwin' else platform.processor(),
                     'open_file_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE)),
@@ -224,8 +225,8 @@ class Isolated:
         return logs.stdout, logs.stderr
 
     def start_sales(self, name, log_name=None):
-        env = self.sales_env | {'SERVER_PORT': str(self.ports[name]),
-                                'MANAGEMENT_SERVER_PORT': str(self.ports[name + '_management'])}
+        env = self.sales_env | order_rate_limit_setting(self.order_rate_limit) | {
+            'SERVER_PORT': str(self.ports[name]), 'MANAGEMENT_SERVER_PORT': str(self.ports[name + '_management'])}
         if hasattr(self, 'sales_proxy'):
             env['MOCK_PG_BASE_URL'] = self.sales_proxy
         if name == 'sales1' and hasattr(self, 'sales1_proxy'):
