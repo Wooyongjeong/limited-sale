@@ -160,7 +160,7 @@ docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroo
 
 ## 기준 부하 실험 (1-11)
 
-> 주의: `benchmarks/load-baseline`의 기준선은 Java 21·Spring Boot 3.5.16에서 측정했다. Java 25·Spring Boot 4.1.2로 올린 뒤에는 다시 측정하지 않았으므로, 2단계 결과와 비교하기 전에 같은 시나리오로 재측정해야 한다.
+> 참고: `benchmarks/load-baseline`은 Java 21·Spring Boot 3.5.16에서 측정한 1-11 결과다. 2단계 비교 기준선은 같은 시나리오를 Java 25·Spring Boot 4.1.2에서 다시 측정한 `benchmarks/load-baseline-java25`다([재측정 결과](docs/stages/02-redis.md#기준선-재측정-결과)).
 
 k6 시나리오 [tests/load/baseline-order.js](tests/load/baseline-order.js)를 한 명령으로 준비·실행·수집·대조한다. 판매 앱 2개, Caddy, Mock PG, 전용 MySQL·Redis를 실행마다 새로 만들고 자기 자원만 정리한다. 개발 컨테이너와 DB는 건드리지 않는다. k6(v1 이상)와 Docker, Java 25(`JAVA_HOME`)이 필요하다.
 

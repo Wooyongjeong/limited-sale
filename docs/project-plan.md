@@ -75,7 +75,7 @@ API 응답은 HTTP 상태 코드, 도메인별 enum 성공·오류 코드, 제�
 | Redis | 세션 저장소, 이후 조회 캐시·분산 요청 제한 | 1단계 세션, 2단계 캐시·요청 제한 |
 | Kafka | 주문 요청의 비동기 처리와 재처리 | 3단계 |
 
-0단계에서 Java 21, Spring Boot 3.5.16, Gradle 8.14.3, Spring Data JPA와 Flyway를 선택했다. Spring Boot 3.5의 OSS 지원이 2026-06-30에 끝나, 1단계 완료 뒤 단계 문서 없이 Java 25, Spring Boot 4.1.2, Gradle 9.9.2로 올렸다. 1-11 부하 기준선은 올리기 전 환경(Java 21·Boot 3.5.16)에서 측정했으므로 2단계와 비교하기 전에 재측정한다. 별도 Mock PG와 도메인·DB 기본 구조는 1-1 계약을 따르며 테이블·인덱스 상세는 1-2에서 점검한다.
+0단계에서 Java 21, Spring Boot 3.5.16, Gradle 8.14.3, Spring Data JPA와 Flyway를 선택했다. Spring Boot 3.5의 OSS 지원이 2026-06-30에 끝나, 1단계 완료 뒤 단계 문서 없이 Java 25, Spring Boot 4.1.2, Gradle 9.9.2로 올렸다. 1-11 부하 기준선은 올리기 전 환경(Java 21·Boot 3.5.16)에서 측정했으므로 2단계 착수 전에 Java 25·Boot 4.1.2에서 재측정했다([결과](stages/02-redis.md#기준선-재측정-결과)). 별도 Mock PG와 도메인·DB 기본 구조는 1-1 계약을 따르며 테이블·인덱스 상세는 1-2에서 점검한다.
 
 ## 단계별 개발
 
@@ -89,7 +89,7 @@ API 응답은 HTTP 상태 코드, 도메인별 enum 성공·오류 코드, 제�
 |---|---|---|
 | 0 | [프로젝트 뼈대](stages/00-project-bootstrap.md) | 구현·실제 MySQL·주 에이전트 독립 검증 완료 |
 | 1 | [MySQL 주문·Mock PG](stages/01-mysql-order.md) | 1-1 확정·1-2~1-6 구현·검증 완료. 1-6은 사용자 지시로 직접 구현 |
-| 2 | [Redis](stages/02-redis.md) | 2-1 정책 확정. 기준선 재측정·2-2 이후 구현 전 |
+| 2 | [Redis](stages/02-redis.md) | 2-1 정책 확정·Java 25 기준선 재측정 완료. 2-2 이후 구현 전 |
 | 3 | [Kafka](stages/03-kafka.md) | 착수 전 |
 | 4 | [장애 검증과 정리](stages/04-reliability.md) | 착수 전 |
 
