@@ -94,7 +94,11 @@ class ConditionsTest(unittest.TestCase):
                           for name, c in CONDITIONS.items()},
                          {'a-off': (False, False, 5, 0, 1), 'a-on': (True, False, 5, 0, 1),
                           'b-off': (True, False, 0, 100, 1), 'b-on': (True, True, 0, 100, 1),
-                          'b2-off': (True, False, 0, 100, 5), 'b2-on': (True, True, 0, 100, 5)})
+                          'b2-off': (True, False, 0, 100, 5), 'b2-on': (True, True, 0, 100, 5),
+                          'b3-off': (True, False, 0, 100, 5), 'b3-on': (True, True, 0, 100, 5)})
+        self.assertEqual({name: c.rate_limit_max_requests for name, c in CONDITIONS.items()},
+                         {'a-off': None, 'a-on': None, 'b-off': None, 'b-on': None, 'b2-off': None, 'b2-on': None,
+                          'b3-off': 1, 'b3-on': 1})
         self.assertEqual(DEFAULT_CONDITIONS, ('a-off', 'a-on', 'b-off', 'b-on'))
         self.assertEqual(policy_plan(CONDITIONS['b2-on']), Plan(10000, 1000, 500, 0, 100, 5))
         self.assertEqual(policy_plan(CONDITIONS['a-on']), Plan(10000, 1000, 500, 5, 0))
@@ -222,10 +226,50 @@ class EvaluateTest(unittest.TestCase):
             ran['k6']['abuser_vus_per_member'] = 1
             self.assertIn('abuser_vus_per_member_as_planned', names(evaluate(ran, condition, plan)), name)
 
+    def test_normal_users_rate_limited_even_once_fail_the_run(self):
+        for name in ('b3-on', 'b2-on'):
+            condition = CONDITIONS[name]
+            plan = policy_plan(condition)
+            for endpoint_name in ('order_create', 'order_payment'):
+                result = passing('b-on')
+                result['k6']['endpoints'][endpoint_name]['status_counts']['429'] = 1
+                self.assertIn('normal_users_never_rate_limited', names(evaluate(result, condition, plan)), name)
+        clean = passing('b-off')
+        self.assertNotIn('normal_users_never_rate_limited',
+                         names(evaluate(clean, CONDITIONS['b-off'], policy_plan(CONDITIONS['b-off']))))
+
+    def test_b3_on_must_show_that_the_one_request_limit_reached_the_jvms(self):
+        condition = CONDITIONS['b3-on']
+        plan = policy_plan(condition)
+        result = passing('b3-on')
+        self.assertEqual(names(evaluate(result, condition, plan)), [])
+        quiet = passing('b-off')
+        quiet['rate_limit'] = {'create': {'allowed': 12000, 'rejected': 0, 'bypassed': 0},
+                               'payment': {'allowed': 1000, 'rejected': 0, 'bypassed': 0}}
+        quiet['k6']['endpoints']['abuse_order_create']['status_counts'].pop('429', None)
+        self.assertIn('rate_limit_override_reached_the_jvms', names(evaluate(quiet, condition, plan)))
+        # b2-on has no override, so a limit that never fires is a result there, not a failure.
+        self.assertNotIn('rate_limit_override_reached_the_jvms',
+                         names(evaluate(quiet, CONDITIONS['b2-on'], policy_plan(CONDITIONS['b2-on']))))
+
     def test_abusers_must_actually_run_in_experiment_b(self):
         on = CONDITIONS['b-on']
         result = change(passing('b-on'), 'k6.endpoints.abuse_order_create', endpoint())
         self.assertIn('abusers_ran_only_when_planned', names(evaluate(result, on, policy_plan(on))))
+
+
+class SettingsRecordTest(unittest.TestCase):
+    def test_the_override_is_listed_apart_from_the_untouched_defaults(self):
+        from run_comparison import settings_record
+        for name in ('b3-off', 'b3-on'):
+            record = settings_record(CONDITIONS[name])
+            self.assertEqual((record['order_rate_limit_max_requests'], record['order_rate_limit_window']), (1, '1s'))
+            self.assertEqual(record['overridden_application_defaults'],
+                             {'order_rate_limit_max_requests': {'value': 1, 'application_default': 5}})
+            self.assertNotIn('order_rate_limit_max_requests', record['defaults_not_overridden'])
+        record = settings_record(CONDITIONS['b2-on'])
+        self.assertEqual(record['order_rate_limit_max_requests'], 5)
+        self.assertEqual(record['overridden_application_defaults'], {})
 
 
 class CountersTest(unittest.TestCase):
