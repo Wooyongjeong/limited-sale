@@ -26,6 +26,39 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  kafka:
+    # Apache KRaft, one node that is both broker and controller. Local runs and tests only: replication is 1,
+    # so stopping this container stops messaging. It is not a high-availability setup.
+    image: apache/kafka:4.4.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # HOST is what the application on the host dials and must advertise the published port; INTERNAL is for other
+      # containers (kafka-exporter). The host port is the same inside and outside so the advertised address is valid.
+      KAFKA_LISTENERS: HOST://:${KAFKA_PORT:-9092},INTERNAL://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:${KAFKA_PORT:-9092},INTERNAL://kafka:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # The application creates its topic (NewTopic); a mistyped topic name must fail instead of appearing.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms512m
+    ports:
+      - "127.0.0.1:${KAFKA_PORT:-9092}:${KAFKA_PORT:-9092}"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
   load-balancer:
     profiles: ["multi-instance"]
     image: caddy:2.11.2-alpine
@@ -59,6 +92,16 @@ services:
       REDIS_ADDR: redis://redis:6379
     ports:
       - "127.0.0.1:${REDIS_EXPORTER_PORT:-9121}:9121"
+  kafka-exporter:
+    profiles: ["monitoring"]
+    image: danielqsj/kafka-exporter:v1.11.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # Reads topic offsets and consumer-group offsets from the broker, so lag stays visible when the consumer is down.
+    command: ["--kafka.server=kafka:19092"]
+    ports:
+      - "127.0.0.1:${KAFKA_EXPORTER_PORT:-9308}:9308"
   grafana:
     profiles: ["monitoring"]
     image: grafana/grafana:13.3.0
@@ -78,5 +121,6 @@ services:
       - grafana_data:/var/lib/grafana
 volumes:
   mysql_data:
+  kafka_data:
   prometheus_data:
   grafana_data:

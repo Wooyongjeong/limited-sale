@@ -13,3 +13,8 @@ scrape_configs:
     static_configs:
       # Compose-network name of the redis_exporter service (monitoring profile).
       - targets: ["redis-exporter:9121"]
+  - job_name: kafka
+    static_configs:
+      # Compose-network name of the kafka-exporter service (monitoring profile): broker, topic and consumer-lag metrics.
+      # The application's own producer and consumer client metrics come through the limited-sale job above.
+      - targets: ["kafka-exporter:9308"]
