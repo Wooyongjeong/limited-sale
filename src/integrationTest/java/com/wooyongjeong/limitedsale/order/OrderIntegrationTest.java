@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.mysql.MySQLContainer;
@@ -45,6 +46,7 @@ class OrderIntegrationTest {
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static ConfigurableApplicationContext context;
     private static JdbcTemplate jdbc;
+    private static StringRedisTemplate redis;
     private static int port;
     private static long product;
     private static long user1;
@@ -61,6 +63,7 @@ class OrderIntegrationTest {
             "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration");
         port = ((ServletWebServerApplicationContext) context).getWebServer().getPort();
         jdbc = context.getBean(JdbcTemplate.class);
+        redis = context.getBean(StringRedisTemplate.class);
         product = context.getBean(ProductCommand.class).register("product", "", 1000L).productId();
         var members = context.getBean(MemberService.class);
         members.register("order1@example.com", "password", "orderone");
@@ -313,7 +316,7 @@ class OrderIntegrationTest {
 
     @Test
     void businessRejectedRequestsAreNotListed() throws Exception {
-        long id = sale(1, 1);
+        long id = sale(2, 1);
         Client c = client("order1@example.com");
         jdbc.update("UPDATE sales SET is_stopped=1 WHERE id=?", id);
         assertThat(code(c.order(UUID.randomUUID().toString(), id, 1))).isEqualTo("SALE_STOPPED");
@@ -540,6 +543,8 @@ class OrderIntegrationTest {
         String stock = UUID.randomUUID().toString();
         assertThat(code(two.order(stock, id, 1))).isEqualTo("SALE_SOLD_OUT");
         jdbc.update("UPDATE sales SET total_quantity=3 WHERE id=?", id);
+        // An admin edit clears the sold-out marker after commit; this direct SQL change has to do it by hand.
+        redis.delete("limited-sale:sale:sold-out:v1:" + id);
         assertThat(code(two.order(stock, id, 1))).isEqualTo("SALE_SOLD_OUT");
         assertThat(two.order(UUID.randomUUID().toString(), id, 1).statusCode()).isEqualTo(201);
     }

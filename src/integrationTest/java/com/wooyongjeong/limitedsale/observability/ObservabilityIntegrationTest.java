@@ -217,10 +217,14 @@ class ObservabilityIntegrationTest {
         client.login("user-obs@example.com");
         long single = sale(1);
         assertThat(client.order(single).statusCode()).isEqualTo(201);
+        // The last unit marks the sale sold out, and a marked sale answers before the member limit is checked.
         assertThat(client.order(single).statusCode()).isEqualTo(409);
         Client other = new Client();
         other.login("other-obs@example.com");
         assertThat(other.order(single).statusCode()).isEqualTo(409);
+        long roomy = sale(5);
+        assertThat(client.order(roomy).statusCode()).isEqualTo(201);
+        assertThat(client.order(roomy).statusCode()).isEqualTo(409);
         Fixture paid = orderFixture();
         assertThat(paid.client().request("POST", "/api/v1/orders/" + paid.order() + "/payment", null,
                 paid.client().token).statusCode()).isEqualTo(200);
@@ -230,8 +234,8 @@ class ObservabilityIntegrationTest {
                 refused.client().token).statusCode()).isEqualTo(409);
 
         String after = scrape();
-        assertThat(sample(after, created) - sample(before, created)).isEqualTo(3);
-        assertThat(sample(after, soldOut) - sample(before, soldOut)).isEqualTo(1);
+        assertThat(sample(after, created) - sample(before, created)).isEqualTo(4);
+        assertThat(sample(after, soldOut) - sample(before, soldOut)).isEqualTo(2);
         assertThat(sample(after, overLimit) - sample(before, overLimit)).isEqualTo(1);
         assertThat(sample(after, succeeded) - sample(before, succeeded)).isEqualTo(1);
         assertThat(sample(after, declined) - sample(before, declined)).isEqualTo(1);

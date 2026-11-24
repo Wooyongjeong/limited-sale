@@ -87,7 +87,9 @@ class SaleCacheDisabledIntegrationTest {
     static void start() {
         DB.start();
         REDIS.start();
-        context = application("--limited-sale.sale.cache.enabled=false");
+        // The sold-out gate is another Redis user; it is off here so these counters see the cache alone.
+        context = application("--limited-sale.sale.cache.enabled=false",
+            "--limited-sale.sale.sold-out-gate.enabled=false");
         port = ((ServletWebServerApplicationContext) context).getWebServer().getPort();
         jdbc = context.getBean(JdbcTemplate.class);
         commands = context.getBean(SaleCommand.class);
