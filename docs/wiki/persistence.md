@@ -53,3 +53,10 @@ HTTP 응답을 잃거나 서버가 재시작돼도 DB의 기록은 남아 있어
 [Mock PG V3](../../mock-pg/src/main/resources/db/migration/V3__scenario_settings.sql)는 `mock_scenario_settings`를 추가한다. 결제 시작 전 설정을 보관하므로 mock_payments를 부모로 하는 FK는 없다. 기존 결제의 시나리오는 기본 지연값과 함께 이행한다. PG는 같은 키의 설정 행을 먼저 잠그고 결제 행을 잠그며, 두 테이블은 같은 PG 트랜잭션에 참여한다. UUID가 이미 채워진 신규 설정은 `Persistable.isNew()`로 INSERT를 강제해, merge가 다른 요청의 설정을 덮어쓰는 것을 막는다. 판매 스키마와는 트랜잭션·FK를 공유하지 않는다.
 
 [V5](../../src/main/resources/db/migration/V5__order_recovery_warning.sql)는 주문에 next_review_warning_at을 추가한다. 임대·예약·운영 확인 표시는 [자동 복구](recovery.md)를 따른다.
+
+[V6](../../src/main/resources/db/migration/V6__order_acceptances.sql)은 3-3의 비동기 접수용 테이블 두 개를 만든다. 위 FK 그림은 V1~V5까지의 관계이며 이 두 테이블은 아직 그림에 넣지 않았다.
+
+- `order_acceptances`: 접수 한 건이다. `public_id`(공개 접수 UUID)·`member_id`·`request_key`·`sale_id`·`quantity`·`status`와 결과 열(`rejection_reason`·`failure_reason`·`order_id`)·`accepted_at`·`finished_at`을 둔다. `(member_id, request_key)`가 유니크라 v2의 중복 요청을 DB가 막으며 `order_request_results`와는 섞이지 않는다. 회원과 주문에는 FK(RESTRICT)를 두지만 `sale_id`에는 FK가 없다. 없는 이벤트에 대한 거절도 저장해야 하기 때문이다(`order_request_results`와 같은 이유). `status`는 `utf8mb4_0900_bin` 문자열이고, CHECK 하나가 `BINARY` 비교로 상태마다 필요한 열을 묶는다. `ACCEPTED`는 주문·사유·완료 시각이 없고, `ORDER_CREATED`는 주문과 완료 시각이 있고, `REJECTED`는 정해진 다섯 사유 중 하나와 완료 시각이 있고, `PROCESSING_FAILED`는 실패 사유와 완료 시각이 있다. 소문자나 뒤 공백이 붙은 상태값은 거절된다.
+- `order_outbox`: 발행 대기 행이다. 자동 증가 `id`의 순서가 발행 순서다. `topic`·`message_key`·`payload`(JSON만 허용)·`created_at`·`published_at`(null이면 미발행)·`attempts`를 두고 `(published_at, id)` 인덱스로 미발행 행을 id 순서로 읽는다. 접수 행을 갱신하지 않고 별도 행으로 발행 상태를 따로 기록해서 이후 소비자가 접수 행을 잠글 때 발행기와 부딪치지 않는다. 발행 임대 같은 열은 3-4에서 새 버전으로 추가한다.
+
+접수가 `ACCEPTED`일 때만 아웃박스 행이 생기며 둘은 한 트랜잭션에 저장된다. 아웃박스 INSERT가 실패하면 접수 행도 남지 않는다. 흐름은 [주문 생성과 수량 점유의 v2 절](orders.md#v2-비동기-접수기본-꺼짐)에 있다. 두 테이블 모두 3-3에서는 쓰기만 하고, 아웃박스를 읽어 Kafka로 보내는 일은 3-4다.

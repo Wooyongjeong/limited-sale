@@ -1,0 +1,89 @@
+package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
+
+import com.wooyongjeong.limitedsale.order.domain.AcceptanceStatus;
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
+import com.wooyongjeong.limitedsale.order.domain.OrderRejection;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+@Entity
+@Table(name = "order_acceptances")
+class OrderAcceptanceEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(nullable = false, columnDefinition = "binary(16)")
+    private UUID publicId;
+    @Column(nullable = false)
+    private long memberId;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(nullable = false, columnDefinition = "binary(16)")
+    private UUID requestKey;
+    @Column(nullable = false)
+    private long saleId;
+    @Column(nullable = false)
+    private int quantity;
+    @Column(nullable = false, length = 32)
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private AcceptanceStatus status;
+    @Column(length = 32)
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private OrderRejection rejectionReason;
+    @Column(length = 64)
+    private String failureReason;
+    private Long orderId;
+    @Column(nullable = false)
+    private Instant acceptedAt;
+    private Instant finishedAt;
+
+    protected OrderAcceptanceEntity() {
+    }
+
+    private OrderAcceptanceEntity(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
+            AcceptanceStatus status, OrderRejection rejectionReason, Instant now, Instant finishedAt) {
+        this.publicId = publicId;
+        this.memberId = memberId;
+        this.requestKey = requestKey;
+        this.saleId = saleId;
+        this.quantity = quantity;
+        this.status = status;
+        this.rejectionReason = rejectionReason;
+        acceptedAt = now;
+        this.finishedAt = finishedAt;
+    }
+
+    static OrderAcceptanceEntity accepted(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
+            Instant now) {
+        return new OrderAcceptanceEntity(publicId, memberId, requestKey, saleId, quantity, AcceptanceStatus.ACCEPTED,
+            null, now, null);
+    }
+
+    static OrderAcceptanceEntity rejected(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
+            OrderRejection reason, Instant now) {
+        return new OrderAcceptanceEntity(publicId, memberId, requestKey, saleId, quantity, AcceptanceStatus.REJECTED,
+            reason, now, now);
+    }
+
+    /** {@code orderPublicId} is looked up by the caller because only the order table knows it. */
+    OrderAcceptance toAcceptance(UUID orderPublicId) {
+        return new OrderAcceptance(publicId, saleId, quantity, status, rejectionReason, failureReason, orderPublicId,
+            acceptedAt, finishedAt);
+    }
+
+    Long orderId() {
+        return orderId;
+    }
+}

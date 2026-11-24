@@ -57,6 +57,18 @@ class ArchitectureTest {
             .allowEmptyShould(true);
     }
 
+    private static ArchRule domainsDoNotDependOnLayersAbove() {
+        return noClasses().that().resideInAPackage("..domain..")
+            .should().dependOnClassesThat().resideInAnyPackage("..application..", "..infrastructure..")
+            .allowEmptyShould(true);
+    }
+
+    private static ArchRule applicationDoesNotDependOnInfrastructure() {
+        return noClasses().that().resideInAPackage("..application..")
+            .should().dependOnClassesThat().resideInAPackage("..infrastructure..")
+            .allowEmptyShould(true);
+    }
+
     private static ArchRule frameworkFreeApis() {
         return noClasses().that().resideInAPackage("..api..")
             .should().dependOnClassesThat().resideInAnyPackage(
@@ -81,6 +93,8 @@ class ArchitectureTest {
             }
         }
         pureDomains().check(classes);
+        domainsDoNotDependOnLayersAbove().check(classes);
+        applicationDoesNotDependOnInfrastructure().check(classes);
         frameworkFreeApis().check(classes);
         cycles(root).check(classes);
     }
@@ -104,6 +118,10 @@ class ArchitectureTest {
         JavaClasses badApi = importer.importClasses(fixtures.member.api.BadApi.class, fixtures.member.domain.PrivateMember.class);
         JavaClasses domainImplementation = importer.importClasses(
             fixtures.domainbad.domain.BadDomain.class, fixtures.domainbad.infrastructure.Store.class);
+        JavaClasses domainUpward = importer.importClasses(
+            fixtures.layerbad.domain.UpwardDomain.class, fixtures.layerbad.application.UseCase.class);
+        JavaClasses applicationInfrastructure = importer.importClasses(
+            fixtures.layerbad.application.InfrastructureUser.class, fixtures.layerbad.infrastructure.Adapter.class);
         JavaClasses domainFramework = importer.importClasses(fixtures.violation.domain.FrameworkDependency.class);
         JavaClasses frameworkApi = importer.importClasses(fixtures.apibad.api.FrameworkApi.class);
         JavaClasses cycle = importer.importClasses(fixtures.cycle.order.Order.class, fixtures.cycle.sale.Sale.class);
@@ -113,6 +131,12 @@ class ArchitectureTest {
         assertThatThrownBy(() -> apiRule("fixtures", "member").check(badApi)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pureDomains().check(domainImplementation)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pureDomains().check(domainFramework)).isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> domainsDoNotDependOnLayersAbove().check(domainUpward))
+            .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> domainsDoNotDependOnLayersAbove().check(domainImplementation))
+            .isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> applicationDoesNotDependOnInfrastructure().check(applicationInfrastructure))
+            .isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> frameworkFreeApis().check(frameworkApi)).isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> cycles("fixtures.cycle").check(cycle)).isInstanceOf(AssertionError.class);
     }

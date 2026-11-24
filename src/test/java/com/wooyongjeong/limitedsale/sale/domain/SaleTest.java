@@ -45,6 +45,17 @@ class SaleTest {
     }
 
     @Test
+    void admissionLooksOnlyAtPeriodAndStopAndIgnoresStock() {
+        assertThat(sale(false, 0, 0).admissionDecision(START.minusNanos(1000)))
+            .isEqualTo(AllocationDecision.SALE_OUTSIDE_PERIOD);
+        assertThat(sale(false, 0, 0).admissionDecision(END)).isEqualTo(AllocationDecision.SALE_OUTSIDE_PERIOD);
+        assertThat(sale(true, 0, 0).admissionDecision(START)).isEqualTo(AllocationDecision.SALE_STOPPED);
+        assertThat(sale(false, 0, 0).admissionDecision(START)).isEqualTo(AllocationDecision.ALLOCATED);
+        // A sale with no stock left is still accepted; the consumer decides stock later.
+        assertThat(sale(false, 4, 6).admissionDecision(START)).isEqualTo(AllocationDecision.ALLOCATED);
+    }
+
+    @Test
     void metadataCanChangeAfterStartButTermsAndStaleVersionsCannot() {
         Sale original = sale(false, 0, 0);
         Sale edited = original.revise(terms("changed", START), "product", false, 3, END);

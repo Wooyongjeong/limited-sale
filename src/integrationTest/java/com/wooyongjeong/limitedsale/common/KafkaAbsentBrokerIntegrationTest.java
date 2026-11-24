@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
-import com.wooyongjeong.limitedsale.order.infrastructure.messaging.OrderAcceptanceTopicConfiguration;
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.support.FixedPortKafka;
 import java.net.CookieManager;
@@ -50,7 +50,7 @@ import static org.awaitility.Awaitility.await;
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class KafkaAbsentBrokerIntegrationTest {
-    private static final String TOPIC = OrderAcceptanceTopicConfiguration.ORDER_ACCEPTANCES_TOPIC;
+    private static final String TOPIC = OrderAcceptanceTopic.NAME;
     private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
     private static final int KAFKA_PORT = FixedPortKafka.freePort();
@@ -160,10 +160,11 @@ class KafkaAbsentBrokerIntegrationTest {
         Duration window = Duration.ofNanos(System.nanoTime() - startedAt);
 
         // Kafka 4 clients rebootstrap on every refused connection; without a backoff that was about 100,000 log
-        // lines in a minute (and the CPU to write them) per client. With it a client logs a few lines a second at most.
+        // lines in a minute (and the CPU to write them) per client. With it a client logs a few lines a second at most:
+        // about 100 in this window, so the bound leaves room for timing noise while a flood still fails by far.
         long kafkaLines = ALL_LOG.list.stream().filter(event -> event.getLoggerName().startsWith("org.apache.kafka")
                 || event.getFormattedMessage().contains(":" + KAFKA_PORT)).count();
-        assertThat(kafkaLines).as("Kafka client log lines in %s", window).isLessThan(100);
+        assertThat(kafkaLines).as("Kafka client log lines in %s", window).isLessThan(400);
         // Each attempt opens one admin client and closes it; a leftover one would add a thread per attempt.
         long adminThreads = Thread.getAllStackTraces().keySet().stream()
                 .filter(thread -> thread.getName().contains("kafka-admin-client-thread")).count();
