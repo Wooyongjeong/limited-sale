@@ -1,0 +1,976 @@
+{
+  "condition": "b3-off",
+  "experiment": "B",
+  "label": "2-6 b3 official (host rebooted), commit a898bf5",
+  "settings": {
+    "sale_cache_enabled": true,
+    "order_rate_limit_enabled": false,
+    "order_rate_limit_max_requests": 1,
+    "order_rate_limit_max_requests_passed_explicitly": true,
+    "order_rate_limit_window": "1s",
+    "overridden_application_defaults": {},
+    "defaults_not_overridden": {
+      "sale_cache_ttl": "PT60S",
+      "order_rate_limit_window": "1s"
+    }
+  },
+  "plan": {
+    "users": 10000,
+    "stock": 1000,
+    "vus": 500,
+    "detail_views": 0,
+    "abusers": 100,
+    "abuser_vus_per_member": 5
+  },
+  "runs": 3,
+  "passed": true,
+  "failures": {},
+  "execution_order": [
+    {
+      "position": 1,
+      "condition": "b3-off",
+      "run": 1,
+      "status": "passed",
+      "started_at": "2026-11-24T00:21:36.662645+00:00"
+    },
+    {
+      "position": 3,
+      "condition": "b3-off",
+      "run": 2,
+      "status": "passed",
+      "started_at": "2026-11-24T00:28:59.837402+00:00"
+    },
+    {
+      "position": 5,
+      "condition": "b3-off",
+      "run": 3,
+      "status": "passed",
+      "started_at": "2026-11-24T00:34:56.896397+00:00"
+    }
+  ],
+  "environment": {
+    "os": "macOS-26.7-arm64-arm-64bit-Mach-O",
+    "cpu_model": "Apple M4 Pro",
+    "cpu_count": 14,
+    "memory_bytes": 51539607552,
+    "java_version": "openjdk version \"25.0.1\" 2025-10-21",
+    "mysql_version": "mysql  Ver 8.4.7 for Linux on aarch64 (MySQL Community Server - GPL)",
+    "redis_version": "Redis server v=7.4.12 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=6d565d4e3893fa59",
+    "docker_version": "29.8.0",
+    "instances": [
+      "sales1",
+      "sales2"
+    ],
+    "open_file_limit": [
+      1048576,
+      9223372036854775807
+    ],
+    "head": "a898bf57b9db7f4ca30350b3c45ab4e0649bbcfb",
+    "dirty": true,
+    "jar_sha256": {
+      "sales": "02da4f252ff5568ac5bfca689516f43523ac40b0b50a5419ca88111cc20dabfa",
+      "pg": "b70898738c0af134749999fd4f8fb906e0c8fc34b78985306a8a34b7b7cae36b"
+    },
+    "order_rate_limit_enabled": false,
+    "k6_version": "k6 v2.1.0 (commit/devel, go1.26.4, darwin/arm64)",
+    "docker_vm": {
+      "cpus": 14,
+      "memory_bytes": 8318976000
+    },
+    "sales_jar_libraries": [
+      "HikariCP-7.0.2",
+      "micrometer-core-1.17.2",
+      "micrometer-registry-prometheus-1.17.2",
+      "mysql-connector-j-9.7.0",
+      "prometheus-metrics-core-1.7.0",
+      "tomcat-embed-core-11.0.27"
+    ],
+    "label": "2-6 b3 official (host rebooted), commit a898bf5",
+    "settings": {
+      "sale_cache_enabled": true,
+      "order_rate_limit_enabled": false,
+      "order_rate_limit_max_requests": 1,
+      "order_rate_limit_max_requests_passed_explicitly": true,
+      "order_rate_limit_window": "1s",
+      "overridden_application_defaults": {},
+      "defaults_not_overridden": {
+        "sale_cache_ttl": "PT60S",
+        "order_rate_limit_window": "1s"
+      }
+    },
+    "dirty_excluding_results": true
+  },
+  "metrics": {
+    "abuse.confirmed": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "abuse.created": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "abuse.rejections.PURCHASE_LIMIT_EXCEEDED": {
+      "median": 11557,
+      "min": 11445,
+      "max": 11570,
+      "values": [
+        11557,
+        11570,
+        11445
+      ]
+    },
+    "abuse.stored_requests": {
+      "median": 11657,
+      "min": 11545,
+      "max": 11670,
+      "values": [
+        11657,
+        11670,
+        11545
+      ]
+    },
+    "business_codes.abuse_order_create.ORDER_CREATED": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "business_codes.abuse_order_create.PURCHASE_LIMIT_EXCEEDED": {
+      "median": 11557,
+      "min": 11445,
+      "max": 11570,
+      "values": [
+        11557,
+        11570,
+        11445
+      ]
+    },
+    "business_codes.abuse_order_payment.PAYMENT_SUCCEEDED": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "business_codes.order_create.ORDER_CREATED": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "business_codes.order_create.SALE_SOLD_OUT": {
+      "median": 9100,
+      "min": 9100,
+      "max": 9100,
+      "values": [
+        9100,
+        9100,
+        9100
+      ]
+    },
+    "business_codes.order_payment.PAYMENT_SUCCEEDED": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "cache.error": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "cache.hit": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "cache.miss": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "database.confirmed": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "database.confirmed_abuse": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "database.confirmed_normal": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "database.orders": {
+      "median": 1000,
+      "min": 1000,
+      "max": 1000,
+      "values": [
+        1000,
+        1000,
+        1000
+      ]
+    },
+    "database.remaining": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "derived.abuse_rejection_rate": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "derived.abuse_requests_per_member_per_second": {
+      "median": 1.744,
+      "min": 1.618,
+      "max": 1.785,
+      "values": [
+        1.744,
+        1.785,
+        1.618
+      ]
+    },
+    "derived.abuse_requests_per_second": {
+      "median": 171.221,
+      "min": 159.093,
+      "max": 175.355,
+      "values": [
+        171.221,
+        175.355,
+        159.093
+      ]
+    },
+    "derived.actual_order_throughput_per_normal_second": {
+      "median": 14.962,
+      "min": 14.019,
+      "max": 15.298,
+      "values": [
+        14.962,
+        15.298,
+        14.019
+      ]
+    },
+    "derived.actual_order_throughput_per_second": {
+      "median": 14.688,
+      "min": 13.78,
+      "max": 15.026,
+      "values": [
+        14.688,
+        15.026,
+        13.78
+      ]
+    },
+    "derived.detail_requests_per_second": {
+      "median": 0.0,
+      "min": 0.0,
+      "max": 0.0,
+      "values": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "derived.normal_rate_limited_responses": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "durations_seconds.convergence_seconds": {
+      "median": 0.1,
+      "min": 0.07,
+      "max": 0.12,
+      "values": [
+        0.07,
+        0.12,
+        0.1
+      ]
+    },
+    "durations_seconds.environment_start_seconds": {
+      "median": 27.66,
+      "min": 24.38,
+      "max": 30.1,
+      "values": [
+        27.66,
+        24.38,
+        30.1
+      ]
+    },
+    "durations_seconds.k6_seconds": {
+      "median": 68.75,
+      "min": 67.01,
+      "max": 73.03,
+      "values": [
+        68.75,
+        67.01,
+        73.03
+      ]
+    },
+    "durations_seconds.prepare_seconds": {
+      "median": 91.05,
+      "min": 81.18,
+      "max": 164.08,
+      "values": [
+        164.08,
+        81.18,
+        91.05
+      ]
+    },
+    "durations_seconds.total_seconds": {
+      "median": 171.32,
+      "min": 155.16,
+      "max": 239.94,
+      "values": [
+        239.94,
+        155.16,
+        171.32
+      ]
+    },
+    "durations_seconds.verify_seconds": {
+      "median": 0.9,
+      "min": 0.71,
+      "max": 0.9,
+      "values": [
+        0.71,
+        0.9,
+        0.9
+      ]
+    },
+    "endpoints.abuse_order_create.avg_ms": {
+      "median": 2831.250573132018,
+      "min": 2770.742198628954,
+      "max": 3050.000382156761,
+      "values": [
+        2831.250573132018,
+        2770.742198628954,
+        3050.000382156761
+      ]
+    },
+    "endpoints.abuse_order_create.count": {
+      "median": 11657,
+      "min": 11545,
+      "max": 11670,
+      "values": [
+        11657,
+        11670,
+        11545
+      ]
+    },
+    "endpoints.abuse_order_create.max_ms": {
+      "median": 7000.24,
+      "min": 6510.788,
+      "max": 7185.494,
+      "values": [
+        6510.788,
+        7185.494,
+        7000.24
+      ]
+    },
+    "endpoints.abuse_order_create.p50_ms": {
+      "median": 2617.166,
+      "min": 2594.2735000000002,
+      "max": 2799.992,
+      "values": [
+        2617.166,
+        2594.2735000000002,
+        2799.992
+      ]
+    },
+    "endpoints.abuse_order_create.p95_ms": {
+      "median": 4530.5556,
+      "min": 4265.283299999999,
+      "max": 4904.3448,
+      "values": [
+        4530.5556,
+        4265.283299999999,
+        4904.3448
+      ]
+    },
+    "endpoints.abuse_order_create.p99_ms": {
+      "median": 5404.38384,
+      "min": 4689.92377,
+      "max": 5654.81008,
+      "values": [
+        5404.38384,
+        4689.92377,
+        5654.81008
+      ]
+    },
+    "endpoints.abuse_order_payment.avg_ms": {
+      "median": 6879.802820000004,
+      "min": 6031.033800000001,
+      "max": 7307.027550000002,
+      "values": [
+        6879.802820000004,
+        6031.033800000001,
+        7307.027550000002
+      ]
+    },
+    "endpoints.abuse_order_payment.count": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "endpoints.abuse_order_payment.max_ms": {
+      "median": 8280.78,
+      "min": 7630.788,
+      "max": 10145.688,
+      "values": [
+        8280.78,
+        7630.788,
+        10145.688
+      ]
+    },
+    "endpoints.abuse_order_payment.p50_ms": {
+      "median": 6863.77,
+      "min": 5983.6605,
+      "max": 7302.0715,
+      "values": [
+        6863.77,
+        5983.6605,
+        7302.0715
+      ]
+    },
+    "endpoints.abuse_order_payment.p95_ms": {
+      "median": 7838.383199999999,
+      "min": 7090.5770999999995,
+      "max": 8401.329899999999,
+      "values": [
+        7838.383199999999,
+        7090.5770999999995,
+        8401.329899999999
+      ]
+    },
+    "endpoints.abuse_order_payment.p99_ms": {
+      "median": 8181.68001,
+      "min": 7354.632449999999,
+      "max": 9815.49528,
+      "values": [
+        8181.68001,
+        7354.632449999999,
+        9815.49528
+      ]
+    },
+    "endpoints.order_create.avg_ms": {
+      "median": 2707.8177016000027,
+      "min": 2684.6861688000163,
+      "max": 2886.9159452000067,
+      "values": [
+        2707.8177016000027,
+        2684.6861688000163,
+        2886.9159452000067
+      ]
+    },
+    "endpoints.order_create.count": {
+      "median": 10000,
+      "min": 10000,
+      "max": 10000,
+      "values": [
+        10000,
+        10000,
+        10000
+      ]
+    },
+    "endpoints.order_create.max_ms": {
+      "median": 5924.483,
+      "min": 5892.897,
+      "max": 6469.247,
+      "values": [
+        5924.483,
+        5892.897,
+        6469.247
+      ]
+    },
+    "endpoints.order_create.p50_ms": {
+      "median": 2605.7415,
+      "min": 2586.1495,
+      "max": 2783.1365,
+      "values": [
+        2605.7415,
+        2586.1495,
+        2783.1365
+      ]
+    },
+    "endpoints.order_create.p95_ms": {
+      "median": 3984.2807,
+      "min": 3934.7896499999974,
+      "max": 4262.283249999999,
+      "values": [
+        3934.7896499999974,
+        3984.2807,
+        4262.283249999999
+      ]
+    },
+    "endpoints.order_create.p99_ms": {
+      "median": 4750.65993,
+      "min": 4358.01038,
+      "max": 4900.28822,
+      "values": [
+        4750.65993,
+        4358.01038,
+        4900.28822
+      ]
+    },
+    "endpoints.order_payment.avg_ms": {
+      "median": 6347.787051111107,
+      "min": 5697.902163333321,
+      "max": 6622.745484444442,
+      "values": [
+        6347.787051111107,
+        5697.902163333321,
+        6622.745484444442
+      ]
+    },
+    "endpoints.order_payment.count": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "endpoints.order_payment.max_ms": {
+      "median": 10013.922,
+      "min": 8671.181,
+      "max": 10555.991,
+      "values": [
+        10555.991,
+        8671.181,
+        10013.922
+      ]
+    },
+    "endpoints.order_payment.p50_ms": {
+      "median": 6336.049999999999,
+      "min": 5706.040999999999,
+      "max": 6453.709500000001,
+      "values": [
+        6336.049999999999,
+        5706.040999999999,
+        6453.709500000001
+      ]
+    },
+    "endpoints.order_payment.p95_ms": {
+      "median": 8150.359100000001,
+      "min": 7037.3993,
+      "max": 8667.59895,
+      "values": [
+        8150.359100000001,
+        7037.3993,
+        8667.59895
+      ]
+    },
+    "endpoints.order_payment.p99_ms": {
+      "median": 8883.946979999999,
+      "min": 7612.05853,
+      "max": 9041.583159999998,
+      "values": [
+        9041.583159999998,
+        7612.05853,
+        8883.946979999999
+      ]
+    },
+    "errors.connection_errors": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "errors.server_errors_5xx": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "load_generator.cpu_cores_mean": {
+      "median": 0.18,
+      "min": 0.18,
+      "max": 0.18,
+      "values": [
+        0.18,
+        0.18,
+        0.18
+      ]
+    },
+    "load_generator.cpu_seconds": {
+      "median": 12.32,
+      "min": 12.17,
+      "max": 13.13,
+      "values": [
+        12.17,
+        12.32,
+        13.13
+      ]
+    },
+    "management.gc_pause_seconds": {
+      "median": 0.029,
+      "min": 0.019,
+      "max": 0.06,
+      "values": [
+        0.06,
+        0.019,
+        0.029
+      ]
+    },
+    "management.hikari_acquire_max_ms_peak": {
+      "median": 3739.0,
+      "min": 3581.0,
+      "max": 4054.0,
+      "values": [
+        3739.0,
+        3581.0,
+        4054.0
+      ]
+    },
+    "management.hikari_acquire_mean_ms": {
+      "median": 1035.842,
+      "min": 1012.321,
+      "max": 1110.49,
+      "values": [
+        1035.842,
+        1012.321,
+        1110.49
+      ]
+    },
+    "management.hikari_active_peak": {
+      "median": 10.0,
+      "min": 10.0,
+      "max": 10.0,
+      "values": [
+        10.0,
+        10.0,
+        10.0
+      ]
+    },
+    "management.hikari_pending_peak": {
+      "median": 191.0,
+      "min": 191.0,
+      "max": 191.0,
+      "values": [
+        191.0,
+        191.0,
+        191.0
+      ]
+    },
+    "management.jvm_cpu_seconds": {
+      "median": 62.62,
+      "min": 59.16,
+      "max": 62.75,
+      "values": [
+        62.75,
+        59.16,
+        62.62
+      ]
+    },
+    "management.process_cpu_usage_peak": {
+      "median": 0.11645908875926218,
+      "min": 0.10500932994134321,
+      "max": 0.12077035630823035,
+      "values": [
+        0.11645908875926218,
+        0.12077035630823035,
+        0.10500932994134321
+      ]
+    },
+    "management.system_cpu_usage_mean": {
+      "median": 0.7086,
+      "min": 0.6924,
+      "max": 0.7603,
+      "values": [
+        0.7086,
+        0.6924,
+        0.7603
+      ]
+    },
+    "management.system_cpu_usage_peak": {
+      "median": 0.9950842696629213,
+      "min": 0.9389367816091954,
+      "max": 0.9971870604781997,
+      "values": [
+        0.9971870604781997,
+        0.9389367816091954,
+        0.9950842696629213
+      ]
+    },
+    "mysql.deadlocks": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "mysql.lock_timeouts": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "mysql.row_lock_time_ms": {
+      "median": 1240244,
+      "min": 1215590,
+      "max": 1320476,
+      "values": [
+        1240244,
+        1215590,
+        1320476
+      ]
+    },
+    "mysql.row_lock_waits": {
+      "median": 22657,
+      "min": 22544,
+      "max": 22670,
+      "values": [
+        22657,
+        22670,
+        22544
+      ]
+    },
+    "rate_limit.create.allowed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.create.bypassed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.create.rejected": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.allowed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.bypassed": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "rate_limit.payment.rejected": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "values": [
+        0,
+        0,
+        0
+      ]
+    },
+    "status_counts.abuse_order_create.201": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "status_counts.abuse_order_create.409": {
+      "median": 11557,
+      "min": 11445,
+      "max": 11570,
+      "values": [
+        11557,
+        11570,
+        11445
+      ]
+    },
+    "status_counts.abuse_order_payment.200": {
+      "median": 100,
+      "min": 100,
+      "max": 100,
+      "values": [
+        100,
+        100,
+        100
+      ]
+    },
+    "status_counts.order_create.201": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "status_counts.order_create.409": {
+      "median": 9100,
+      "min": 9100,
+      "max": 9100,
+      "values": [
+        9100,
+        9100,
+        9100
+      ]
+    },
+    "status_counts.order_payment.200": {
+      "median": 900,
+      "min": 900,
+      "max": 900,
+      "values": [
+        900,
+        900,
+        900
+      ]
+    },
+    "throughput.duration_seconds": {
+      "median": 68.08143799999999,
+      "min": 66.550864,
+      "max": 72.567763,
+      "values": [
+        68.08143799999999,
+        66.550864,
+        72.567763
+      ]
+    },
+    "throughput.http_requests_per_second": {
+      "median": 332.792618158271,
+      "min": 310.6751409713429,
+      "max": 340.6417082729384,
+      "values": [
+        332.792618158271,
+        340.6417082729384,
+        310.6751409713429
+      ]
+    },
+    "throughput.normal_duration_seconds": {
+      "median": 66.836215,
+      "min": 65.368968,
+      "max": 71.33175299999999,
+      "values": [
+        66.836215,
+        65.368968,
+        71.33175299999999
+      ]
+    }
+  },
+  "median_total_run_seconds": 171.32
+}
