@@ -17,6 +17,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,9 +27,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.event.ApplicationPreparedEvent;
 import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.kafka.KafkaContainer;
@@ -37,6 +41,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -52,6 +57,8 @@ class KafkaAbsentBrokerIntegrationTest {
     private static final KafkaContainer KAFKA = FixedPortKafka.create(KAFKA_PORT);
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static final ListAppender<ILoggingEvent> PROVISIONER_LOG = new ListAppender<>();
+    private static final ListAppender<ILoggingEvent> ALL_LOG = new ListAppender<>();
+    private static long startedAt;
     private static Logger provisionerLogger;
     private static ConfigurableApplicationContext context;
     private static JdbcTemplate jdbc;
@@ -62,8 +69,14 @@ class KafkaAbsentBrokerIntegrationTest {
     static void start() {
         DB.start();
         REDIS.start();
-        // KAFKA_PORT is reserved but nothing runs there yet.
-        context = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
+        Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        ALL_LOG.start();
+        startedAt = System.nanoTime();
+        // KAFKA_PORT is reserved but nothing runs there yet. The log appender is attached once logging is configured
+        // but before the context refreshes, so it also sees what the Kafka clients write while the app starts.
+        context = new SpringApplicationBuilder(LimitedSaleApplication.class)
+                .listeners((ApplicationListener<ApplicationPreparedEvent>) event -> root.addAppender(ALL_LOG))
+                .run("--server.port=0",
                 "--spring.config.additional-location=file:src/main/resources/application.yml",
                 "--limited-sale.recovery.enabled=false", "--limited-sale.order.rate-limit.enabled=false",
                 "--limited-sale.kafka.topic-provisioning.enabled=true",
@@ -85,6 +98,7 @@ class KafkaAbsentBrokerIntegrationTest {
 
     @AfterAll
     static void stop() {
+        ((Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME)).detachAppender(ALL_LOG);
         if (provisionerLogger != null) {
             provisionerLogger.detachAppender(PROVISIONER_LOG);
         }
@@ -134,6 +148,33 @@ class KafkaAbsentBrokerIntegrationTest {
 
     @Test
     @Order(2)
+    void missingBrokerDoesNotCauseALogFloodOrALeakedClient() throws Exception {
+        // A producer that has been used against the missing broker keeps a sender thread retrying in the background.
+        @SuppressWarnings("unchecked")
+        KafkaTemplate<String, String> template = context.getBean(KafkaTemplate.class);
+        assertThat(catchThrowable(() -> template.send(TOPIC, "key", "value").get(30, TimeUnit.SECONDS))).isNotNull();
+        long remaining = Duration.ofSeconds(25).toMillis() - (System.nanoTime() - startedAt) / 1_000_000;
+        if (remaining > 0) {
+            Thread.sleep(remaining);
+        }
+        Duration window = Duration.ofNanos(System.nanoTime() - startedAt);
+
+        // Kafka 4 clients rebootstrap on every refused connection; without a backoff that was about 100,000 log
+        // lines in a minute (and the CPU to write them) per client. With it a client logs a few lines a second at most.
+        long kafkaLines = ALL_LOG.list.stream().filter(event -> event.getLoggerName().startsWith("org.apache.kafka")
+                || event.getFormattedMessage().contains(":" + KAFKA_PORT)).count();
+        assertThat(kafkaLines).as("Kafka client log lines in %s", window).isLessThan(100);
+        // Each attempt opens one admin client and closes it; a leftover one would add a thread per attempt.
+        long adminThreads = Thread.getAllStackTraces().keySet().stream()
+                .filter(thread -> thread.getName().contains("kafka-admin-client-thread")).count();
+        assertThat(adminThreads).as("live admin clients").isLessThanOrEqualTo(1);
+        // About one warning per attempt: an attempt gives up after about 10 s, then waits 1 s, 2 s, 4 s ...
+        long warnings = PROVISIONER_LOG.list.stream().filter(event -> event.getLevel() == Level.WARN).count();
+        assertThat(warnings).as("topic creation warnings in %s", window).isBetween(1L, 4L);
+    }
+
+    @Test
+    @Order(3)
     void v1OrderAndHealthDoNotNeedKafka() throws Exception {
         var members = context.getBean(MemberService.class);
         members.register("nokafka@example.com", "password", "nokafka");
@@ -158,7 +199,7 @@ class KafkaAbsentBrokerIntegrationTest {
     }
 
     @Test
-    @Order(3)
+    @Order(4)
     void topicIsCreatedWhenTheBrokerAppearsAfterStartup() {
         KAFKA.start();
         KafkaAdmin admin = context.getBean(KafkaAdmin.class);

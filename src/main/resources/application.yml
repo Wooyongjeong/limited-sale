@@ -31,6 +31,15 @@ spring:
         # Without these the admin client waits its 60 s default before giving up on a broker that is not there.
         default.api.timeout.ms: 5000
         request.timeout.ms: 3000
+        # Kafka 4 clients rebootstrap on every refused connection; without a longer backoff that is a tight loop
+        # (about ten attempts and thirty log lines a second per client) while the broker is down.
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 1000
+        retry.backoff.max.ms: 5000
+        # The admin client is short-lived (one per provisioning attempt). Rebootstrapping re-reads the bootstrap
+        # servers on every failed metadata update, about ten times per refused connection; plain retries are enough.
+        metadata.recovery.strategy: none
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -44,12 +53,21 @@ spring:
         request.timeout.ms: 3000
         max.block.ms: 5000
         delivery.timeout.ms: 5000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 500
+        retry.backoff.max.ms: 2000
     consumer:
       group-id: limited-sale-order-consumer
       enable-auto-commit: false
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 1000
+        retry.backoff.max.ms: 5000
     listener:
       ack-mode: manual
       # Consumers per application instance; two instances share the six partitions.
