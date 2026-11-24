@@ -34,11 +34,22 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 
 설정은 `limited-sale.order.rate-limit.enabled`(기본 `true`), `max-requests`(기본 1), `window`(기본 `1s`)다. 정합성·기준 부하 실험 도구는 "요청 제한 없음" 조건을 지키려고 판매 JVM을 끈 상태로 띄우고 결과에 그 값을 기록한다. 검증은 [OrderRateLimitIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderRateLimitIntegrationTest.java)를 본다.
 
+## 품절 사전 판정
+
+재고가 0이 된 뒤의 요청까지 이벤트 행 잠금 대기열에 세우지 않으려고, 요청 제한 다음에 Redis 품절 표시를 한 번 조회한다([OrderService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderService.java)). 이 조회는 트랜잭션 밖에서 하므로 판매 행 잠금을 쥔 채 Redis를 부르지 않는다. 표시는 `sale.api`의 `SoldOutGate`로만 읽는다.
+
+- 표시가 없거나 Redis 조회가 실패·타임아웃이면 위 트랜잭션이 그대로 판정한다. 최종 판단은 계속 MySQL이다.
+- 표시가 있으면 [OrderTransaction.rejectSoldOut](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderTransaction.java)이 짧은 트랜잭션을 연다. 요청 키 조회를 먼저 하므로 이미 성공한 키는 표시가 있어도 `200`으로 재생되고, 다른 입력이면 `IDEMPOTENCY_CONFLICT`다. 새 키면 판매 행을 잠그지도 고치지도 않고 `SALE_SOLD_OUT` 거절을 요청 결과에 저장해 409를 돌려준다. 저장했으므로 같은 키를 다시 보내면 같은 거절이 반복된다. 이 경로에는 주문·결제·점유가 없다.
+
+표시를 두고 지우는 규칙, TTL, 장애 처리는 [판매 이벤트](sales.md#품절-표시-redis)에 있다. 아래 순서 설명과 위 그림(`orders-1`)은 표시가 없는 경로이며, 그림에는 이 사전 판정이 없다.
+
+표시가 있을 때는 판정 순서가 달라진다. 중단·기간 외·사용자 한도보다 품절을 먼저 응답하므로, 기간이 끝났거나 중단된 품절 이벤트, 한도를 넘긴 회원도 `SALE_SOLD_OUT`을 받을 수 있다. 어느 경우든 구매할 수 없다는 결과는 같다. 정확한 사유를 위해 잠금을 다시 잡으면 이 단계의 목적이 사라지므로 차이를 받아들였다. 설정은 `limited-sale.sale.sold-out-gate.enabled`(기본 `true`, 끄면 Redis를 부르지 않는다)와 `ttl`(기본 5초)이다. 검증은 [SoldOutGateIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SoldOutGateIntegrationTest.java)를 본다. 10,000명이 재고 1,000개에 몰린 2-7 비교 실험에서는 거절 응답 p50이 1.34초에서 0.34초로 줄었지만, 확정 수는 같고 구매자의 `ORDER_CREATED`·결제 지연은 거의 그대로였다([결과](../stages/02-redis.md#2-7-구현과-검증)).
+
 ## 잠금 뒤에 주문 가능 여부를 판정하는 이유
 
 [JpaSaleReservation](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/persistence/JpaSaleReservation.java)은 항상 이벤트를 먼저 잠근다. 같은 이벤트의 요청은 이 행을 기준으로 순서대로 판정되므로 아직 사용자 수량 행이 없는 첫 주문도 서로 충돌해 중복 행을 만들지 않는다. 기존 사용자 수량 행도 잠근 뒤 DB 시각을 읽는다.
 
-이벤트 잠금을 기다리는 동안 판매가 끝날 수 있다. 따라서 잠금을 기다리던 SQL의 시작 시각을 사용하지 않고, 잠금 획득 후 별도 시각 쿼리를 실행한다. [Sale.allocationDecision](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/Sale.java)은 기간 → 중단 → 사용자 한도 → 가용 재고 순서로 검사한다. 사용자 한도와 재고는 모두 점유 수량과 구매 확정 수량의 합을 사용한다. 모든 검사가 끝나기 전에는 수량을 쓰지 않는다.
+이벤트 잠금을 기다리는 동안 판매가 끝날 수 있다. 따라서 잠금을 기다리던 SQL의 시작 시각을 사용하지 않고, 잠금 획득 후 별도 시각 쿼리를 실행한다. [Sale.allocationDecision](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/Sale.java)은 기간 → 중단 → 사용자 한도 → 가용 재고 순서로 검사한다(품절 표시가 있으면 [사전 판정](#품절-사전-판정)이 먼저 품절로 답한다). 사용자 한도와 재고는 모두 점유 수량과 구매 확정 수량의 합을 사용한다. 모든 검사가 끝나기 전에는 수량을 쓰지 않는다.
 
 예를 들어 총수량 5개, 사용자 한도 4개라면 한 사용자가 2개씩 두 주문을 생성할 수 있다. 그 사용자의 다음 주문은 한도 초과다. 다른 사용자는 남은 1개를 주문할 수 있다. 요청 수량의 일부만 확보하는 동작은 없다.
 

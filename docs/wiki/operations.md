@@ -103,6 +103,17 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario bas
 - 캐시는 상세 조회 p50을 366ms에서 86ms로 줄였고 적중률은 99.3%였다. 행 잠금 대기 횟수는 같아 처리량 상한은 그대로 이벤트 행 잠금이다.
 - 남용 요청도 행 잠금 대기열에 서서 느려지므로 1초 5회 한도에는 거의 닿지 않았다. 1초 1회로 하자 남용 요청의 약 86%(3회 중앙값)가 DB 전에 429로 끝났고 정상 사용자의 지연과 행 잠금 대기가 줄었으며 정상 사용자의 429는 0건이었다. 그래서 기본값을 1초 1회로 낮췄다.
 
+### 품절 사전 판정 비교 실험 (2-7)
+
+같은 [run_comparison.py](../../tools/order-regression/run_comparison.py)로 `c-off`·`c-on`을 돌린다. 사용자 10,000·재고 1,000·VU 500, 조회 캐시 켬, 주문 요청 제한은 앱 기본값(켬, 1초 1회), 조회와 남용 사용자는 없고 품절 사전 판정만 끄고 켠다. 스위치 `limited-sale.sale.sold-out-gate.enabled`는 실행마다 명시 전달·기록한다. 결과는 [benchmarks/redis-comparison](../../benchmarks/redis-comparison/)의 `c-off`·`c-on`, 해석은 [2-7 결과](../stages/02-redis.md#2-7-구현과-검증)에 있다. 실행 전에 커밋으로 작업 트리를 깨끗하게 하고 `PYTHONDONTWRITEBYTECODE=1`을 설정하며 부하 평균과 루프백 연결 시간을 확인한다.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -B tools/order-regression/run_comparison.py --conditions c-off,c-on --rounds 3 --order-file execution-order-c.json --output benchmarks/redis-comparison --label "2-7 sold-out gate"
+```
+
+- 거절 응답(`SALE_SOLD_OUT`) p50은 1.34초에서 0.34초로 줄었고 행 잠금 대기는 약 80%, 부하 시간은 38.9초에서 19.8초로 줄었다.
+- 확정 수는 두 조건 모두 1,000건이다. 구매자의 `ORDER_CREATED`·결제 지연은 거의 같아서 주문 처리량이 늘었다고 해석하지 않는다. 빨라진 것은 거절이고, 같은 재고를 판 뒤 요청을 모두 끝내는 시간이다.
+
 ### Redis 장애 실험 (2-5)
 
 [run_redis_outage.py](../../tools/order-regression/run_redis_outage.py)는 1-10 격리 환경(판매 앱 2개·Caddy·Mock PG·전용 MySQL·Redis)에 주문 요청 제한을 켜고, 사용자 1,000명이 재고 300에 주문·결제하는 도중 Redis를 15초 동안 멈췄다가 다시 켠다. 클라이언트는 503이면 잠깐 기다리고, 429면 `Retry-After`만큼 기다리고, 401·403 `CSRF_INVALID`면 다시 로그인한 뒤 같은 요청 키로 재시도한다. 장애 중에는 쿠키 없이 판매 상세 조회도 계속 보낸다. 끝나면 [verify.py](../../tools/order-regression/verify.py)와 [reconcile.sql](../../tools/reconciliation/reconcile.sql)로 판정하고, 복구 후 캐시 값을 MySQL과 비교한다. 실행 방법과 통과 기준은 [실험 도구 안내](../../tools/order-regression/README.md)를 본다. 결과는 [benchmarks/redis-outage](../../benchmarks/redis-outage/)에 있다.

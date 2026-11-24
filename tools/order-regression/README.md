@@ -95,6 +95,8 @@ python3 -B tools/order-regression/run_redis_outage.py --redis-timeout 1s --users
 
 ## 2-6 비교 실험
 
+2-7 품절 사전 판정 비교(`c-off`·`c-on`)도 같은 실행기를 쓴다. 아래 표 끝의 조건과 "2-7 조건" 항목을 본다.
+
 `run_comparison.py`는 1-11 기준 실험의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공, 전용 MySQL·Redis), 사용자 준비, 지표 수집, `verify.py`·`reconcile.sql` 판정을 그대로 쓰고 조건 4개를 실행한다. 순수 로직은 `comparison.py`, k6 시나리오는 `tests/load/comparison-order.js`다. 필요한 것은 1-11 실험과 같다(Java 25, Docker, k6, Python 3.9+).
 
 | 조건 | 부하 | 조회 캐시 | 주문 요청 제한 |
@@ -107,6 +109,8 @@ python3 -B tools/order-regression/run_redis_outage.py --redis-timeout 1s --users
 | `b2-on` | `b2-off`와 같음 | 켬(기본) | 켬(`max-requests=5`를 명시 전달) |
 | `b3-off` | `b2-off`와 같음 | 켬(기본) | 끔(`max-requests=1`을 같이 전달) |
 | `b3-on` | `b2-off`와 같음 | 켬(기본) | 켬, `limited-sale.order.rate-limit.max-requests=1`(창 1초) |
+| `c-off` | 1-11 기준 흐름(조회·남용 없음), 사용자 10,000·재고 1,000·VU 500 | 켬(기본) | 켬(앱 기본값, `max-requests=1`을 명시 전달), 품절 사전 판정 끔 |
+| `c-on` | `c-off`와 같음 | 켬(기본) | 켬(같음), 품절 사전 판정 켬 |
 
 ```sh
 ./gradlew bootJar :mock-pg:bootJar
@@ -119,6 +123,7 @@ python3 -B tools/order-regression/run_comparison.py --users 500 --stock 100 --vu
 - 실행 순서: 한 라운드마다 `--conditions` 순서대로 조건 하나씩 실행하고 라운드를 반복한다(`a-off, a-on, b-off, b-on` × 3). 시간대 편향(컴퓨터 상태가 서서히 변하는 영향)을 조건에 나눠 갖게 하려는 것이다. 실제 순서와 각 실행의 상태는 `execution-order.json`에 남는다.
 - `max-requests`: 모든 조건이 판매 JVM에 `LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS`를 명시 전달한다(`a`·`b`·`b2`는 5, `b3`는 1; 제한을 끈 조건도 같은 값을 전달해 환경 기록을 맞춘다). 앱 기본값은 2-6 b3 참고 결과로 5에서 1로 바뀌었고, 명시 전달 덕분에 이미 측정한 `b-on`·`b2-on`을 다시 실행해도 같은 조건이다. 결과의 `environment.settings`에 `order_rate_limit_max_requests`·`order_rate_limit_window`·`order_rate_limit_max_requests_passed_explicitly`와 현재 기본값과 다른 값을 보여 주는 `overridden_application_defaults`가 남는다. 정상 사용자는 주문 1회·결제 1회를 따로 세므로 429를 받으면(`normal_users_never_rate_limited`) 실패다. `b3-on`은 429가 한 번도 없으면(`rate_limit_override_reached_the_jvms`) 설정이 JVM에 닿지 않은 것으로 보고 실패시킨다(`b-on`·`b2-on`은 한도에 닿지 않는 것도 결과이므로 이 검사가 없다).
 - 스위치: 캐시는 판매 JVM의 `LIMITED_SALE_SALE_CACHE_ENABLED`, 요청 제한은 `Isolated(order_rate_limit=...)`로 지정하고 둘 다 `resources.json`·결과의 `environment.settings`에 남는다. 캐시가 실제로 꺼졌는지는 `sale_cache_requests_total` 계열이 지표에 없는지로 확인한다(꺼진 캐시는 지표를 만들지 않는다). 나머지 설정(캐시 TTL 60초, 제한 창 1초)은 애플리케이션 기본값이고 허용 횟수는 위 `max-requests`다.
+- 2-7 조건: `c-off`·`c-on`은 `--conditions c-off,c-on --order-file execution-order-c.json`으로 따로 실행한다. 품절 사전 판정 스위치는 판매 JVM의 `LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED`이고 **모든 조건이 매번 명시 전달**한다(`c-on`만 `true`, 2-7 전에 측정한 조건은 `false`라서 다시 실행해도 같은 조건이다). 결과의 `environment.settings`에 `sold_out_gate_enabled`·`sold_out_gate_passed_explicitly`와 기본 TTL(`sold_out_gate_ttl`)이 남는다. 스위치가 실제로 닿았는지는 `sale_sold_out_gate_requests_total` 계열이 지표에 있는지로 확인한다(꺼진 사전 판정은 지표를 만들지 않는다). 추가 통과 기준: 켠 조건은 429가 아닌 모든 생성 요청이 표시 조회 1회(`every_create_was_a_gate_lookup`), 조회·쓰기 오류 0, `c-on`은 표시 적중 1회 이상(`gate_turned_requests_away`), 끈 조건은 표시 지표 증가 0. 기록에는 표시 적중·미적중·오류(`gate`), 쓰기·지우기 성공·오류(`gate_updates`), 정상 사용자의 `order_create` 지연을 응답별로 나눈 `latency_by_code`(`ORDER_CREATED`·`SALE_SOLD_OUT`의 건수·p50·p95·p99)가 더해진다. 행 잠금 대기·시간과 Hikari 대기는 기존 `mysql`·`management` 항목에 있다. 빠른 거절은 `ORDER_CREATED` 지연과 섞이지 않게 `latency_by_code`로 읽고, 처리량은 확정 수와 부하 시간을 함께 본다.
 - 실험 A의 조회: 반복마다 `GET /api/v1/sales/{id}`를 `DETAIL_VIEWS`(5)번 연달아 보낸 뒤 주문·결제한다. 조회에는 로그인한 사용자의 세션 쿠키를 붙인다. 공개 엔드포인트라 쿠키가 필요 없지만 브라우저는 같은 출처 요청에 쿠키를 항상 보내고, 쿠키가 있으면 서버가 세션 확인 때문에 Redis를 부르므로(`PublicSessionFallbackFilter`) 캐시를 끈 조건에서도 이 Redis 호출이 남는다. 두 조건에서 같은 비용을 지불하므로 차이는 판매 이벤트 캐시만 반영한다.
 - 실험 B의 남용 사용자: 정상 시나리오와 별도 k6 scenario(`abuse`)로 같은 k6 실행에 들어가며 사용자당 VU 수는 `ABUSER_VUS`(`b`는 1, `b2`는 5)다. 처음 설계(`b`)는 남용 요청이 행 잠금 대기열에 서서 요청당 약 1.6초가 걸려 회원당 약 0.5회/초밖에 못 보내 한도(당시 기본값 1초 5회)에 닿지 못했다. `b2`는 한 회원의 VU들이 같은 세션(쿠키·CSRF)을 공유해 병렬로 보내는 봇을 흉내 낸다. 정상 시나리오는 `shared-iterations` VU 500 그대로다. 각 남용 VU는 기다림 없이 매번 `crypto.randomUUID()` 새 요청 키로 `POST /api/v1/orders`를 반복한다. 429를 받아도 `Retry-After`를 무시하고 바로 다음 요청을 보낸다. 주문이 생성되면(201) 정상 사용자처럼 결제를 한 번 하고 계속 반복한다(그래야 생성된 주문이 종료 상태에 이른다). 정상 시나리오의 반복이 모두 끝나면 멈춘다. 남용 VU는 반복 하나를 그 시점까지 이어서 돌리므로 `exec.instance.iterationsCompleted`가 정상 반복 수에 도달하면 끝난다.
 - 검증기 입력: 정상 사용자는 1-11처럼 사전에 고정한 요청 1건씩이다. 남용 요청은 키가 무작위이고 k6가 요청별 기록을 남기지 않으므로 서버가 저장한 `order_request_results`에서 남용 회원의 행을 시도로 만든다(429는 기록되지 않는 것이 정책이다). 허용 결과는 생성·거절, 거절 사유는 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`, 최종 상태는 `CONFIRMED`다. 클라이언트가 센 남용 응답과 서버 기록의 수가 같은지 따로 대조한다.

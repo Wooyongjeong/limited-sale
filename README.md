@@ -22,6 +22,8 @@ ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제
 
 `GET /api/v1/sales/{id}`는 Redis에 저장 값을 캐시한다(키 `limited-sale:cache:sale:v1:{id}`). 상태는 읽을 때 앱 시계(UTC)로 계산한다. TTL 기본값은 60초이며 `LIMITED_SALE_SALE_CACHE_TTL`(예: `PT30S`)로 양의 기간을 설정한다. 수정·중단·재개·삭제와 마지막 수량 확정은 커밋 후 키를 지우고, Redis 장애 시에는 MySQL 결과로 응답한다. 지표는 `sale_cache_requests_total{result}`, `sale_cache_evictions_total{result}`다. `limited-sale.sale.cache.enabled`(기본 `true`, 환경변수 `LIMITED_SALE_SALE_CACHE_ENABLED`)를 `false`로 끄면 Redis를 호출하지 않고 항상 MySQL로 조회하며 캐시 지표도 만들지 않는다. 캐시 유무를 비교하는 실험용 스위치다.
 
+주문 생성은 요청 제한 다음에 Redis 품절 표시(키 `limited-sale:sale:sold-out:v1:{id}`)를 한 번 조회하고, 표시가 있으면 판매 이벤트 행을 잠그지 않고 같은 요청 키에 `SALE_SOLD_OUT`을 저장해 409로 답한다. 이미 결과가 있는 요청 키는 표시보다 먼저 재생한다. 표시는 마지막 수량을 점유했거나 MySQL이 품절로 판정한 트랜잭션이 커밋한 뒤 두고, 점유 해제·시작 전 총수량 변경·삭제가 커밋한 뒤 지운다. 롤백은 Redis를 바꾸지 않는다. 표시가 있으면 중단·기간 외·구매 한도보다 품절이 먼저 응답된다. `limited-sale.sale.sold-out-gate.enabled`(기본 `true`, 환경변수 `LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED`)를 `false`로 끄면 Redis를 호출하지 않고 항상 MySQL로 판정하며 지표도 만들지 않는다. `limited-sale.sale.sold-out-gate.ttl`(기본 `PT5S`, 환경변수 `LIMITED_SALE_SALE_SOLD_OUT_GATE_TTL`)은 양의 기간이며, 표시를 지우지 못해도 이 시간이 지나면 저절로 사라진다. Redis 조회·쓰기가 실패하면 MySQL로 판정하고 요청은 성공한다. 지표는 `sale_sold_out_gate_requests_total{result=hit|miss|error}`, `sale_sold_out_gate_updates_total{operation=mark|clear,result=success|error}`다.
+
 ## Mock PG 시나리오
 
 두 앱에 같은 `MOCK_PG_API_KEY`를 환경변수로 설정한다. 실제 비밀값은 저장소에 기록하지 않는다. PG의 `/api/v1/payments` 결제·조회·종료와 `/api/v1/simulations/{pgKey}` 설정 요청은 `X-Mock-PG-Key` 헤더가 필요하며 health는 공개한다. 판매 서버는 `MOCK_PG_BASE_URL`로 PG 주소를 받는다.
