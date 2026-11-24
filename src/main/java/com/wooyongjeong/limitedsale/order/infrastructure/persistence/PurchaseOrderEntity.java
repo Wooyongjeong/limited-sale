@@ -91,6 +91,10 @@ public class PurchaseOrderEntity {
         return id;
     }
 
+    UUID publicId() {
+        return publicId;
+    }
+
     PaymentOrder paymentOrder() {
         return new PaymentOrder(id, publicId, memberId, saleId, quantity, status.name(), expiresAt, nextRecoveryAt,
             leaseToken, leaseUntil, requiresReview, nextReviewWarningAt);
