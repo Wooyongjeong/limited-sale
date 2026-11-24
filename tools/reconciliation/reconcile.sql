@@ -81,7 +81,8 @@ FROM (
     HAVING SUM(r.quantity) > s.per_member_limit
 
     UNION ALL
-    -- Every order has exactly one reservation, one payment and one CREATED request result.
+    -- Every order has exactly one reservation, one payment, and one CREATED request result (v1) or one
+    -- ORDER_CREATED acceptance whose ID is the order's request key (v2, stage 3).
     SELECT 'ORDER_MISSING_RESERVATION', o.sale_id, o.member_id, o.id, CONVERT('' USING utf8mb4)
     FROM purchase_orders o
     LEFT JOIN sale_reservations r ON r.order_id = o.id
@@ -99,7 +100,10 @@ FROM (
     LEFT JOIN order_request_results q
            ON q.member_id = o.member_id AND q.request_key = o.request_key
           AND q.outcome = 'CREATED' AND q.order_id = o.id
-    WHERE q.id IS NULL
+    LEFT JOIN order_acceptances a
+           ON a.order_id = o.id AND a.member_id = o.member_id AND a.public_id = o.request_key
+          AND a.status = 'ORDER_CREATED'
+    WHERE q.id IS NULL AND a.id IS NULL
 
     UNION ALL
     -- Order amounts and prices.
@@ -182,6 +186,16 @@ FROM (
     WHERE q.outcome = 'CREATED'
       AND (o.id IS NULL OR o.member_id <> q.member_id OR o.request_key <> q.request_key
            OR o.sale_id <> q.sale_id OR o.quantity <> q.quantity)
+
+    UNION ALL
+    -- An ORDER_CREATED acceptance names the order made for it: same member, sale and quantity, keyed by its ID.
+    SELECT 'ACCEPTANCE_VS_ORDER', a.sale_id, a.member_id, a.order_id,
+           CONVERT(CONCAT('status=', a.status) USING utf8mb4)
+    FROM order_acceptances a
+    LEFT JOIN purchase_orders o ON o.id = a.order_id
+    WHERE a.status = 'ORDER_CREATED'
+      AND (o.id IS NULL OR o.member_id <> a.member_id OR o.request_key <> a.public_id
+           OR o.sale_id <> a.sale_id OR o.quantity <> a.quantity)
 
     UNION ALL
     SELECT 'REJECTED_REQUEST_HAS_ORDER', q.sale_id, q.member_id, o.id,

@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
+import com.wooyongjeong.limitedsale.order.domain.AcceptanceInProcess;
 import com.wooyongjeong.limitedsale.order.domain.AcceptanceStatus;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
 import com.wooyongjeong.limitedsale.order.domain.OrderRejection;
@@ -75,6 +76,30 @@ class OrderAcceptanceEntity {
             OrderRejection reason, Instant now) {
         return new OrderAcceptanceEntity(publicId, memberId, requestKey, saleId, quantity, AcceptanceStatus.REJECTED,
             reason, now, now);
+    }
+
+    AcceptanceInProcess toInProcess() {
+        return new AcceptanceInProcess(memberId, saleId, quantity, status, acceptedAt);
+    }
+
+    void orderCreated(long orderId, Instant now) {
+        requireAccepted();
+        status = AcceptanceStatus.ORDER_CREATED;
+        this.orderId = orderId;
+        finishedAt = now;
+    }
+
+    void rejected(OrderRejection reason, Instant now) {
+        requireAccepted();
+        status = AcceptanceStatus.REJECTED;
+        rejectionReason = reason;
+        finishedAt = now;
+    }
+
+    private void requireAccepted() {
+        if (status != AcceptanceStatus.ACCEPTED) {
+            throw new IllegalStateException("Only an ACCEPTED acceptance can be finished, not " + status);
+        }
     }
 
     /** {@code orderPublicId} is looked up by the caller because only the order table knows it. */

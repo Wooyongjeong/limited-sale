@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
+import com.wooyongjeong.limitedsale.order.domain.AcceptanceInProcess;
 import com.wooyongjeong.limitedsale.order.domain.AcceptanceMessage;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceStore;
@@ -50,6 +51,26 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
     @Override
     public Optional<OrderAcceptance> find(long memberId, UUID acceptanceId) {
         return acceptances.findByMemberIdAndPublicId(memberId, acceptanceId).map(this::view);
+    }
+
+    @Override
+    public Optional<AcceptanceInProcess> lockForProcessing(UUID acceptanceId) {
+        return acceptances.findForUpdate(acceptanceId).map(OrderAcceptanceEntity::toInProcess);
+    }
+
+    @Override
+    public void finishWithOrder(UUID acceptanceId, long orderId, Instant now) {
+        locked(acceptanceId).orderCreated(orderId, now);
+    }
+
+    @Override
+    public void finishRejected(UUID acceptanceId, OrderRejection rejection, Instant now) {
+        locked(acceptanceId).rejected(rejection, now);
+    }
+
+    /** The row is locked by {@link #lockForProcessing} already; this returns the same managed entity. */
+    private OrderAcceptanceEntity locked(UUID acceptanceId) {
+        return acceptances.findForUpdate(acceptanceId).orElseThrow();
     }
 
     private OrderAcceptanceEntity save(OrderAcceptanceEntity entity) {

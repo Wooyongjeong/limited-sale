@@ -56,6 +56,22 @@ class SaleTest {
     }
 
     @Test
+    void anAcceptedRequestIsJudgedForThePeriodAtItsAcceptanceAndForEverythingElseNow() {
+        Instant acceptedInPeriod = END.minusSeconds(1);
+        assertThat(sale(false, 0, 0).acceptedAllocationDecision(acceptedInPeriod, 0, 1))
+            .isEqualTo(AllocationDecision.ALLOCATED);
+        assertThat(sale(false, 0, 0).acceptedAllocationDecision(END, 0, 1))
+            .isEqualTo(AllocationDecision.SALE_OUTSIDE_PERIOD);
+        // The stop flag, the member's quantity and the stock are the current ones.
+        assertThat(sale(true, 0, 0).acceptedAllocationDecision(acceptedInPeriod, 0, 1))
+            .isEqualTo(AllocationDecision.SALE_STOPPED);
+        assertThat(sale(false, 0, 0).acceptedAllocationDecision(acceptedInPeriod, 1, 1))
+            .isEqualTo(AllocationDecision.PURCHASE_LIMIT_EXCEEDED);
+        assertThat(sale(false, 4, 6).acceptedAllocationDecision(acceptedInPeriod, 0, 1))
+            .isEqualTo(AllocationDecision.SALE_SOLD_OUT);
+    }
+
+    @Test
     void metadataCanChangeAfterStartButTermsAndStaleVersionsCannot() {
         Sale original = sale(false, 0, 0);
         Sale edited = original.revise(terms("changed", START), "product", false, 3, END);
