@@ -17,6 +17,43 @@ spring:
       redis:
         flush-mode: immediate
         namespace: limited-sale:session
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      # Topics are created by KafkaTopicProvisioner in the background, never while the context starts, so a missing
+      # broker cannot fail or delay startup. These stay explicit because Spring Kafka's defaults changed over versions.
+      auto-create: false
+      fail-fast: false
+      modify-topic-configs: false
+      operation-timeout: 5s
+      close-timeout: 2s
+      properties:
+        # Without these the admin client waits its 60 s default before giving up on a broker that is not there.
+        default.api.timeout.ms: 5000
+        request.timeout.ms: 3000
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        # Without a short bound a broker outage holds the calling thread for the 60 s default of max.block.ms.
+        # delivery.timeout.ms must be at least linger.ms + request.timeout.ms (5 + 3000 here).
+        linger.ms: 5
+        request.timeout.ms: 3000
+        max.block.ms: 5000
+        delivery.timeout.ms: 5000
+    consumer:
+      group-id: limited-sale-order-consumer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual
+      # Consumers per application instance; two instances share the six partitions.
+      concurrency: 3
   jackson:
     read:
       strict-duplicate-detection: true
