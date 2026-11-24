@@ -318,6 +318,22 @@ class SoldOutGateIntegrationTest {
     }
 
     @Test
+    void aRequestForMoreThanWhatRemainsIsRejectedWithoutMarkingTheSale() throws Exception {
+        Client client = Client.login();
+        long sale = openSale(2, 2);
+        sales.update("UPDATE sales SET reserved_quantity = 1 WHERE id = ?", sale);
+        double marks = updates("mark", "success");
+
+        assertCode(client.order(sale, UUID.randomUUID(), 2), OrderResponseCode.SALE_SOLD_OUT);
+
+        assertThat(marked(sale)).as("one unit is still available").isFalse();
+        assertThat(updates("mark", "success")).isEqualTo(marks);
+        assertThat(client.order(sale, UUID.randomUUID(), 1).statusCode()).as("the last unit still sells")
+            .isEqualTo(201);
+        assertThat(marked(sale)).isTrue();
+    }
+
+    @Test
     void anExistingKeyReplaysBeforeTheMarkerCanRejectIt() throws Exception {
         Client client = Client.login();
         long sale = openSale(1, 1);

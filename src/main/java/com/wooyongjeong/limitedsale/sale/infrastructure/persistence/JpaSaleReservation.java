@@ -58,7 +58,9 @@ public class JpaSaleReservation implements SaleReservation {
                 // The last unit is taken; later requests can be turned away without queueing for this row lock.
                 soldOutMarker.markAfterCommit(saleId);
             }
-        } else if (reason == SaleAllocation.Reason.SALE_SOLD_OUT) {
+        } else if (reason == SaleAllocation.Reason.SALE_SOLD_OUT
+                && terms.totalQuantity() - sale.reservedQuantity() - sale.soldQuantity() <= 0) {
+            // Only a truly exhausted sale is marked; a request for more than what remains must not turn away others.
             soldOutMarker.markAfterCommit(saleId);
         }
         return new SaleAllocation(reason, terms.productId(), sale.productNameSnapshot(), terms.unitPrice(), now);

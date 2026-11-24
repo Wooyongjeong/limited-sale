@@ -64,13 +64,12 @@ Redis 조회·저장이 실패하면 MySQL 결과로 응답하고, 커밋 후 �
 | 시점 | 동작 | 위치 |
 |---|---|---|
 | 점유로 구매 가능 수량(총수량 − 점유 − 확정)이 0이 됨 | 표시를 둔다 | [JpaSaleReservation.allocate](../../src/main/java/com/wooyongjeong/limitedsale/sale/infrastructure/persistence/JpaSaleReservation.java) |
-| MySQL이 `SALE_SOLD_OUT`으로 판정함 | 표시를 둔다(TTL이 지나 사라진 표시를 다시 둔다) | 같은 곳 |
+| MySQL이 `SALE_SOLD_OUT`으로 판정하고 구매 가능 수량이 0임 | 표시를 둔다(TTL이 지나 사라진 표시를 다시 둔다). 남은 수량보다 많이 요청해 판정된 경우는 표시하지 않는다 | 같은 곳 |
 | 결제 거절·종료로 점유가 해제됨(`finish(confirmed=false)`) | 표시를 지운다 | 같은 곳 |
 | 결제 확정(`confirmed=true`) | 바꾸지 않는다. 확정은 가용 수량을 바꾸지 않는다 | 같은 곳 |
 | 시작 전 총수량 변경, 삭제 | 표시를 지운다 | [SaleService](../../src/main/java/com/wooyongjeong/limitedsale/sale/application/SaleService.java) |
 
-조회·쓰기·삭제가 실패해도 요청은 성공하고, 로그와 `sale_sold_out_gate_requests_total{result=hit|miss|error}`, `sale_sold_out_gate_updates_total{operation=mark|clear,result=success|error}`에 남긴다. 조회 실패는 표시가 없는 것으로 보고 MySQL이 판정한다. 지우기가 실패하거나 서로 다른 커밋의 쓰기 순서가 뒤바뀌면 해제된 재고가 TTL 동안 팔리지 않는 거짓 품절이 생길 수 있다. 반대 방향(표시가 없는데 품절)은 MySQL이 막으므로 초과 판매는 생기지 않는다. 품절이 계속되는 동안에는 5초마다 요청 하나가 MySQL까지 가서 표시를 다시 둔다. 수량 2개 요청이 재고 1개 때문에 품절로 판정돼도 표시가 놓이므로, 그 TTL 동안 1개를 사려는 요청도 품절을 받는다. 수량이 1개인 시나리오에서는 생기지 않는다.
-
+조회·쓰기·삭제가 실패해도 요청은 성공하고, 로그와 `sale_sold_out_gate_requests_total{result=hit|miss|error}`, `sale_sold_out_gate_updates_total{operation=mark|clear,result=success|error}`에 남긴다. 조회 실패는 표시가 없는 것으로 보고 MySQL이 판정한다. 지우기가 실패하거나 서로 다른 커밋의 쓰기 순서가 뒤바뀌면 해제된 재고가 TTL 동안 팔리지 않는 거짓 품절이 생길 수 있다. 반대 방향(표시가 없는데 품절)은 MySQL이 막으므로 초과 판매는 생기지 않는다. 품절이 계속되는 동안에는 5초마다 요청 하나가 MySQL까지 가서 표시를 다시 둔다.
 [SaleTerms](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/SaleTerms.java)는 이름·가격·수량·기간을 검증한다. 시각은 오프셋을 포함해 입력하고 DB 마이크로초 정밀도를 넘으면 400이다. [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java)는 실제 MySQL의 잠금 대기·동시 수정·시각·필터와 HTTP 계약을 검사한다. 정책 및 한계는 [1-6 상세 문서](../stages/01-6-sale-management-and-query.md)를 따른다.
 
 매우 큰 페이지의 네이티브 조회에는 기준 시각을 `Instant`로 직접 바인딩한다. UTC 값을 LocalDateTime으로 바꿔 넘기면 Hibernate/JDBC의 시간대 처리에 따라 비교 시각이 이동할 수 있어 실제 MySQL 회귀 테스트로 방어한다.
