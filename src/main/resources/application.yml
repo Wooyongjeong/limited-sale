@@ -86,6 +86,12 @@ spring:
     open-in-view: false
     properties:
       hibernate.jdbc.time_zone: UTC
+limited-sale:
+  order:
+    outbox-publisher:
+      # Sends the order outbox rows to Kafka. It runs only together with limited-sale.order.async.enabled=true, and the
+      # tests turn it off with a system property so a context that does not test it never opens a Kafka client.
+      enabled: true
 management:
   server:
     address: ${MANAGEMENT_SERVER_ADDRESS:127.0.0.1}

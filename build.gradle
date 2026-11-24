@@ -40,9 +40,11 @@ dependencies {
 
 // Most tests do not use Kafka, so they skip topic provisioning instead of retrying against a broker that is not there.
 // The Kafka integration tests turn it back on with a command-line argument, which outranks this system property.
+// The order outbox publisher is off for the same reason; only its own tests switch it on.
 tasks.named('test') {
     useJUnitPlatform()
     systemProperty 'limited-sale.kafka.topic-provisioning.enabled', 'false'
+    systemProperty 'limited-sale.order.outbox-publisher.enabled', 'false'
 }
 
 sourceSets {
@@ -71,6 +73,7 @@ tasks.register('integrationTest', Test) {
     classpath = sourceSets.integrationTest.runtimeClasspath
     useJUnitPlatform()
     systemProperty 'limited-sale.kafka.topic-provisioning.enabled', 'false'
+    systemProperty 'limited-sale.order.outbox-publisher.enabled', 'false'
     shouldRunAfter test
     inputs.file('tools/reconciliation/reconcile.sql')
 }
