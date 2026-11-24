@@ -92,6 +92,10 @@ limited-sale:
       # Sends the order outbox rows to Kafka. It runs only together with limited-sale.order.async.enabled=true, and the
       # tests turn it off with a system property so a context that does not test it never opens a Kafka client.
       enabled: true
+    consumer:
+      # Consumes the accepted requests and creates their orders. Same rule as the publisher: it runs only together with
+      # limited-sale.order.async.enabled=true, and the tests turn it off unless they test it.
+      enabled: true
 management:
   server:
     address: ${MANAGEMENT_SERVER_ADDRESS:127.0.0.1}

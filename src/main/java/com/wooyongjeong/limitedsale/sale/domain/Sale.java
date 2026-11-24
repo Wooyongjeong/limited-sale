@@ -21,6 +21,15 @@ public record Sale(long id, SaleTerms terms, String productNameSnapshot, int res
     }
 
     /**
+     * The consumer's decision for a request accepted earlier: the period is judged at the acceptance time, so a request
+     * accepted before the end is still served after it, while the stop flag, the member limit and the stock are the
+     * current ones, so a stop also halts requests that are still waiting.
+     */
+    public AllocationDecision acceptedAllocationDecision(Instant acceptedAt, int memberQuantity, int quantity) {
+        return allocationDecision(acceptedAt, memberQuantity, quantity);
+    }
+
+    /**
      * The decisions that need no quantities: only the period and the stop flag. Zero quantities cannot exceed the
      * member limit or the stock, so the result is never PURCHASE_LIMIT_EXCEEDED or SALE_SOLD_OUT; ALLOCATED means the
      * request may be accepted.

@@ -15,4 +15,13 @@ public interface OrderAcceptanceStore {
         OrderRejection rejection, Instant now);
 
     Optional<OrderAcceptance> find(long memberId, UUID acceptanceId);
+
+    /** Locks the acceptance row until the caller's transaction ends; empty when there is no such acceptance. */
+    Optional<AcceptanceInProcess> lockForProcessing(UUID acceptanceId);
+
+    /** Moves a locked ACCEPTED acceptance to ORDER_CREATED with the internal order ID. */
+    void finishWithOrder(UUID acceptanceId, long orderId, Instant now);
+
+    /** Moves a locked ACCEPTED acceptance to REJECTED. */
+    void finishRejected(UUID acceptanceId, OrderRejection rejection, Instant now);
 }

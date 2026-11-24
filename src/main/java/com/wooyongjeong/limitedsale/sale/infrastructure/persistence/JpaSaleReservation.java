@@ -29,6 +29,16 @@ public class JpaSaleReservation implements SaleReservation {
 
     @Override
     public SaleAllocation allocate(long saleId, long memberId, int quantity) {
+        return allocate(saleId, memberId, quantity, null);
+    }
+
+    @Override
+    public SaleAllocation allocateAccepted(long saleId, long memberId, int quantity, Instant acceptedAt) {
+        return allocate(saleId, memberId, quantity, acceptedAt);
+    }
+
+    /** {@code acceptedAt} is null for a synchronous request, whose period is judged now. */
+    private SaleAllocation allocate(long saleId, long memberId, int quantity, Instant acceptedAt) {
         var found = sales.findForUpdate(saleId);
         if (found.isEmpty()) {
             return new SaleAllocation(SaleAllocation.Reason.SALE_NOT_FOUND, 0, null, 0,
@@ -39,7 +49,9 @@ public class JpaSaleReservation implements SaleReservation {
         Instant now = Instant.parse(sales.databaseTime());
         var sale = entity.toSale();
         var terms = sale.terms();
-        var decision = sale.allocationDecision(now, buyer == null ? 0 : buyer.total(), quantity);
+        int memberQuantity = buyer == null ? 0 : buyer.total();
+        var decision = acceptedAt == null ? sale.allocationDecision(now, memberQuantity, quantity)
+            : sale.acceptedAllocationDecision(acceptedAt, memberQuantity, quantity);
         SaleAllocation.Reason reason = switch (decision) {
             case ALLOCATED -> SaleAllocation.Reason.ALLOCATED;
             case SALE_OUTSIDE_PERIOD -> SaleAllocation.Reason.SALE_OUTSIDE_PERIOD;
