@@ -17,6 +17,61 @@ spring:
       redis:
         flush-mode: immediate
         namespace: limited-sale:session
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      # Topics are created by KafkaTopicProvisioner in the background, never while the context starts, so a missing
+      # broker cannot fail or delay startup. These stay explicit because Spring Kafka's defaults changed over versions.
+      auto-create: false
+      fail-fast: false
+      modify-topic-configs: false
+      operation-timeout: 5s
+      close-timeout: 2s
+      properties:
+        # Without these the admin client waits its 60 s default before giving up on a broker that is not there.
+        default.api.timeout.ms: 5000
+        request.timeout.ms: 3000
+        # Kafka 4 clients rebootstrap on every refused connection; without a longer backoff that is a tight loop
+        # (about ten attempts and thirty log lines a second per client) while the broker is down.
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 1000
+        retry.backoff.max.ms: 5000
+        # The admin client is short-lived (one per provisioning attempt). Rebootstrapping re-reads the bootstrap
+        # servers on every failed metadata update, about ten times per refused connection; plain retries are enough.
+        metadata.recovery.strategy: none
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        # Without a short bound a broker outage holds the calling thread for the 60 s default of max.block.ms.
+        # delivery.timeout.ms must be at least linger.ms + request.timeout.ms (5 + 3000 here).
+        linger.ms: 5
+        request.timeout.ms: 3000
+        max.block.ms: 5000
+        delivery.timeout.ms: 5000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 500
+        retry.backoff.max.ms: 2000
+    consumer:
+      group-id: limited-sale-order-consumer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        retry.backoff.ms: 1000
+        retry.backoff.max.ms: 5000
+    listener:
+      ack-mode: manual
+      # Consumers per application instance; two instances share the six partitions.
+      concurrency: 3
   jackson:
     read:
       strict-duplicate-detection: true

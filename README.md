@@ -20,6 +20,8 @@ ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제
 
 `GET /api/v1/sales?productId=1&status=SCHEDULED&page=0&size=20`과 `GET /api/v1/sales/{id}`는 공개 조회다. 수량은 총수량만 공개한다. PATCH는 조회한 version을 보내야 하며 충돌 시 409다. 시작 후에는 이름·설명만 수정할 수 있다. 중단·재개는 시작 전에도 가능하며 종료 후에는 거절한다. [전체 계약](docs/stages/01-6-sale-management-and-query.md)을 참고한다.
 
+Kafka(3-2, 연결만 구현)는 `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`)로 접속한다. Compose 브로커의 게시 포트는 `KAFKA_PORT`(기본 9092)이며 두 값을 함께 바꾼다. 앱은 브로커 없이도 기동하고 `/actuator/health`에 Kafka를 넣지 않는다. 운영 토픽 `limited-sale.order-acceptances.v1`(파티션 6, 복제 1)은 앱이 백그라운드에서 만들고 브로커가 없으면 경고를 남기며 재시도한다. 브로커의 자동 토픽 생성은 끈다. 프로듀서는 `acks=all`·멱등이고 `max.block.ms`·`delivery.timeout.ms`가 5초, 소비자는 그룹 `limited-sale-order-consumer`·자동 커밋 끔·수동 확인·인스턴스당 동시성 3(`spring.kafka.listener.concurrency`)이다. 업무 접수·발행·소비는 3-3 이후다. 브로커는 한 개라 고가용성이 아니다.
+
 `GET /api/v1/sales/{id}`는 Redis에 저장 값을 캐시한다(키 `limited-sale:cache:sale:v1:{id}`). 상태는 읽을 때 앱 시계(UTC)로 계산한다. TTL 기본값은 60초이며 `LIMITED_SALE_SALE_CACHE_TTL`(예: `PT30S`)로 양의 기간을 설정한다. 수정·중단·재개·삭제와 마지막 수량 확정은 커밋 후 키를 지우고, Redis 장애 시에는 MySQL 결과로 응답한다. 지표는 `sale_cache_requests_total{result}`, `sale_cache_evictions_total{result}`다. `limited-sale.sale.cache.enabled`(기본 `true`, 환경변수 `LIMITED_SALE_SALE_CACHE_ENABLED`)를 `false`로 끄면 Redis를 호출하지 않고 항상 MySQL로 조회하며 캐시 지표도 만들지 않는다. 캐시 유무를 비교하는 실험용 스위치다.
 
 주문 생성은 요청 제한 다음에 Redis 품절 표시(키 `limited-sale:sale:sold-out:v1:{id}`)를 한 번 조회하고, 표시가 있으면 판매 이벤트 행을 잠그지 않고 같은 요청 키에 `SALE_SOLD_OUT`을 저장해 409로 답한다. 이미 결과가 있는 요청 키는 표시보다 먼저 재생한다. 표시는 마지막 수량을 점유했거나 MySQL이 구매 가능 수량 0으로 품절 판정한 트랜잭션이 커밋한 뒤 두고, 점유 해제·시작 전 총수량 변경·삭제가 커밋한 뒤 지운다. 롤백은 Redis를 바꾸지 않는다. 표시가 있으면 중단·기간 외·구매 한도보다 품절이 먼저 응답된다. `limited-sale.sale.sold-out-gate.enabled`(기본 `true`, 환경변수 `LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED`)를 `false`로 끄면 Redis를 호출하지 않고 항상 MySQL로 판정하며 지표도 만들지 않는다. `limited-sale.sale.sold-out-gate.ttl`(기본 `PT5S`, 환경변수 `LIMITED_SALE_SALE_SOLD_OUT_GATE_TTL`)은 양의 기간이며, 표시를 지우지 못해도 이 시간이 지나면 저절로 사라진다. Redis 조회·쓰기가 실패하면 MySQL로 판정하고 요청은 성공한다. 지표는 `sale_sold_out_gate_requests_total{result=hit|miss|error}`, `sale_sold_out_gate_updates_total{operation=mark|clear,result=success|error}`다.
@@ -32,7 +34,7 @@ local/test 환경에서 ADMIN 세션과 CSRF 토큰을 사용해 `PUT /api/v1/ad
 
 ## 준비와 실행
 
-Java 25, Docker Compose가 필요하다. Spring Boot 4.1.2, Gradle 9.9.2, MySQL 8.4.7, Redis 7.4를 사용한다. 시작 전 3306, 6379, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
+Java 25, Docker Compose가 필요하다. Spring Boot 4.1.2, Gradle 9.9.2, MySQL 8.4.7, Redis 7.4, Apache Kafka 4.4.0(KRaft 단일 브로커)을 사용한다. 시작 전 3306, 6379, 9092, 8080, 8081 포트 사용 여부를 확인하고 필요하면 `.env`의 포트를 바꾼다.
 
 Apple Silicon macOS에서 Homebrew로 설치한 Java 25는 다음과 같이 현재 셸에서 선택하고 버전을 확인한다. 다른 환경에서는 설치한 Java 25의 경로로 `JAVA_HOME`을 지정한다. 이 설정은 전역 Java 기본값을 변경하지 않는다.
 
@@ -48,7 +50,7 @@ cp .env.example .env
 # .env의 세 비밀번호와 MOCK_PG_API_KEY를 서로 다른 로컬 전용 값으로 변경한다.
 # DB 이름·계정·비밀번호는 영문자, 숫자, 밑줄만 사용한다.
 set -a; source .env; set +a
-docker compose up -d
+docker compose up -d                  # mysql, redis, kafka
 docker compose ps                    # healthy 확인
 ./scripts/prepare-local-db.sh        # 두 스키마와 계정 준비, 반복 실행 가능
 ./gradlew :bootRun                   # 판매 앱: 별도 터미널에서 실행
@@ -98,16 +100,18 @@ curl -i -H 'X-Request-Id: demo-1' http://localhost:8080/api/v1/products   # 응�
 
 모든 요청에 `X-Request-Id`가 붙는다. 영문·숫자·`-`·`_` 1~64자면 그대로 쓰고, 아니면 새 UUID로 바꾼다. 응답 헤더로 돌려주고 콘솔 로그 `[요청ID]`에 남는다. 업무 지표는 `order_creation_results_total{result}`, `order_payment_results_total{result}`, `order_unfinished`, `order_requires_review`이며 라벨에 회원·주문·요청 ID를 쓰지 않는다. 미완료·확인 필요 주문 수는 `limited-sale.observability.backlog-interval`(기본 `PT10S`)마다 DB에서 센다.
 
-Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`), Redis 지표를 내는 redis_exporter(`127.0.0.1:9121`)는 `monitoring` 프로필로만 뜬다. 기본 `docker compose up`은 MySQL·Redis만 띄운다. 판매 앱을 먼저 실행한 뒤 시작한다. Prometheus는 `host.docker.internal:8090`을 5초마다 읽으므로 앱이 `127.0.0.1`에 묶여 있어도 Docker Desktop에서 수집된다. Linux는 `extra_hosts`의 `host-gateway`가 같은 이름을 연결한다. 다른 관리 포트를 쓰면 `infra/prometheus/prometheus.yml`의 대상 주소를 맞춘다.
+Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`), Redis 지표를 내는 redis_exporter(`127.0.0.1:9121`), Kafka 지표를 내는 kafka-exporter(`127.0.0.1:9308`)는 `monitoring` 프로필로만 뜬다. 기본 `docker compose up`은 MySQL·Redis·Kafka만 띄운다. 판매 앱을 먼저 실행한 뒤 시작한다. Prometheus는 `host.docker.internal:8090`을 5초마다 읽으므로 앱이 `127.0.0.1`에 묶여 있어도 Docker Desktop에서 수집된다. Linux는 `extra_hosts`의 `host-gateway`가 같은 이름을 연결한다. 다른 관리 포트를 쓰면 `infra/prometheus/prometheus.yml`의 대상 주소를 맞춘다.
 
 ```sh
-docker compose --profile monitoring up -d redis-exporter prometheus grafana
-# 포트 충돌 시 PROMETHEUS_PORT, GRAFANA_PORT, REDIS_EXPORTER_PORT 환경변수로 바꾼다. 모두 선택 값이다.
+docker compose --profile monitoring up -d redis-exporter kafka-exporter prometheus grafana
+# 포트 충돌 시 PROMETHEUS_PORT, GRAFANA_PORT, REDIS_EXPORTER_PORT, KAFKA_EXPORTER_PORT 환경변수로 바꾼다. 모두 선택 값이다.
 open http://127.0.0.1:3000/d/limited-sale-overview   # 익명 Viewer, 로그인 불필요
 docker compose --profile monitoring down              # 볼륨은 보존한다
 ```
 
 Redis 서버 상태는 `redis_up`·`redis_memory_used_bytes`·`redis_connected_clients`, 앱의 Redis 명령 지연은 Spring Boot가 자동으로 내는 `lettuce_seconds`로 본다. 대시보드의 Redis 행에 모았다.
+
+Kafka 브로커·토픽·소비 지연은 kafka-exporter가 브로커에서 읽는 `kafka_brokers`, `kafka_topic_partitions`, `kafka_consumergroup_lag`로 본다. 소비자 그룹이 없으면 lag 지표는 비어 있다. 앱의 프로듀서·소비자 클라이언트 지표(`kafka_producer_*`, `kafka_consumer_*`)는 판매 앱의 `/actuator/prometheus`에 있으며 클라이언트가 처음 만들어진 뒤에 나타난다. 3-2에는 업무 발행·소비가 없으므로 이 값은 통합 테스트나 이후 단계에서 확인한다.
 
 Grafana는 로컬 전용이며 익명 접근을 Viewer로만 허용한다. 데이터 소스와 대시보드(`infra/grafana/dashboards/limited-sale.json`)는 파일로 프로비저닝하고 저장소에 비밀번호는 없다. 관리자 계정은 Grafana 기본값이므로 필요하면 첫 로그인에서 바꾼다.
 

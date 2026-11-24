@@ -26,6 +26,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
     runtimeOnly 'org.flywaydb:flyway-mysql'
     runtimeOnly 'com.mysql:mysql-connector-j'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -37,7 +38,12 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-tasks.named('test') { useJUnitPlatform() }
+// Most tests do not use Kafka, so they skip topic provisioning instead of retrying against a broker that is not there.
+// The Kafka integration tests turn it back on with a command-line argument, which outranks this system property.
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'limited-sale.kafka.topic-provisioning.enabled', 'false'
+}
 
 sourceSets {
     integrationTest {
@@ -54,6 +60,7 @@ configurations {
 dependencies {
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
     integrationTestImplementation 'org.testcontainers:testcontainers-mysql'
+    integrationTestImplementation 'org.testcontainers:testcontainers-kafka'
     integrationTestImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     integrationTestImplementation project(':mock-pg')
 }
@@ -63,6 +70,7 @@ tasks.register('integrationTest', Test) {
     testClassesDirs = sourceSets.integrationTest.output.classesDirs
     classpath = sourceSets.integrationTest.runtimeClasspath
     useJUnitPlatform()
+    systemProperty 'limited-sale.kafka.topic-provisioning.enabled', 'false'
     shouldRunAfter test
     inputs.file('tools/reconciliation/reconcile.sql')
 }

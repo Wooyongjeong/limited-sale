@@ -21,7 +21,7 @@ Java 25와 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 판매 앱의 지표는 공개 포트가 아니라 관리 포트(기본 `127.0.0.1:8090`)의 `/actuator/prometheus`에서 나온다. 공개 포트에는 `/actuator/health`의 상태만 있다. 관리 포트를 따로 둔 이유는 지표를 공개 API 보안 규칙과 섞지 않고 로컬 수집기만 읽게 하려는 것이다. 두 번째 인스턴스는 `MANAGEMENT_SERVER_PORT=8092`처럼 다른 포트를 준다.
 
-`docker compose --profile monitoring up -d redis-exporter prometheus grafana`로 redis_exporter(`127.0.0.1:9121`), Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)를 띄운다. Prometheus는 `host.docker.internal:8090`과 `8092`의 판매 앱, Compose 네트워크의 `redis-exporter:9121`을 5초마다 읽는다. 대시보드의 Redis 행은 `redis_up`, 사용 메모리와 `maxmemory`, 연결된 클라이언트 수, 앱의 Redis 명령 지연(`lettuce_seconds` 평균·최대)을 보여준다. redis_exporter는 Redis 서버만 보므로 앱과 Redis 사이 경로만 끊긴 경우는 `redis_up`에 나타나지 않는다. 그때는 HTTP 503 건수로 본다. 중단 중의 연결 실패는 `lettuce_seconds`의 `error` 라벨에도 잡히지 않았다. Compose Redis는 `maxmemory 256mb`, `noeviction`이다. 메모리가 차면 세션을 밀어내는 대신 쓰기가 실패한다. Grafana의 `limited-sale-overview` 대시보드는 파일로 준비되며 로그인 없이 볼 수 있다. 설정은 [prometheus.yml](../../infra/prometheus/prometheus.yml)과 [대시보드 JSON](../../infra/grafana/dashboards/limited-sale.json)이다.
+`docker compose --profile monitoring up -d redis-exporter kafka-exporter prometheus grafana`로 redis_exporter(`127.0.0.1:9121`), kafka-exporter(`127.0.0.1:9308`), Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`)를 띄운다. Prometheus는 `host.docker.internal:8090`과 `8092`의 판매 앱, Compose 네트워크의 `redis-exporter:9121`과 `kafka-exporter:9308`을 5초마다 읽는다. Kafka 지표는 아래 "Kafka 실행과 확인"에 따로 적었다. 대시보드의 Redis 행은 `redis_up`, 사용 메모리와 `maxmemory`, 연결된 클라이언트 수, 앱의 Redis 명령 지연(`lettuce_seconds` 평균·최대)을 보여준다. redis_exporter는 Redis 서버만 보므로 앱과 Redis 사이 경로만 끊긴 경우는 `redis_up`에 나타나지 않는다. 그때는 HTTP 503 건수로 본다. 중단 중의 연결 실패는 `lettuce_seconds`의 `error` 라벨에도 잡히지 않았다. Compose Redis는 `maxmemory 256mb`, `noeviction`이다. 메모리가 차면 세션을 밀어내는 대신 쓰기가 실패한다. Grafana의 `limited-sale-overview` 대시보드는 파일로 준비되며 로그인 없이 볼 수 있다. 설정은 [prometheus.yml](../../infra/prometheus/prometheus.yml)과 [대시보드 JSON](../../infra/grafana/dashboards/limited-sale.json)이다.
 
 | 보고 싶은 것 | 지표 |
 |---|---|
@@ -39,6 +39,18 @@ Java 25와 Docker 준비, `.env`, DB 계정 생성 및 두 앱 시작은 [루트
 
 MySQL 잠금과 느린 쿼리는 `scripts/mysql-observe.sh`로 본다. `performance_schema`의 쿼리 요약 상위 항목, 현재 잠금 대기, InnoDB 행 잠금 대기 횟수·시간, 데드락 수를 출력한다. 실험 전후에 한 번씩 찍어 차이를 비교한다. 비밀번호는 `MYSQL_PWD`로만 받고 출력하지 않는다. 정합성은 지표가 아니라 [대조 SQL](../../tools/reconciliation/reconcile.sql)로 판정한다.
 
+## Kafka 실행과 확인
+
+3-2는 Kafka 연결·관측 기반만 만든다. 접수·발행·소비 업무 로직은 없다([3-2 구현과 검증](../stages/03-kafka.md#3-2-구현과-검증)).
+
+- 브로커: `docker compose up -d`가 `apache/kafka:4.4.0`(KRaft 단일 노드)를 기본 서비스로 띄우고 `127.0.0.1:9092`에 게시한다. 포트는 `KAFKA_PORT`로 바꾸고 앱의 `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`)도 같이 맞춘다. 브로커의 자동 토픽 생성은 꺼져 있고 복제는 1이다. 한 노드라 고가용성이 아니며 브로커를 멈추면 메시징이 멈춘다.
+- 앱: Kafka가 없어도 기동하고 v1 주문·조회는 그대로 동작한다. `/actuator/health`에는 Kafka가 없다. 브로커 장애는 health가 아니라 지표·로그로 본다. 운영 토픽 `limited-sale.order-acceptances.v1`(파티션 6)은 앱이 시작한 뒤 백그라운드에서 만든다. 브로커가 없으면 `KafkaTopicProvisioner`가 `Kafka topic creation failed; the application keeps running and retries` 경고를 남기고 1초에서 최대 30초 간격으로 재시도한다.
+- 토픽 확인: `docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --describe --topic limited-sale.order-acceptances.v1`
+- 브로커가 멈췄을 때: 발행은 약 5초 뒤 `TimeoutException`으로 실패하고(프로듀서 `max.block.ms`·`delivery.timeout.ms` 5초) Spring Kafka의 `LoggingProducerListener`가 ERROR를 남기며 `kafka_producer_record_error_total`이 오른다. 브로커를 다시 켜면 앱을 재시작하지 않아도 발행이 되살아난다.
+- 지표: 브로커·토픽·소비 지연은 Prometheus의 `kafka_brokers`, `kafka_topic_partitions`, `kafka_consumergroup_lag`(`monitoring` 프로필의 kafka-exporter), 앱의 클라이언트 지표는 `kafka_producer_*`·`kafka_consumer_*`다. 클라이언트 지표는 프로듀서·소비자가 처음 만들어진 뒤에 나타난다.
+- 통합 테스트: 테스트가 쓰는 브로커는 같은 이미지의 Testcontainers이며, 재시작 뒤에도 주소가 유지되도록 호스트 포트를 고정한다. 나머지 통합 테스트는 Kafka 토픽 생성을 끄고(`limited-sale.kafka.topic-provisioning.enabled=false`, Gradle이 시스템 속성으로 전달) 브로커에 접속하지 않는다.
+- 1-10 격리 환경: `tools/order-regression/isolated.py`가 실행마다 같은 이미지의 브로커 컨테이너를 하나 더 만들고 두 판매 앱에 `KAFKA_BOOTSTRAP_SERVERS`로 연결한다. 호스트와 컨테이너 안의 포트를 같게 하여 광고 주소가 그대로 유효하다. 쉘의 `KAFKA_BOOTSTRAP_SERVERS`는 상속하지 않는다.
+
 ## 검사와 한계
 
 `./gradlew test`는 단위·구조 검사를 실행한다. `./gradlew integrationTest`는 격리된 Testcontainers MySQL과 필요한 Redis를 사용한다. `./gradlew clean build`는 두 검사를 포함하며 Docker가 필요하다. `check`는 `tools/order-regression`의 Python 검증기 테스트도 실행하므로 Python 3.9 이상이 필요하다. 전체 환경과 명령은 [README](../../README.md)를 따른다. 개발 DB를 초기화해 통합 테스트를 대체하지 않는다.
@@ -55,6 +67,7 @@ MySQL 잠금과 느린 쿼리는 `scripts/mysql-observe.sh`로 본다. `performa
 | MySQL 통합 | [MySqlSchemaIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java), [MemberIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/application/MemberIntegrationTest.java) | 마이그레이션, 제약, 가입 저장 |
 | 판매 이벤트 MySQL·HTTP 통합 | [SaleIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/sale/SaleIntegrationTest.java) | 기간·상태·필터·수정 버전·실제 행 잠금 대기 |
 | 주문 MySQL·HTTP 통합 | [OrderIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderIntegrationTest.java) | 원자적 점유·요청 키 경쟁·거절 재생·롤백·소유권 |
+| Kafka 통합 | [KafkaConnectionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/KafkaConnectionIntegrationTest.java), [KafkaAbsentBrokerIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/KafkaAbsentBrokerIntegrationTest.java) | 키 순서·파티션 수, 브로커 중단·재시작, 브로커 없는 기동, health 분리 |
 | HTTP 및 Redis 통합 | [SessionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/member/SessionIntegrationTest.java), [ProductIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/product/ProductIntegrationTest.java), [RedisConnectionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/RedisConnectionIntegrationTest.java) | 세션, 권한, 제품 계약, 장애, Redis 키 접두사·타임아웃·재연결 |
 
 현재 노출된 Actuator 엔드포인트 설정은 health다. Prometheus·Grafana 관측과 k6 부하 실험은 [전체 계획](../project-plan.md)의 향후 범위이며 이미 구축된 관측 체계로 간주하지 않는다.
