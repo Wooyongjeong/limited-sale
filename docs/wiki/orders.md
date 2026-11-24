@@ -126,7 +126,7 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 
 ## v2 비동기 접수(기본 꺼짐)
 
-`limited-sale.order.async.enabled=true`로 켠 서버는 `POST /api/v2/orders`로 주문을 "접수"만 한다. 수량 점유와 주문 생성은 하지 않는다. 그 일은 3-5의 소비자가 접수 순서대로 한다. 계약은 [HTTP 계약](http-contracts.md#v2-비동기-주문-접수-계약)에 있다.
+`limited-sale.order.async.enabled=true`로 켠 서버는 `POST /api/v2/orders`로 주문을 "접수"만 한다. 수량 점유와 주문 생성은 하지 않는다. 그 일은 3-5의 소비자가 발행 순서대로 한다(아래). 계약은 [HTTP 계약](http-contracts.md#v2-비동기-주문-접수-계약)에 있다.
 
 [OrderAcceptanceService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderAcceptanceService.java)의 순서는 다음과 같다.
 
@@ -147,4 +147,16 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 - 주기: 묶음이 가득 차면 바로 이어서 보내고, 비어 있으면 100ms 쉰다. 실패하면 1초에서 최대 10초까지 두 배씩 기다리고 성공하면 처음으로 돌아간다.
 - 한계: 발행 처리량 상한은 인스턴스 하나다. 장애 중에는 순서가 어긋나고 중복이 생길 수 있어 소비자 멱등성(3-5)이 필요하다. 완료한 행은 지우지 않아 `order_outbox`가 계속 늘어난다.
 
-판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 3-5의 소비자가 아직 없어서 접수는 `ACCEPTED`에 머물며 재고·주문·결제는 변하지 않는다. 아웃박스 행은 3-4의 발행기가 Kafka로 보낸다(아래). 그래서 스위치를 켠 채 운영해도 v2 요청은 주문으로 이어지지 않는다.
+### 주문 소비자(3-5)
+
+[OrderAcceptanceListener](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/OrderAcceptanceListener.java)가 그룹 `limited-sale-order-consumer`로 토픽을 소비하고, [OrderAcceptanceProcessor](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderAcceptanceProcessor.java)가 메시지 하나를 한 트랜잭션으로 처리한다. `limited-sale.order.async.enabled`와 `limited-sale.order.consumer.enabled`(기본 `true`)가 모두 `true`일 때만 만들어진다.
+
+1. 메시지를 읽는다. 3-3의 형식(`schemaVersion` 1, UUID `acceptanceId`, 정수 `saleId`)이 아니면 경고 로그·`skipped` 지표를 남기고 확인 처리한다.
+2. 접수 행을 공개 ID로 `FOR UPDATE` 잠근다. 없거나 메시지의 판매 ID와 다르면 건너뛰고(`skipped`), 이미 최종 상태면 중복 전달로 보고 아무것도 하지 않는다(`duplicate`).
+3. 판매 이벤트 행을 잠그고 v1과 같은 규칙으로 판정한다. 기간만 저장된 `accepted_at`으로 보고([Sale.acceptedAllocationDecision](../../src/main/java/com/wooyongjeong/limitedsale/sale/domain/Sale.java)), 중단·회원 한도·재고는 처리 시점의 값이다. 그래서 종료 전 접수는 종료 뒤에도 처리되고, 중단하면 대기 중인 접수도 `SALE_STOPPED`로 거절된다. 회원 한도는 v1 주문과 합쳐 센다.
+4. 거절이면 접수를 `REJECTED`(사유 포함)로 끝낸다. 허용이면 v1과 같이 점유·주문·READY 결제를 만들고 접수를 `ORDER_CREATED`(주문 ID·완료 시각)로 끝낸다. 주문의 요청 키는 접수 ID이고 `order_request_results`는 쓰지 않는다. 만료 5분은 주문을 만든 처리 시각부터 센다. 2-7 품절 표시는 v1과 같은 경로로 기록·해제된다.
+5. 커밋 뒤 오프셋을 확인한다. 커밋과 확인 사이에 멈추면 같은 메시지가 다시 오고 2의 잠금이 중복으로 걸러낸다.
+
+처리 중 예외(DB 연결·잠금 대기 시간 초과 등)는 컨테이너의 `DefaultErrorHandler`가 1초 간격으로 끝없이 재시도한다([OrderAcceptanceConsumerConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/OrderAcceptanceConsumerConfiguration.java)). 그동안 그 파티션은 멈추고 유실은 없다. 3-6에서 약 30초 제한과 `PROCESSING_FAILED`로 바꾼다. 선착순은 아웃박스 행이 커밋되어 발행된 순서이며, 동시에 커밋된 접수는 id가 큰 쪽이 먼저 처리될 수 있다([3-5 확정 정책](../stages/03-kafka.md#3-5-확정-정책) #2).
+
+판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 아웃박스 행은 3-4의 발행기가 Kafka로 보내고 3-5의 소비자가 주문으로 만든다(아래). 재시도 제한과 `PROCESSING_FAILED` 저장은 3-6에서 더한다.
