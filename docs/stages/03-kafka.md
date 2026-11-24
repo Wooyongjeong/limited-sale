@@ -6,7 +6,7 @@
 
 ## 상태
 
-3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 구현 대기.
+3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 워커 구현·검증 완료, 주 에이전트 검증 대기.
 
 ## 확정한 방향
 
@@ -87,6 +87,34 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 8 | 연결 설정 | 주소는 `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`). 1-10 격리 환경(앱 2개)에도 같은 브로커를 붙인다. 비밀값이 없는 평문 로컬 연결이며 운영 보안 설정은 범위 밖이다 | 기존 MySQL·Redis 설정 방식과 같다 |
 | 9 | 완료 기준 | 통합 테스트로 확인한다: 테스트 토픽에 키가 있는 메시지를 발행하고 소비해 같은 키가 같은 파티션에 순서대로 도착함, 앱 기동 시 운영 토픽이 파티션 6으로 생성됨, 브로커를 멈추면 발행이 약 5초 안에 실패하고 오류가 지표·로그에 남으며 health는 UP을 유지함, 브로커 재시작 뒤 앱 재시작 없이 다시 발행됨, 브로커 없이 앱이 기동하고 v1 주문이 정상 동작함. Compose로 브로커·kafka-exporter를 띄워 Prometheus에서 브로커·lag 지표가 보임을 수동 확인하고 기록한다. `./gradlew clean build` 통과 | 로컬 단일 브로커의 연결·장애 감지까지만 검증한다 |
 
+### 3-2 구현과 검증
+
+2026-11-24 워커가 구현했다. 업무 접수·발행·소비 코드는 없고 실행·연결·관측만 있다.
+
+- 의존성: `spring-boot-starter-kafka`(Spring Boot 4에서 Kafka 자동 설정은 `spring-kafka`만이 아니라 이 스타터에 있다). 버전은 BOM이 관리해 spring-kafka 4.1.2, kafka-clients 4.2.2다. 통합 테스트는 `testcontainers-kafka`(2.0.5)를 추가했다.
+- 구조: 토픽 정의는 `order.infrastructure.messaging.OrderAcceptanceTopicConfiguration`의 `NewTopic` 빈(`limited-sale.order-acceptances.v1`, 파티션 6, 복제 1)이다. 생성은 `common.messaging.KafkaTopicProvisioner`가 맡는다. 도메인 패키지에는 Kafka 타입이 없고 기존 `ArchitectureTest`의 `org.apache.kafka..` 금지 규칙을 그대로 통과한다.
+- 기동(#5): Spring Kafka의 `KafkaAdmin`은 컨텍스트 기동 중에 토픽을 만들고 브로커가 없으면 관리 클라이언트의 `default.api.timeout.ms` 60초를 기다린다(실측: `createOrModifyTopics`가 브로커 없이 60초 뒤 실패. 이 경로를 기동 중에 두면 그만큼 기동이 늦어지고 모든 통합 테스트 컨텍스트가 같은 대기를 겪는다). 그래서 `spring.kafka.admin.auto-create=false`로 기동 중 생성을 끄고(`fail-fast=false`, `modify-topic-configs=false`도 명시) `KafkaTopicProvisioner`가 기동 뒤 백그라운드 스레드에서 `createOrModifyTopics`를 부른다. 실패하면 WARN을 남기고 1초에서 최대 30초까지 두 배씩 늘려 성공할 때까지 재시도한다. 브로커가 앱보다 늦게 떠도 토픽이 만들어진다(브로커의 자동 생성을 껐으므로 한 번 놓치면 재시작 전까지 발행이 계속 실패한다). 관리 클라이언트의 `default.api.timeout.ms`는 5초, `request.timeout.ms`는 3초로 줄였다.
+- 프로듀서(#6): `acks=all`, `enable.idempotence=true`, `max.in.flight.requests.per.connection=5`, `linger.ms=5`, `request.timeout.ms=3000`, `max.block.ms=5000`, `delivery.timeout.ms=5000`. Kafka는 `delivery.timeout.ms >= linger.ms + request.timeout.ms`를 요구하므로(5000 ≥ 5 + 3000) 요청 타임아웃을 3초로 맞췄다. 키·값 직렬화는 `StringSerializer`이며 메시지 계약은 3-3·3-4에서 정한다.
+- 소비자(#7): 그룹 `limited-sale-order-consumer`, `enable-auto-commit=false`, `auto-offset-reset=earliest`, 리스너 `ack-mode=manual`, `spring.kafka.listener.concurrency=3`(프로퍼티). `@KafkaListener`는 없다.
+- health(#4): Spring Boot 4.1.2의 Kafka 자동 설정에는 `HealthIndicator`가 없다(`spring-boot-kafka` 확인). 별도 끄기 설정 없이 `/actuator/health`에 들어가지 않으며 테스트가 이를 고정한다.
+- 브로커(#1): `compose.yaml`의 `kafka` 서비스는 `apache/kafka:4.4.0` KRaft 단일 노드(broker+controller)이고 프로필 없는 기본 서비스다. 자동 토픽 생성 끔, 기본·오프셋·트랜잭션 로그 복제 1, 힙 512MB, `kafka_data` 볼륨, `kafka-broker-api-versions.sh` 헬스체크. 리스너는 호스트용 `HOST`(`localhost:${KAFKA_PORT:-9092}`, 호스트와 컨테이너 포트를 같게 해 광고 주소가 유효하다)와 컨테이너 네트워크용 `INTERNAL`(`kafka:19092`)로 나눴다.
+- 관측(#3): `monitoring` 프로필에 `danielqsj/kafka-exporter:v1.11.0`(`127.0.0.1:9308`, `--kafka.server=kafka:19092`)을 redis_exporter와 같은 방식으로 넣고 Prometheus에 `kafka` 작업을 추가했다. 앱의 프로듀서·소비자 클라이언트 지표는 Spring Boot가 Micrometer에 자동으로 연결하며 기존 `limited-sale` 작업이 읽는 `/actuator/prometheus`에 나온다.
+- 연결(#8): `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`), Compose 게시 포트는 `KAFKA_PORT`, `.env.example`에 추가했다. 1-10 격리 환경(`tools/order-regression/isolated.py`)은 실행마다 같은 이미지의 브로커 컨테이너를 네 번째로 만들고(`containers[0..2]`를 인덱스로 쓰는 기존 코드를 지키려고 Redis 뒤에 둔다) 두 판매 앱에 `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:<포트>`를 준다. 호스트와 컨테이너 안의 포트를 같게 해야 광고 주소가 호스트의 JVM에 유효하다. 쉘의 `KAFKA_*` 변수는 기존 규칙대로 상속하지 않는다. 브로커 버전·이미지는 `resources.json`에 남는다.
+- 이미지·버전: kafka-clients 4.2.2에 대해 `apache/kafka`의 4.2.2·4.3.2·4.4.0 태그를 모두 받아 존재를 확인했다. 가장 최신 정식 태그 4.4.0(2026-10-22)을 골랐다. 4.4.0 브로커와 4.2.2 클라이언트 조합으로 통합 테스트와 수동 확인을 통과했다. kafka-exporter는 `v1.11.0`(2026-10-23), 4.4.0 브로커에서 동작했다(다이제스트 `sha256:54d4296c…`). 통합 테스트의 이미지 상수(`FixedPortKafka.IMAGE`)와 `service_env.KAFKA_IMAGE`는 `compose.yaml`과 같은 태그를 쓴다. Boot를 올려 클라이언트가 바뀌면 브로커 태그를 같이 확인한다.
+- 다른 통합 테스트: `./gradlew test`와 `integrationTest`는 `limited-sale.kafka.topic-provisioning.enabled=false`를 시스템 속성으로 받아 토픽 생성 스레드를 만들지 않는다. 기존 통합 테스트는 Kafka 컨테이너를 띄우지 않고 `localhost:9092`에 접속하지도 않으며 기동 시간도 늘지 않는다. Kafka 테스트는 명령행 인자(`--limited-sale.kafka.topic-provisioning.enabled=true`, 시스템 속성보다 우선)로 다시 켠다.
+- 통합 테스트(실제 Kafka): [KafkaConnectionIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/KafkaConnectionIntegrationTest.java) 7개 — 운영 토픽이 파티션 6·복제 1로 생성됨, 키 5개×20건을 앱의 리스너 컨테이너 설정(수동 확인·동시성 3)으로 소비하면 키마다 한 파티션에서 발행 순서대로 도착함, 프로듀서 설정 값, health에 Kafka 기여자가 없음, 앱 지표에 `kafka_producer_record_send_total`이 나옴, 브로커를 `docker stop`하면 발행이 9초 안에 `TimeoutException`으로 실패하고 ERROR 로그와 `kafka_producer_record_error_total` 증가가 남으며 health는 UP, 브로커를 다시 시작하면 같은 컨텍스트(앱 재시작 없음)에서 발행이 다시 됨. [KafkaAbsentBrokerIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/KafkaAbsentBrokerIntegrationTest.java) 3개 — 브로커 없이 기동하고 토픽 생성 실패가 WARN(ERROR 없음)으로 남음, v1 주문이 201이고 health UP, 브로커가 나중에 뜨면 앱 재시작 없이 토픽이 파티션 6으로 생성됨.
+- 고정 포트: Testcontainers는 브로커가 처음 뜰 때의 매핑 포트를 광고 주소로 박는다. 재시작 뒤 임의 포트가 바뀌면 클라이언트가 옛 주소로 접속하므로 `RedisConnectionIntegrationTest`와 같은 방식으로 호스트 포트를 미리 하나 골라 고정 바인딩한다(`FixedPortKafka`). 컨테이너를 지우지 않고 `docker stop`·`start`만 하므로 브로커 데이터도 남는다.
+- 전체 검증: `JAVA_HOME=…/openjdk-25.0.1 PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공(18분 3초). 단위 135개, 통합 197개(이번에 10개 추가), mock-pg 단위 11개·통합 15개, Python 183개(2개 추가) 모두 통과했고 건너뜀·실패는 없다. `ArchitectureTest` 3개도 통과했다.
+- 수동 확인(2026-11-24): `docker compose --profile monitoring up -d mysql redis kafka kafka-exporter prometheus`로 브로커(약 30초 뒤 healthy)와 exporter를 띄웠다. 3-2에는 업무 프로듀서·소비자가 없어서, 저장소 밖에서 만든 일회용 Java 프로그램이 실제 앱 컨텍스트를 띄워(관리 포트 8090) 운영 토픽에 발행하고 앱의 `ConsumerFactory`로 그룹 `limited-sale-order-consumer`의 오프셋을 커밋한 뒤 6건을 더 발행하게 했다(두 번 실행해 토픽에 26건, 그룹의 미소비는 16건). Prometheus `/targets`에서 `kafka`(`kafka-exporter:9308`)와 `limited-sale`(`host.docker.internal:8090`)이 up이었다(8092·redis-exporter는 이번에 띄우지 않아 down). 확인한 값: `kafka_brokers`=1, `kafka_topic_partitions{topic="limited-sale.order-acceptances.v1"}`=6, `kafka_topic_partition_current_offset`(파티션 0=16, 5=10, 나머지 0), `kafka_consumergroup_lag`(그룹 `limited-sale-order-consumer` 파티션 0=10, 5=6, 합계 `kafka_consumergroup_lag_sum`=16), `kafka_consumergroup_members`=1, 앱의 `kafka_producer_record_send_total`=16(두 번째 실행의 프로듀서)·`kafka_producer_record_error_total`=0(`client_id=limited-sale-producer-1`, `kafka_version=4.2.2`), `kafka_consumer_fetch_manager_records_lag_max`, `kafka_producer_*` 시리즈 85개·`kafka_consumer_*` 시리즈 88개. 같은 프로그램으로 Compose 브로커를 `docker compose stop kafka`하자 발행이 5,013ms 뒤 `TimeoutException: Topic … not present in metadata after 5000 ms`로 실패했고 `/actuator/health`는 `UP`이었다. `docker compose start`가 돌아오고 1.6초 뒤 앱 재시작 없이 발행이 다시 성공했다. 격리 환경의 브로커도 따로 확인했다(`Isolated.container`로 띄우고 `wait_kafka`와 호스트 JVM의 `describeCluster`가 `127.0.0.1:<포트>`로 성공, `kafka-topics.sh --version`=4.4.0).
+- 정리: 수동 확인으로 띄운 컨테이너는 `docker compose --profile monitoring down`으로 내렸다. 이 실행이 새로 만든 볼륨(`ticketing_kafka_data`, `ticketing_prometheus_data`)은 지웠고 기존 `ticketing_mysql_data`는 그대로 뒀다. 시작 전에 실행 중이던 컨테이너는 없었다.
+- 한계·편차:
+  - 정책 #5의 "기동 중 토픽 생성 실패를 경고로 남기고 계속"을 `KafkaAdmin` 기본 동작이 아니라 기동 뒤 백그라운드 생성과 재시도로 구현했다. 정책 내용은 바꾸지 않았다. 경고는 기동이 끝난 뒤 첫 시도(약 10초 걸림)가 실패할 때 나온다.
+  - 브로커는 한 개이고 복제 1이다. 브로커를 멈추면 메시징이 멈춘다. 이 검증은 연결과 장애 감지까지이며 고가용성 검증이 아니다.
+  - 앱의 클라이언트 지표는 프로듀서·소비자가 처음 만들어진 뒤에 나타난다. 3-2의 앱은 업무 클라이언트를 만들지 않으므로 Prometheus의 확인은 일회용 프로그램으로 했고, 자동 검증은 통합 테스트의 `/actuator/prometheus` 확인이다. 3-4·3-5에서 실제 발행기·소비자로 다시 본다.
+  - 첫 발행 실패가 "메타데이터에 토픽이 없음"(`max.block.ms` 경로)일 수도 `delivery.timeout.ms` 경로일 수도 있어 둘 다 약 5초이며, 테스트는 9초 미만과 `TimeoutException`만 단언한다. 소비자 동시성 3은 컨테이너 설정으로 확인했고 인스턴스 두 개가 파티션을 나눠 갖는 동작과 리밸런스는 검증하지 않았다(3-5 이후).
+  - 1-10 격리 환경은 이제 실행마다 브로커 JVM(힙 512MB)을 하나 더 쓴다. 판매 앱은 발행하지 않아 유휴이지만 과거 실험 결과와 같은 컴퓨터 자원 조건은 아니다. 이전 결과는 다시 측정하지 않았다.
+  - 통합 테스트는 4.4.0 브로커 1개만 시험했다. 브로커 재시작은 컨테이너 파일시스템이 남는 `docker stop`·`start`이며 데이터가 사라지는 재생성은 시험하지 않았다. 운영 보안(TLS·SASL)은 범위 밖이다.
+
 ## 소단계 실행 체크리스트
 
 각 소단계는 아래 순서로 진행한다. 정책 동의와 구현 시작 지시는 별개다. 구현은 별도 서브에이전트(워커)가 맡고 주 에이전트가 검증한다. 사용할 모델이 정해지지 않았다면 사용자에게 묻는다. 다음 소단계로 자동 진행하지 않는다. 완료 근거와 남은 문제는 해당 소단계 아래에 기록한다.
@@ -101,7 +129,7 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-24, 위 "3-2 확정 정책")
 - [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
+- [x] 지정 워커의 해당 범위 구현과 검증 결과 수령(2026-11-24, 위 "3-2 구현과 검증")
 - [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
 
 ### 3-3. 영속 접수와 상태 조회
