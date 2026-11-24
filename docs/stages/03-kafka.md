@@ -135,6 +135,45 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 9 | 실패 | DB 오류면 접수·아웃박스가 모두 롤백되고 500이다. 실패한 접수를 202로 응답하지 않는다 | 기획의 3-3 완료 기준 |
 | 10 | 완료 기준 | 실제 MySQL 통합 테스트: 202 뒤 새 애플리케이션 문맥(재시작)에서도 조회됨, 접수와 아웃박스 행이 함께 생기고 메시지 형식이 맞음, 아웃박스 INSERT 실패를 주입하면 접수도 없음(500), 종료 후·중단·없는 이벤트·품절 표시는 `REJECTED` 저장과 409/404·아웃박스 없음, 같은 키 재요청·입력 변경·동시 같은 키(접수 1개), 429는 저장 안 함, 남의 접수 404, 스위치 끔이면 404와 행 없음, v1 동작 그대로, 판매 행을 잠그지 않음(다른 연결이 `FOR UPDATE`로 잡아도 즉시 응답). `./gradlew clean build` 통과 | 기획 3-3 완료 기준과 3-1 #5·#9~#12 |
 
+### 3-3 구현과 검증
+
+2026-11-24 워커가 구현했다. 접수 저장·아웃박스 행 저장·v2 접수/조회 API·스위치까지이며 Kafka 발행(3-4)·소비(3-5)·재시도·정체 처리(3-6)는 없다. 접수는 `ACCEPTED`에 머문다.
+
+- 구조
+  - 스키마: [V6__order_acceptances.sql](../../src/main/resources/db/migration/V6__order_acceptances.sql). 적용된 마이그레이션은 고치지 않았다.
+  - sale 쪽: `sale.api`에 비잠금 읽기 포트 `SaleAdmission`(`check(saleId)` → `SaleAdmissionResult`: `ADMITTED`·`SALE_NOT_FOUND`·`SALE_OUTSIDE_PERIOD`·`SALE_STOPPED`와 판정 DB 시각)을 새로 두었다. 구현 `JpaSaleAdmission`은 `findById`(잠금 없음) 뒤 `UTC_TIMESTAMP(6)`을 읽고 `MANDATORY` 트랜잭션에서만 호출된다. 기간·중단 규칙은 `Sale.admissionDecision(now)`가 기존 `allocationDecision`을 수량 0으로 호출해 재사용한다(0개는 한도·재고를 넘을 수 없으므로 기간·중단만 판정한다).
+  - order.domain: `AcceptanceStatus`, `OrderAcceptance`(조회용 값), `AcceptanceMessage`(토픽·키·내용, Kafka 타입 없음), `OrderAcceptanceStore`. 거절 사유는 기존 `OrderRejection`을 쓰고 키 충돌은 기존 `OrderRequestKeyCollision`을 쓴다.
+  - order.application: `OrderAcceptanceService`(요청 제한 → 품절 표시 → 트랜잭션 → 충돌 시 승자 재조회)와 `OrderAcceptanceTransaction`(키 재생 → 비잠금 판정 → `REJECTED` 또는 `ACCEPTED`+아웃박스). 요청 제한은 v1의 `OrderRateLimiter`와 같은 `create` 카운터를 쓴다. 기존 `OrderService`·`OrderTransaction`은 바꾸지 않았다.
+  - order.infrastructure.persistence: `OrderAcceptanceEntity`·`OrderOutboxEntity`와 저장소, `JpaOrderAcceptanceStore`. 접수를 먼저 `saveAndFlush`하고 이어서 아웃박스를 `saveAndFlush`한다. `uk_order_acceptances_member_key`의 1062만 키 충돌로 분류한다.
+  - presentation: `OrderAcceptanceController`(`@ConditionalOnProperty limited-sale.order.async.enabled=true`), `OrderAcceptanceResponse`·`OrderAcceptanceStatusResponse`, 새 코드 `ORDER_ACCEPTED`(202)·`ORDER_ACCEPTANCE_FOUND`(200)·`ORDER_ACCEPTANCE_NOT_FOUND`(404). 거절·충돌·429는 v1 코드를 그대로 쓴다. 예외 처리는 기존 `OrderExceptionHandler`에 컨트롤러를 추가했다.
+- 스키마 요약(DDL)
+  - `order_acceptances(id BIGINT AI PK, public_id BINARY(16) UNIQUE, member_id BIGINT FK→members RESTRICT, request_key BINARY(16), sale_id BIGINT(FK 없음), quantity INT CHECK 1..1000000, status VARCHAR(32) utf8mb4_0900_bin, rejection_reason VARCHAR(32), failure_reason VARCHAR(64), order_id BIGINT FK→purchase_orders RESTRICT NULL, accepted_at DATETIME(6), finished_at DATETIME(6) NULL, UNIQUE(member_id, request_key))`.
+  - CHECK `ck_order_acceptances_state`: `BINARY status`로 비교해 `ACCEPTED`는 사유·주문·완료 시각 없음, `ORDER_CREATED`는 주문+완료 시각, `REJECTED`는 다섯 사유 중 하나(`SALE_NOT_FOUND`·`SALE_OUTSIDE_PERIOD`·`SALE_STOPPED`·`PURCHASE_LIMIT_EXCEEDED`·`SALE_SOLD_OUT`)+완료 시각, `PROCESSING_FAILED`는 실패 사유+완료 시각이고 나머지 열은 모두 비어 있어야 한다.
+  - `order_outbox(id BIGINT AI PK, topic VARCHAR(255), message_key VARCHAR(64), payload VARCHAR(2000) CHECK JSON_VALID, created_at DATETIME(6), published_at DATETIME(6) NULL, attempts INT DEFAULT 0 CHECK >= 0, INDEX ix_order_outbox_unpublished(published_at, id))`. 접수와의 FK는 없다(정책 #2·#3: 메시지는 접수 ID만 담고 행은 접수 행과 독립이다).
+- 접수 흐름과 응답은 정책 #5·#6·#9와 같다. 응답 계약은 [HTTP 계약 위키](../wiki/http-contracts.md#v2-비동기-주문-접수-계약), 흐름은 [주문 위키](../wiki/orders.md#v2-비동기-접수기본-꺼짐), 테이블은 [DB 위키](../wiki/persistence.md)에 정리했다.
+- 테스트
+  - 단위(24개 추가): `AcceptanceMessageTest`(정확한 내용·키), `OrderAcceptanceTransactionTest`(재생 우선·거절 저장·입력 충돌·품절 표시 경로·소유자 조회), `OrderAcceptanceServiceTest`(요청 제한·게이트 순서·충돌 폴백), `OrderAcceptanceControllerMvcTest`(202·`Location`·코드 매핑·`Retry-After`·입력 오류), `SaleTest`의 `admissionDecision`.
+  - 통합(실제 MySQL 8.4.7 + Redis 7.4, 19개 추가, [OrderAcceptanceIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderAcceptanceIntegrationTest.java)): 정책 #10 항목 전부. 202와 `Location`·본문, 접수·아웃박스 행의 정확한 열과 내용(`{"schemaVersion":1,"acceptanceId":…,"saleId":…}`·키=판매 ID), 응용 컨텍스트를 닫고 새로 띄운 뒤에도 같은 접수 조회와 같은 키 재생, 아웃박스에 `BEFORE INSERT` 트리거로 오류를 주입하면 500이고 접수도 없으며 트리거를 지운 같은 키 재시도가 202, 종료·시작 전·중단·없는 이벤트·품절 표시가 `REJECTED` 저장과 409/404·아웃박스 없음·같은 키 재생·입력 변경 충돌, 같은 키 12개 동시 요청에서 202 한 번과 접수·아웃박스 한 행, 같은 키 재생 200과 이후 상태 반영, 남의 접수·없는 접수 404, 인증·CSRF·입력 오류 규칙, 429가 저장하지 않음(v1 주문이 쓴 `create` 카운터를 v2가 공유함도 확인), 스위치 끔(기본값, 인자 없음)에서 두 경로 404와 행 없음(v1은 정상), v1 동작 불변과 같은 UUID의 v1·v2 분리, 다른 연결이 판매 행에 `SELECT … FOR UPDATE`를 잡아도 접수·조회가 즉시 응답함(`findForUpdate`로 바꾸면 8초 클라이언트 타임아웃으로 실패함을 확인하고 되돌렸다), 상태별 CHECK(유효 4상태 통과, 필수 열 누락·소문자·뒤 공백·알 수 없는 값은 3819, FK 1452, 키 중복 1062, 아웃박스 JSON·attempts 3819, 미발행 인덱스의 열 순서).
+  - 기존 `MySqlSchemaIntegrationTest`가 판매 마이그레이션 실행 수(4)와 이력 수(5)를 고정하고 있어 5와 6으로 고쳤다.
+- 전체 검증: `JAVA_HOME=…/openjdk-25.0.1 PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 7분 32초(3-2 검증 6분 58초 대비 약 35초 늘었고, 추가한 통합 테스트 클래스 하나가 컨테이너 둘을 띄우고 컨텍스트를 여러 번 시작한다). 단위 159개(24개 추가)·통합 218개(19개 추가)·mock-pg 단위 11개·통합 15개·Python 183개 모두 통과, 실패·건너뜀 없음. 통합 테스트 결과 XML 전체에서 `9092`가 든 줄은 0이다. `ArchitectureTest`와 `HttpContractStructureTest`, `ResponseCodeContractTest`도 통과했다.
+- 편차
+  - `SaleAdmission` 포트와 `Sale.admissionDecision`을 새로 만들었다(지침이 허용한 "sale.api를 통한 새 비잠금 읽기"). 기존 `SaleQuery.get`은 캐시와 앱 시계를 쓰고 같은 트랜잭션 안의 DB 시각이 아니어서 쓰지 않았다.
+  - `OrderAcceptanceTransaction`이 토픽 이름을 `order.infrastructure.messaging.OrderAcceptanceTopicConfiguration.ORDER_ACCEPTANCES_TOPIC`에서 가져온다(지침: 기존 상수 사용). 컴파일 상수라 javac가 문자열을 인라인하므로 바이트코드에는 이 클래스도 Kafka 클래스도 남지 않는다(`javap`로 확인). 소스에서는 order 안의 application이 infrastructure 클래스를 import한다. 상수를 도메인으로 옮기는 정리는 3-2 코드와 테스트를 건드려서 하지 않았다.
+  - 상태 열은 1-2 규칙대로 `utf8mb4_0900_bin`이다. V4는 `utf8mb4_bin`+`BINARY` 비교다. 새 테이블은 규칙 문서와 V2를 따르고 CHECK는 `BINARY` 비교를 병행해 이중으로 대소문자·뒤 공백을 막는다.
+  - 품절 표시 경로의 `accepted_at`·`finished_at`은 DB 시각이 아니라 앱 시계(마이크로초로 절삭)다. v1의 `rejectSoldOut`이 같은 방식이고 이 경로는 판매 행과 DB 판정을 아예 건너뛰기 때문이다. 접수 허용 경로와 판매 행 판정 거절은 판정 DB 시각이다.
+  - `failure_reason`은 VARCHAR(64)이고 값 목록 CHECK가 없다. 실패 사유 코드는 3-6에서 정한다. `order_outbox.payload`는 JSON 타입 대신 `VARCHAR(2000)`+`JSON_VALID` CHECK다(엔티티가 문자열로 읽고 쓰므로).
+  - `PURCHASE_LIMIT_EXCEEDED` 거절은 3-3에서 만들어지지 않지만(소비자 판단) 스키마·재생·응답 변환은 정책 #12의 사유 집합 때문에 지원한다.
+  - 스위치가 꺼진 경로의 404는 컨트롤러 매핑이 없어 Spring Boot 기본 404 JSON(`{"timestamp":…,"status":404,"error":"Not Found","path":…}`)이며 `ApiResponse` 본문이 아니다. 로그인하지 않은 요청은 먼저 401(또는 CSRF 403)이다.
+  - 위키의 FK 도식(`persistence-1`)은 갱신하지 않고 본문에 V6 테이블이 도식에 없다고 적었다.
+  - 이 문서 맨 위 상태 줄과 3-3 체크리스트의 "구현 시작 지시"·"주 에이전트 확인" 항목은 바꾸지 않았다.
+- 한계
+  - 발행기와 소비자가 없으므로 `ORDER_CREATED`·`PROCESSING_FAILED` 접수는 실제로 만들어지지 않는다. 그 상태의 응답은 테스트가 행을 직접 갱신해 확인했다.
+  - 아웃박스 행은 읽는 쪽이 없어 쌓이기만 한다(3-4 전).
+  - 접수 판정은 잠금 없는 읽기다. 읽은 직후 중단·수정이 커밋되면 그 요청은 접수되고, 중단은 3-5 소비자가 처리 시점에 판단한다(정책 #5).
+  - 재고·구매 한도는 접수 때 판단하지 않는다. 접수가 성공해도 나중에 거절될 수 있다.
+  - 스위치는 인스턴스마다 시작 시 읽는다. 여러 인스턴스를 섞어 켠 상태, 여러 인스턴스의 동시 같은 키 경쟁, 접수 처리량·지연 측정은 하지 않았다. 동시 같은 키는 한 프로세스의 12개 스레드(DB 유니크 경쟁)로만 확인했다.
+  - 재시작 검증은 같은 Redis·MySQL 위에서 응용 컨텍스트를 닫고 다시 띄운 것이며 MySQL 컨테이너 재시작은 아니다(커밋된 행은 MySQL이 보존한다).
+
 ## 소단계 실행 체크리스트
 
 각 소단계는 아래 순서로 진행한다. 정책 동의와 구현 시작 지시는 별개다. 구현은 별도 서브에이전트(워커)가 맡고 주 에이전트가 검증한다. 사용할 모델이 정해지지 않았다면 사용자에게 묻는다. 다음 소단계로 자동 진행하지 않는다. 완료 근거와 남은 문제는 해당 소단계 아래에 기록한다.
@@ -156,7 +195,7 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-24, 위 "3-3 확정 정책")
 - [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
+- [x] 지정 워커의 해당 범위 구현과 검증 결과 수령(2026-11-24, 위 "3-3 구현과 검증")
 - [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
 
 ### 3-4. 신뢰할 수 있는 메시지 전달
