@@ -160,10 +160,11 @@ class KafkaAbsentBrokerIntegrationTest {
         Duration window = Duration.ofNanos(System.nanoTime() - startedAt);
 
         // Kafka 4 clients rebootstrap on every refused connection; without a backoff that was about 100,000 log
-        // lines in a minute (and the CPU to write them) per client. With it a client logs a few lines a second at most.
+        // lines in a minute (and the CPU to write them) per client. With it a client logs a few lines a second at most:
+        // about 100 in this window, so the bound leaves room for timing noise while a flood still fails by far.
         long kafkaLines = ALL_LOG.list.stream().filter(event -> event.getLoggerName().startsWith("org.apache.kafka")
                 || event.getFormattedMessage().contains(":" + KAFKA_PORT)).count();
-        assertThat(kafkaLines).as("Kafka client log lines in %s", window).isLessThan(100);
+        assertThat(kafkaLines).as("Kafka client log lines in %s", window).isLessThan(400);
         // Each attempt opens one admin client and closes it; a leftover one would add a thread per attempt.
         long adminThreads = Thread.getAllStackTraces().keySet().stream()
                 .filter(thread -> thread.getName().contains("kafka-admin-client-thread")).count();
