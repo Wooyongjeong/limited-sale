@@ -20,6 +20,15 @@ public record Sale(long id, SaleTerms terms, String productNameSnapshot, int res
         return AllocationDecision.ALLOCATED;
     }
 
+    /**
+     * The decisions that need no quantities: only the period and the stop flag. Zero quantities cannot exceed the
+     * member limit or the stock, so the result is never PURCHASE_LIMIT_EXCEEDED or SALE_SOLD_OUT; ALLOCATED means the
+     * request may be accepted.
+     */
+    public AllocationDecision admissionDecision(Instant now) {
+        return allocationDecision(now, 0, 0);
+    }
+
     public SaleStatus statusAt(Instant now) {
         if (!now.isBefore(terms.endsAt())) {
             return SaleStatus.ENDED;
