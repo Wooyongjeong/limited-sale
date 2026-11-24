@@ -6,7 +6,7 @@
 
 ## 상태
 
-3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 구현·검증 완료. 3-3 영속 접수·상태 조회 구현·검증 완료(v2는 기본 꺼짐). 3-4 아웃박스 발행기(이름 잠금 단일 발행자) 구현·검증 완료. 3-5 소비·주문 확정 정책 확정(2026-11-24).
+3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 구현·검증 완료. 3-3 영속 접수·상태 조회 구현·검증 완료(v2는 기본 꺼짐). 3-4 아웃박스 발행기(이름 잠금 단일 발행자) 구현·검증 완료. 3-5 주문 소비자 구현·검증 완료(v2는 기본 꺼짐). 3-6 착수 전.
 
 ## 확정한 방향
 
@@ -245,6 +245,39 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 9 | 변경 범위 | 기존 v1 `OrderService`·`OrderTransaction`의 동작은 바꾸지 않는다. 공통 부분을 꺼내 쓰는 것은 괜찮지만 v1 테스트는 그대로 통과해야 한다. 적용된 마이그레이션은 고치지 않는다 | v1은 3-8 비교 기준이다 |
 | 10 | 완료 기준 | 실제 MySQL·Kafka 통합 테스트: 접수 → `ORDER_CREATED`·READY 결제가 생기고 v1 결제 API로 결제됨, 같은 메시지 두 번 전달(아웃박스 행 재발행)에도 주문 1개, DB 커밋 뒤 오프셋 확인 전 소비자 종료(주입)에도 재전달 뒤 주문 1개, 종료 전 접수가 종료 후 처리돼도 주문 생성, 접수 뒤 중단하면 `REJECTED`(`SALE_STOPPED`), 재고 소진 `SALE_SOLD_OUT`·v1과 v2를 합친 회원 한도 `PURCHASE_LIMIT_EXCEEDED`, 깨진 메시지·없는 접수는 건너뛰고 같은 파티션의 다음 메시지를 처리함, 판매 행을 다른 연결이 잠가 잠금 대기 시간 초과가 나도 재시도 끝에 처리됨, 만료 시각이 처리 시각 + 5분, 앱 두 개가 파티션을 나눠 가져도 메시지마다 한 번만 처리됨, 처리 뒤 재고·구매 수량 대조가 맞음. `./gradlew clean build` 통과 | 기획 3-5 완료 기준과 3-1 #2·#5·#6·#15 |
 
+### 3-5 구현과 검증
+
+2026-11-25 주 에이전트가 직접 구현했다(사용자 지시로 워커 없이). 소비해서 점유·주문·READY 결제를 만들고 접수를 끝내는 데까지이며 제한된 재시도·`PROCESSING_FAILED`·정체 재발행(3-6)과 처리 지연 지표(3-7)는 없다. 새 마이그레이션은 없다.
+
+- 구조
+  - sale: `SaleReservation.allocateAccepted(saleId, memberId, quantity, acceptedAt)`를 추가했다. `JpaSaleReservation`은 기존 `allocate`와 같은 비공개 메서드를 쓰고 판정만 `Sale.acceptedAllocationDecision(acceptedAt, …)`로 바꾼다. 이 메서드는 기존 `allocationDecision`을 기간 기준 시각만 접수 시각으로 넣어 호출한다(중단·한도·재고는 엔티티의 현재 값이다). 품절 표시 기록 경로는 v1과 같다. v1 `allocate`의 동작은 그대로다.
+  - order.domain: `AcceptanceInProcess`(잠근 접수 행의 회원·판매·수량·상태·접수 시각), `OrderAcceptanceStore`에 `lockForProcessing`·`finishWithOrder`·`finishRejected`.
+  - order.application: `OrderAcceptanceProcessor.process(acceptanceId, saleId)` 한 트랜잭션(정책 #5). 결과는 `ORDER_CREATED`·`REJECTED`·`DUPLICATE`·`SKIPPED`. 주문 요청 키는 접수 ID, 만료는 처리 시각 + `limited-sale.order.expiration`(5분). `order_request_results`는 쓰지 않는다. `AcceptanceProcessingMetrics`가 `order.acceptance.processed{result}`를 미리 등록한다. v1 `OrderService`·`OrderTransaction`은 바꾸지 않았다.
+  - order.infrastructure: 접수 저장소의 `FOR UPDATE` 조회와 엔티티 상태 전이(`ACCEPTED`에서만 가능), `OrderAcceptanceListener`(`@KafkaListener`, 수동 확인, 메시지 해석), `OrderAcceptanceConsumerConfiguration`(`DefaultErrorHandler` + `FixedBackOff(1000ms, 무제한)`, Spring Boot가 리스너 컨테이너 팩토리에 넣는다). 두 빈은 `limited-sale.order.async.enabled`와 `limited-sale.order.consumer.enabled`가 모두 `true`일 때만 생긴다. `build.gradle`이 테스트에 `-Dlimited-sale.order.consumer.enabled=false`를 준다.
+  - 대조 SQL: `ORDER_MISSING_REQUEST_RESULT`가 v2 주문(같은 회원·주문 ID·요청 키=접수 ID인 `ORDER_CREATED` 접수가 있는 주문)을 위반으로 보지 않게 했고, `ACCEPTANCE_VS_ORDER`(`ORDER_CREATED` 접수의 주문이 없거나 회원·판매·수량·요청 키가 다름)를 추가했다.
+- 구현 중 발견해 고친 결함: `@KafkaListener(id = …)`는 기본으로 리스너 ID를 그룹 ID로 쓴다. 첫 실행의 소비자 그룹이 `limited-sale-order-consumer`가 아니라 `order-acceptance-consumer`였다(테스트 로그의 `groupId=`로 확인). `idIsGroup = false`로 설정의 그룹을 쓰게 하고, 통합 테스트가 그룹 ID를 단언한다.
+- 테스트
+  - 단위: `SaleTest`에 접수 시각 판정 1개(접수가 기간 안이면 종료 뒤에도 허용, 중단·한도·재고는 현재 값), [OrderAcceptanceListenerTest](../../src/test/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/OrderAcceptanceListenerTest.java) 2개(3-3 형식만 읽고 버전·타입·UUID·누락이 다르면 읽지 않음).
+  - 통합 [OrderAcceptanceConsumerIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderAcceptanceConsumerIntegrationTest.java) 10개. 실제 MySQL 8.4.7(`innodb_lock_wait_timeout` 2초) + Redis + `apache/kafka:4.4.0` + Mock PG. 접수·발행·소비를 모두 켠 앱 하나가 실제 `application.yml`로 돈다. 중복·깨진 메시지는 테스트가 직접 토픽에 넣는다. 테스트마다 끝에 `tools/reconciliation/reconcile.sql`이 빈 결과여야 한다.
+    - HTTP 접수 → `ORDER_CREATED`(상태 조회에 주문 ID), READY 결제, 만료 창이 정확히 5분, `order_request_results` 없음, v1 결제 API가 `PAYMENT_SUCCEEDED`로 결제하고 판매 수량 1.
+    - 같은 메시지를 두 번 더 넣으면 `duplicate` 2, 주문 1개, 점유 1.
+    - 커밋 뒤 확인 전 실패(지표 기록 단계에서 한 번 예외를 주입) → 같은 메시지가 다시 와서 `duplicate` 1, 주문 1개.
+    - 1분 전에 끝난 판매에 10분 전(기간 안) 접수 → 주문 생성.
+    - 중단된 판매의 접수 → `REJECTED`·`SALE_STOPPED`, 주문 없음, 상태 조회에도 사유.
+    - 재고 2에 접수 3 → 앞의 둘 `ORDER_CREATED`, 셋째 `SALE_SOLD_OUT`.
+    - 회원 한도 1에서 v1 주문 뒤 v2 접수 → `PURCHASE_LIMIT_EXCEEDED`.
+    - 같은 파티션에 깨진 JSON, 버전 2, 없는 접수, 판매 ID가 다른 접수, 정상 접수 순서로 넣으면 앞의 넷은 `skipped`이고 정상 접수는 주문이 됨.
+    - 다른 연결이 판매 행을 `FOR UPDATE`로 잡은 7초 동안 접수는 `ACCEPTED`로 남고(잠금 대기 시간 초과 2회 로그), 놓으면 주문 1개.
+    - 앱 두 개가 같은 그룹으로 파티션을 나눠 받은 뒤, 두 번째 앱이 가진 파티션의 판매 셋과 아닌 판매 셋에 2건씩 접수 → 12건 모두 주문 1개씩, 두 앱의 `order_created` 합 12, 두 번째 앱 6 이상.
+  - 클래스 실행 약 40초. 이 클래스 결과에 `9092` 줄은 없다.
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 9분 37초(부하 평균 6~12). 판매 앱 단위 172개(3개 추가)·통합 235개(10개 추가)·mock-pg 11·15개·Python 183개, 실패·오류 0. 통합 테스트 결과 XML 중 `9092`가 든 파일은 0개다.
+- 한계·검증하지 못한 것
+  - 일시 오류는 끝없이 재시도한다. DB가 오래 멈추면 그 파티션의 모든 접수가 멈춘다(3-6에서 제한).
+  - 프로세스 강제 종료로 커밋과 확인 사이에 멈추는 경우는 예외 주입으로만 재현했다. 리밸런스 중 재전달은 두 앱 테스트에서 일어날 수 있지만 건수를 따로 세지 않았다.
+  - 처리량·접수~최종 지연은 재지 않았다(3-7·3-8). 메시지마다 커밋하는 비용도 3-8에서 본다.
+  - id 순서와 처리 순서의 역전(정책 #2)은 막지 않았고 세지도 않았다(3-8).
+  - Prometheus에서 새 지표를 수동으로 보지 않았다. 통합 테스트가 `MeterRegistry`를 읽었다.
+
 ## 소단계 실행 체크리스트
 
 각 소단계는 아래 순서로 진행한다. 정책 동의와 구현 시작 지시는 별개다. 구현은 별도 서브에이전트(워커)가 맡고 주 에이전트가 검증한다. 사용할 모델이 정해지지 않았다면 사용자에게 묻는다. 다음 소단계로 자동 진행하지 않는다. 완료 근거와 남은 문제는 해당 소단계 아래에 기록한다.
@@ -279,9 +312,9 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 ### 3-5. 소비와 주문 확정
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-24, 위 "3-5 확정 정책")
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(2026-11-24, 주 에이전트가 직접 구현하도록 지시)
+- [x] 지정 워커의 해당 범위 구현과 검증 결과 수령(이번에는 주 에이전트가 직접 구현, 위 "3-5 구현과 검증")
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(2026-11-25)
 
 ### 3-6. 재시도와 실패 복구
 
