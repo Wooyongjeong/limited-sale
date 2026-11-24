@@ -3,6 +3,7 @@ package com.wooyongjeong.limitedsale.sale.infrastructure.persistence;
 import com.wooyongjeong.limitedsale.sale.api.SaleAllocation;
 import com.wooyongjeong.limitedsale.sale.api.SaleReservation;
 import com.wooyongjeong.limitedsale.sale.domain.SaleCache;
+import com.wooyongjeong.limitedsale.sale.domain.SoldOutMarker;
 import java.time.Instant;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
@@ -15,13 +16,15 @@ public class JpaSaleReservation implements SaleReservation {
     private final SaleBuyerQuantityJpaRepository buyers;
     private final SaleReservationJpaRepository reservations;
     private final SaleCache cache;
+    private final SoldOutMarker soldOutMarker;
 
     public JpaSaleReservation(SaleJpaRepository sales, SaleBuyerQuantityJpaRepository buyers,
-            SaleReservationJpaRepository reservations, SaleCache cache) {
+            SaleReservationJpaRepository reservations, SaleCache cache, SoldOutMarker soldOutMarker) {
         this.sales = sales;
         this.buyers = buyers;
         this.reservations = reservations;
         this.cache = cache;
+        this.soldOutMarker = soldOutMarker;
     }
 
     @Override
@@ -51,6 +54,12 @@ public class JpaSaleReservation implements SaleReservation {
             }
             buyer.reserve(quantity, now);
             entity.reserve(quantity, now);
+            if (sale.reservedQuantity() + sale.soldQuantity() + quantity == terms.totalQuantity()) {
+                // The last unit is taken; later requests can be turned away without queueing for this row lock.
+                soldOutMarker.markAfterCommit(saleId);
+            }
+        } else if (reason == SaleAllocation.Reason.SALE_SOLD_OUT) {
+            soldOutMarker.markAfterCommit(saleId);
         }
         return new SaleAllocation(reason, terms.productId(), sale.productNameSnapshot(), terms.unitPrice(), now);
     }
@@ -63,6 +72,10 @@ public class JpaSaleReservation implements SaleReservation {
         reservation.finish(saleId, memberId, quantity, confirmed, time);
         boolean soldOut = sale.finish(quantity, confirmed, time);
         buyer.finish(quantity, confirmed, time);
+        if (!confirmed) {
+            // Released stock may be sellable again; a leftover marker would only turn buyers away until its TTL.
+            soldOutMarker.clearAfterCommit(saleId);
+        }
         if (soldOut) {
             // Only this transition changes the cached status (SOLD_OUT); other confirmations leave the entry alone.
             cache.evictAfterCommit(saleId);

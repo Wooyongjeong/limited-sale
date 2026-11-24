@@ -16,6 +16,7 @@ import com.wooyongjeong.limitedsale.sale.domain.SaleException;
 import com.wooyongjeong.limitedsale.sale.domain.SaleStatus;
 import com.wooyongjeong.limitedsale.sale.domain.SaleStore;
 import com.wooyongjeong.limitedsale.sale.domain.SaleTerms;
+import com.wooyongjeong.limitedsale.sale.domain.SoldOutMarker;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
@@ -26,12 +27,15 @@ public class SaleService implements SaleCommand, SaleQuery {
     private final SaleStore store;
     private final ProductQuery products;
     private final SaleCache cache;
+    private final SoldOutMarker soldOut;
     private final Clock clock;
 
-    public SaleService(SaleStore store, ProductQuery products, SaleCache cache, Clock clock) {
+    public SaleService(SaleStore store, ProductQuery products, SaleCache cache, SoldOutMarker soldOut,
+            Clock clock) {
         this.store = store;
         this.products = products;
         this.cache = cache;
+        this.soldOut = soldOut;
         this.clock = clock;
     }
 
@@ -71,6 +75,10 @@ public class SaleService implements SaleCommand, SaleQuery {
         Sale changed = current.revise(replacement, snapshot, restricted, input.version(), now);
         SaleDetails result = details(changed == current ? current : store.update(changed), now);
         cache.evictAfterCommit(saleId);
+        if (input.totalQuantity() != null) {
+            // A raised total makes a leftover sold-out marker wrong; clear it even if the value did not change.
+            soldOut.clearAfterCommit(saleId);
+        }
         return result;
     }
 
@@ -81,6 +89,7 @@ public class SaleService implements SaleCommand, SaleQuery {
         sale.requireDeletable(store.now());
         store.delete(saleId);
         cache.evictAfterCommit(saleId);
+        soldOut.clearAfterCommit(saleId);
     }
 
     @Override

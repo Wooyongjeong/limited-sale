@@ -6,7 +6,10 @@ import com.wooyongjeong.limitedsale.order.domain.OrderStore;
 import com.wooyongjeong.limitedsale.payment.api.PaymentPreparation;
 import com.wooyongjeong.limitedsale.sale.api.SaleAllocation;
 import com.wooyongjeong.limitedsale.sale.api.SaleReservation;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,9 +22,10 @@ public class OrderTransaction {
     private final SaleReservation sales;
     private final PaymentPreparation payments;
     private final Duration expiration;
+    private final Clock clock;
 
     public OrderTransaction(OrderStore orders, SaleReservation sales, PaymentPreparation payments,
-            @Value("${limited-sale.order.expiration:PT5M}") Duration expiration) {
+            @Value("${limited-sale.order.expiration:PT5M}") Duration expiration, Clock clock) {
         if (expiration.isNegative() || expiration.isZero()) {
             throw new IllegalArgumentException("Order expiration must be positive");
         }
@@ -29,6 +33,7 @@ public class OrderTransaction {
         this.sales = sales;
         this.payments = payments;
         this.expiration = expiration;
+        this.clock = clock;
     }
 
     @Transactional
@@ -49,6 +54,22 @@ public class OrderTransaction {
         payments.prepare(orderId, Math.multiplyExact(allocation.unitPrice(), quantity), allocation.time());
         orders.record(memberId, key, saleId, quantity, orderId, null, allocation.time());
         return new OrderResult(OrderResult.Kind.CREATED, orders.find(orderId));
+    }
+
+    /**
+     * Answers a request whose sale the sold-out pre-check marked, without locking or updating the sale row. A request
+     * key that already has a result is replayed first, exactly as in {@link #create}; a new key gets a stored
+     * SALE_SOLD_OUT rejection so a repeat of the key returns the same answer.
+     */
+    @Transactional
+    public OrderResult rejectSoldOut(long memberId, UUID key, long saleId, int quantity) {
+        var existing = orders.request(memberId, key);
+        if (existing.isPresent()) {
+            return replay(existing.get(), saleId, quantity);
+        }
+        orders.record(memberId, key, saleId, quantity, null, OrderRejection.SALE_SOLD_OUT,
+            Instant.now(clock).truncatedTo(ChronoUnit.MICROS));
+        return rejected(OrderRejection.SALE_SOLD_OUT);
     }
 
     @Transactional(readOnly = true)

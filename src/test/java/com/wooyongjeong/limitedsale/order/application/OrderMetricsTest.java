@@ -5,6 +5,7 @@ import com.wooyongjeong.limitedsale.order.domain.OrderBacklog;
 import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit;
 import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Operation;
 import com.wooyongjeong.limitedsale.order.domain.OrderRequestKeyCollision;
+import com.wooyongjeong.limitedsale.sale.api.SoldOutGate;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.Optional;
@@ -69,7 +70,7 @@ class OrderMetricsTest {
         when(transaction.lookupRequest(1, key, 5, 1))
             .thenReturn(Optional.of(new OrderResult(OrderResult.Kind.REPLAYED, null)));
         var limiter = new OrderRateLimiter(mock(OrderRateLimit.class), metrics, false);
-        var service = new OrderService(transaction, metrics, limiter);
+        var service = new OrderService(transaction, metrics, limiter, mock(SoldOutGate.class));
         service.create(1, key, 5, 1);
         service.create(1, key, 5, 1);
         assertThat(count("order.creation.results", "sale_sold_out")).isEqualTo(1);
