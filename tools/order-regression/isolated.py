@@ -21,7 +21,8 @@ import urllib.request
 import uuid
 
 from redact import redact_line
-from service_env import inherited_environment, order_rate_limit_setting
+from service_env import (KAFKA_IMAGE, inherited_environment, kafka_bootstrap_setting, kafka_broker_environment,
+                         order_rate_limit_setting)
 
 ROOT = Path(__file__).resolve().parents[2]
 JAVA = str(Path(os.environ['JAVA_HOME']) / 'bin/java')
@@ -119,6 +120,17 @@ class Isolated:
             time.sleep(1)
         raise TimeoutError(f'{which} MySQL did not start')
 
+    def wait_kafka(self):
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                command('docker', 'exec', self.containers[3], '/opt/kafka/bin/kafka-broker-api-versions.sh',
+                        '--bootstrap-server', f"127.0.0.1:{self.ports['kafka']}")
+                return
+            except subprocess.CalledProcessError:
+                time.sleep(1)
+        raise TimeoutError('Kafka did not start')
+
     def start_process(self, name, args, env):
         log = open(self.output / f'{name}.log', 'w', encoding='utf-8')
         self.logs.append(log)
@@ -157,14 +169,19 @@ class Isolated:
         self.container('redis', 'redis:7.4-alpine', 6379,
                        args=('--maxmemory', '256mb', '--maxmemory-policy', 'noeviction'),
                        host_port=reserve_port() if self.fixed_redis_port else None)
+        # Same image and shape as compose.yaml. It must stay the fourth container: callers index containers[0..2].
+        kafka_port = reserve_port()
+        self.container('kafka', KAFKA_IMAGE, kafka_port, kafka_broker_environment(kafka_port), host_port=kafka_port)
         self.wait_mysql('sales')
         self.wait_mysql('pg')
+        self.wait_kafka()
         # Each sales instance needs its own management port; the default is fixed and would collide.
         self.ports.update({name: reserve_port() for name in
                            ('pg', *self.instances, *(f'{name}_management' for name in self.instances))})
         env = inherited_environment(os.environ)
         env.update({'MYSQL_PASSWORD': self.password, 'MYSQL_USER': 'root', 'MYSQL_DATABASE': 'limited_sale',
                     'MYSQL_PORT': str(self.ports['sales']), 'REDIS_PORT': str(self.ports['redis']),
+                    **kafka_bootstrap_setting(self.ports['kafka']),
                     'SPRING_SECURITY_USER_NAME': 'regression-unused',
                     'SPRING_SECURITY_USER_PASSWORD': secrets.token_hex(24),
                     'MOCK_PG_API_KEY': self.secret, 'MOCK_PG_BASE_URL': f"http://127.0.0.1:{self.ports['pg']}"})
@@ -201,6 +218,8 @@ class Isolated:
                     'java_version': java_version, 'docker_version': command('docker', 'version', '--format', '{{.Server.Version}}'),
                     'mysql_version': command('docker', 'exec', self.containers[0], 'mysql', '--version'),
                     'redis_version': command('docker', 'exec', self.containers[2], 'redis-server', '--version'),
+                    'kafka_image': KAFKA_IMAGE,
+                    'kafka_version': command('docker', 'exec', self.containers[3], '/opt/kafka/bin/kafka-topics.sh', '--version'),
                     'defaults': {'lease': '30s', 'retry': '10s', 'expiry': '5m', 'recovery_deadline': '120s'},
                     'local_resources_shared': True,
                     'jar_sha256': {label: file_hash(path) for label, path in

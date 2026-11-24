@@ -1,7 +1,8 @@
 import unittest
 
-from service_env import (inherited_environment, order_rate_limit_max_requests_setting, order_rate_limit_setting,
-                         redis_timeout_settings, tomcat_metrics_setting)
+from service_env import (KAFKA_IMAGE, inherited_environment, kafka_bootstrap_setting, kafka_broker_environment,
+                         order_rate_limit_max_requests_setting, order_rate_limit_setting, redis_timeout_settings,
+                         tomcat_metrics_setting)
 
 
 class ServiceEnvironmentTest(unittest.TestCase):
@@ -29,6 +30,20 @@ class ServiceEnvironmentTest(unittest.TestCase):
                          redis_timeout_settings('1s'))
         self.assertEqual({}, inherited_environment({'SPRING_DATA_REDIS_TIMEOUT': '60s'}))
         self.assertEqual({'SERVER_TOMCAT_MBEANREGISTRY_ENABLED': 'true'}, tomcat_metrics_setting())
+
+    def test_the_isolated_broker_advertises_the_address_the_sales_jvms_dial(self):
+        broker = kafka_broker_environment(45678)
+        self.assertEqual('PLAINTEXT://127.0.0.1:45678', broker['KAFKA_ADVERTISED_LISTENERS'])
+        self.assertTrue(broker['KAFKA_LISTENERS'].startswith('PLAINTEXT://:45678,'))
+        self.assertEqual({'KAFKA_BOOTSTRAP_SERVERS': '127.0.0.1:45678'}, kafka_bootstrap_setting(45678))
+        # The same broker shape as compose.yaml: one node, replication 1, the application creates its topic.
+        self.assertEqual('false', broker['KAFKA_AUTO_CREATE_TOPICS_ENABLE'])
+        self.assertEqual('1', broker['KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR'])
+        self.assertTrue(KAFKA_IMAGE.startswith('apache/kafka:'))
+
+    def test_a_shell_setting_cannot_redirect_the_sales_jvms_to_a_development_broker(self):
+        self.assertEqual({}, inherited_environment({'KAFKA_BOOTSTRAP_SERVERS': 'dev-kafka:9092',
+                                                    'SPRING_KAFKA_BOOTSTRAP_SERVERS': 'dev-kafka:9092'}))
 
 
 if __name__ == '__main__':
