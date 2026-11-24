@@ -3,6 +3,10 @@
 Four conditions isolate one switch each. Experiment A reads the sale detail five times before every order, with the
 sale cache off or on and the order request limit off. Experiment B adds abusive users who hammer order creation
 next to the normal 1-11 flow, with the request limit off or on and the cache at its default (on).
+
+Experiment C (stage 2-7) is the plain 1-11 flow at the application defaults for cache and request limit, with the
+Redis sold-out pre-check off or on. The gate switch is passed to every run; the older conditions were measured
+before the gate existed, so they keep it off and stay comparable.
 """
 from dataclasses import dataclass, replace
 import statistics
@@ -28,6 +32,10 @@ class Condition:
     rate_limit_max_requests: int = 5
     # True for the condition whose limit is low enough that abusive members must be rejected at least once.
     expects_rejections: bool = False
+    # The Redis sold-out pre-check. Off for every condition measured before stage 2-7 so they keep their meaning.
+    sold_out_gate: bool = False
+    # True for the condition whose over-demand must be turned away by the marker at least once.
+    expects_gate_hits: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,6 +71,12 @@ CONDITIONS['b3-off'] = Condition('b3-off', 'B', sale_cache=True, order_rate_limi
                                  abuser_vus_per_member=5, rate_limit_max_requests=1)
 CONDITIONS['b3-on'] = Condition('b3-on', 'B', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=100,
                                 abuser_vus_per_member=5, rate_limit_max_requests=1, expects_rejections=True)
+# Experiment C (stage 2-7): 10,000 normal users for 1,000 units, cache on, request limit at the application default
+# (on, one per second), no reads and no abusers. Only the sold-out pre-check differs.
+CONDITIONS['c-off'] = Condition('c-off', 'C', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=0,
+                                rate_limit_max_requests=1, sold_out_gate=False)
+CONDITIONS['c-on'] = Condition('c-on', 'C', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=0,
+                               rate_limit_max_requests=1, sold_out_gate=True, expects_gate_hits=True)
 DEFAULT_CONDITIONS = ('a-off', 'a-on', 'b-off', 'b-on')
 
 
@@ -136,6 +150,25 @@ def labeled_deltas(before, after, name):
     """Counter increase per label set, from two parse_prometheus results of the same instance."""
     return {pairs: value - before.get((series, pairs), 0.0) for (series, pairs), value in after.items()
             if series == name}
+
+
+def gate_counts(deltas_per_instance):
+    """{result: increase} summed over instances, from sale_sold_out_gate_requests_total."""
+    counts = {'hit': 0, 'miss': 0, 'error': 0}
+    for deltas in deltas_per_instance:
+        for pairs, value in deltas.items():
+            counts[dict(pairs)['result']] += int(value)
+    return counts
+
+
+def gate_update_counts(deltas_per_instance):
+    """{operation: {result: increase}} summed over instances, from sale_sold_out_gate_updates_total."""
+    counts = {operation: {'success': 0, 'error': 0} for operation in ('mark', 'clear')}
+    for deltas in deltas_per_instance:
+        for pairs, value in deltas.items():
+            labels = dict(pairs)
+            counts[labels['operation']][labels['result']] += int(value)
+    return counts
 
 
 def rate_limit_counts(deltas_per_instance):
@@ -220,6 +253,7 @@ def evaluate(result, condition, plan):
     check('mysql_observe_complete', True, result['mysql_observe_complete'])
     # The disabled cache registers no metric at all, so the series' presence shows which switch the JVMs ran with.
     check('sale_cache_setting_took_effect', condition.sale_cache, result['cache_metrics_present'])
+    check('sold_out_gate_setting_took_effect', condition.sold_out_gate, result['gate_metrics_present'])
 
     # A rate-limited request is not recorded, so the stored results are the responses that were not 429.
     rate_limited_create = status_total(create, '429') + status_total(abuse_create, '429')
@@ -246,6 +280,19 @@ def evaluate(result, condition, plan):
             check('rate_limit_override_reached_the_jvms', True, limit['create']['rejected'] > 0)
     else:
         check('rate_limit_off_counts_nothing', 0, sum(sum(row.values()) for row in limit.values()))
+
+    gate, gate_updates = result['gate'], result['gate_updates']
+    lookups_by_gate = gate['hit'] + gate['miss'] + gate['error']
+    if condition.sold_out_gate:
+        # Every create that was not answered 429 asks the gate exactly once, before any transaction.
+        check('every_create_was_a_gate_lookup', create_requests - rate_limited_create, lookups_by_gate)
+        check('gate_lookup_errors', 0, gate['error'])
+        check('gate_update_errors', 0, gate_updates['mark']['error'] + gate_updates['clear']['error'])
+        if condition.expects_gate_hits:
+            check('gate_turned_requests_away', True, gate['hit'] > 0)
+    else:
+        check('no_gate_lookups_or_updates', 0, lookups_by_gate
+              + sum(sum(row.values()) for row in gate_updates.values()))
 
     cache = result['cache']
     lookups = cache['hit'] + cache['miss'] + cache['error']
@@ -282,6 +329,10 @@ def headline(summary):
         'database': {key: db[key] for key in ('confirmed', 'remaining', 'orders', 'confirmed_normal',
                                               'confirmed_abuse')},
         'cache': summary['cache'], 'rate_limit': summary['rate_limit'], 'abuse': summary['abuse'],
+        'gate': summary.get('gate', {}), 'gate_updates': summary.get('gate_updates', {}),
+        'latency_by_code': {code: {key: values[key] for key in ('count', 'p50_ms', 'p95_ms', 'p99_ms', 'avg_ms',
+                                                                 'max_ms')}
+                            for code, values in k6.get('latency_by_code', {}).items() if values['count']},
         'management': _management_headline(summary['management']['combined']),
         'mysql': {key: summary['mysql'][key] for key in
                   ('row_lock_waits', 'row_lock_time_ms', 'deadlocks', 'lock_timeouts')},
@@ -293,7 +344,7 @@ def headline(summary):
     return flat
 
 
-def derived(k6, db, cache, rate_limit, abusers=0):
+def derived(k6, db, cache, rate_limit, abusers=0, gate=None):
     """Ratios the comparison reports; each is None when its denominator is zero."""
     endpoints = k6['endpoints']
     duration = k6['duration_seconds']
@@ -308,6 +359,7 @@ def derived(k6, db, cache, rate_limit, abusers=0):
         'actual_order_throughput_per_normal_second': round(db['confirmed'] / normal, 3) if normal else None,
         'detail_requests_per_second': round(endpoints['sale_detail']['count'] / duration, 3) if duration else None,
         'cache_hit_rate': hit_rate(cache),
+        'gate_hit_rate': hit_rate(gate) if gate else None,
         'abuse_requests_per_second': round(abuse_create['count'] / duration, 3) if duration else None,
         # Attempts per abusive member per second, over the time the abusers ran (the normal scenario's length).
         'abuse_requests_per_member_per_second': round(abuse_create['count'] / abusers / normal, 3)

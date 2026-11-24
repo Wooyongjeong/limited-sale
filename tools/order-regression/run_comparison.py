@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""2-6 comparison runs: sale detail cache off/on (A) and order request limit off/on with abusive users (B).
+"""Comparison runs: sale detail cache off/on (2-6 A), order request limit off/on with abusive users (2-6 B) and the
+Redis sold-out pre-check off/on (2-7 C).
 
 Each run starts a fresh isolated environment (two sales instances behind Caddy, Mock PG, own MySQL and Redis) like the
 1-11 baseline and reuses its metric collection, verifier and reconciliation SQL. The four conditions run interleaved
@@ -23,8 +24,8 @@ import uuid
 from balanced import parse_access_log, split, summarize_access_log
 from clock_guard import record, sample
 from comparison import (CONDITIONS, DEFAULT_CONDITIONS, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
-                        derived, evaluate, execution_order, failures, labeled_deltas, policy_plan, rate_limit_counts,
-                        verifier_requests, with_overrides)
+                        derived, evaluate, execution_order, failures, gate_counts, gate_update_counts, labeled_deltas,
+                        policy_plan, rate_limit_counts, verifier_requests, with_overrides)
 from http_client import Client
 from isolated import Isolated, ROOT
 from load_metrics import combine_management, endpoint_requests, management_summary, observe_delta
@@ -38,10 +39,12 @@ from snapshot import collect
 
 K6_SCRIPT = ROOT / 'tests/load/comparison-order.js'
 CACHE_SWITCH = 'LIMITED_SALE_SALE_CACHE_ENABLED'
-# The sales JVMs use these application defaults except the two switches and max-requests, which every condition passes
-# explicitly; the values are recorded from the code defaults (RedisSaleCache, RedisOrderRateLimit) rather than read
-# back from the JVMs. The max-requests default was 5 until stage 2-6 b3 and is 1 now.
-APPLICATION_DEFAULTS = {'sale_cache_ttl': 'PT60S', 'order_rate_limit_max_requests': 1, 'order_rate_limit_window': '1s'}
+GATE_SWITCH = 'LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED'
+# The sales JVMs use these application defaults except the three switches and max-requests, which every condition
+# passes explicitly; the values are recorded from the code defaults (RedisSaleCache, RedisOrderRateLimit,
+# RedisSoldOutGate) rather than read back from the JVMs. The max-requests default was 5 until stage 2-6 b3 and is 1 now.
+APPLICATION_DEFAULTS = {'sale_cache_ttl': 'PT60S', 'order_rate_limit_max_requests': 1, 'order_rate_limit_window': '1s',
+                        'sold_out_gate_ttl': 'PT5S'}
 
 
 def write_sessions(clients, normal, plan):
@@ -171,6 +174,10 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
     mysql = observe_delta(observe_before, observe_after)
     cache = cache_counts([labeled_deltas(management_before[n], management_after[n], 'sale_cache_requests_total')
                           for n in env.instances])
+    gate = gate_counts([labeled_deltas(management_before[n], management_after[n],
+                                       'sale_sold_out_gate_requests_total') for n in env.instances])
+    gate_updates = gate_update_counts([labeled_deltas(management_before[n], management_after[n],
+                                                      'sale_sold_out_gate_updates_total') for n in env.instances])
     rate_limit = rate_limit_counts([labeled_deltas(management_before[n], management_after[n],
                                                    'order_rate_limit_total') for n in env.instances])
     abuse_server = abuse_server_summary(abuser_ids, final['request_results'], final['orders'])
@@ -185,6 +192,10 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
         'abuse': abuse_server, 'cache': cache, 'rate_limit': rate_limit,
         'cache_metrics_present': any(labeled_deltas({}, management_after[n], 'sale_cache_requests_total')
                                      for n in env.instances),
+        'gate': gate, 'gate_updates': gate_updates,
+        # The disabled gate registers no metric at all, so the series' presence shows which switch the JVMs ran with.
+        'gate_metrics_present': any(labeled_deltas({}, management_after[n], 'sale_sold_out_gate_requests_total')
+                                    for n in env.instances),
     }
     checks = evaluate(result, condition, plan)
     phases['total_seconds'] = round(time.monotonic() - started, 2)
@@ -194,7 +205,8 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
         'plan': plan.__dict__,
         'checks': checks, 'failures': failures(checks),
         'k6': k6_summary, 'load_generator': load_generator, 'db': db, 'abuse': abuse_server,
-        'cache': cache, 'rate_limit': rate_limit, 'derived': derived(k6_summary, db, cache, rate_limit, plan.abusers),
+        'cache': cache, 'rate_limit': rate_limit, 'gate': gate, 'gate_updates': gate_updates,
+        'derived': derived(k6_summary, db, cache, rate_limit, plan.abusers, gate),
         'verifier_violations': verifier_violations, 'sql_violations': len(violations),
         'order_create_by_instance': order_create_by_instance,
         'load_balancer_access': {'order_create_split': split(access['order_creates']),
@@ -215,6 +227,7 @@ def settings_record(condition):
                                                        'application_default': default_max}
     max_requests = condition.rate_limit_max_requests
     return {'sale_cache_enabled': condition.sale_cache, 'order_rate_limit_enabled': condition.order_rate_limit,
+            'sold_out_gate_enabled': condition.sold_out_gate, 'sold_out_gate_passed_explicitly': True,
             'order_rate_limit_max_requests': max_requests, 'order_rate_limit_max_requests_passed_explicitly': True,
             'order_rate_limit_window': APPLICATION_DEFAULTS['order_rate_limit_window'],
             'overridden_application_defaults': overridden, 'defaults_not_overridden': defaults}
@@ -223,6 +236,7 @@ def settings_record(condition):
 def sales_extra_env(condition):
     """Settings passed to every sales JVM; max-requests is explicit so old and new conditions stay comparable."""
     return {CACHE_SWITCH: 'true' if condition.sale_cache else 'false',
+            GATE_SWITCH: 'true' if condition.sold_out_gate else 'false',
             **order_rate_limit_max_requests_setting(condition.rate_limit_max_requests)}
 
 
@@ -267,7 +281,8 @@ def aggregate_file(condition, plan, label, summaries, order):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--conditions', default=','.join(DEFAULT_CONDITIONS),
-                        help='comma separated, run in this order every round; default a-off,a-on,b-off,b-on')
+                        help='comma separated, run in this order every round; default a-off,a-on,b-off,b-on; '
+                             'the 2-7 pair is c-off,c-on')
     parser.add_argument('--order-file', default='execution-order.json',
                         help='where the run order is written inside --output; refused if it exists')
     parser.add_argument('--rounds', type=int, default=1, help='runs per condition, interleaved round by round')
