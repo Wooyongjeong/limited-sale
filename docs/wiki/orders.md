@@ -123,3 +123,19 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 같은 키 재시도는 목록에 주문을 늘리지 않는다. [OrderTransaction.create](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderTransaction.java)가 요청 키 결과를 판매 기간 판정보다 먼저 읽기 때문이다. 판매가 끝난 뒤 같은 키로 다시 보내도 200과 기존 주문이 돌아온다. 새 키라면 `SALE_OUTSIDE_PERIOD`다.
 
 [JpaOrderStore.list](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/JpaOrderStore.java)는 회원의 주문 수를 센 뒤 한 페이지를 읽는다. 결제 상태는 `payment.api`의 `PaymentOperations.statuses`로 페이지 전체를 한 번에 읽는다. 주문마다 결제를 따로 읽지 않는다. 오프셋이 주문 수 이상이면 페이지 조회 없이 빈 목록을 반환한다. READ COMMITTED이므로 복구 작업이 동시에 상태를 바꾸면 총수와 항목이 같은 순간의 값이 아닐 수 있다. 정책 원문은 [1-8 단계 문서](../stages/01-8-order-result-query.md)에 있다.
+
+## v2 비동기 접수(기본 꺼짐)
+
+`limited-sale.order.async.enabled=true`로 켠 서버는 `POST /api/v2/orders`로 주문을 "접수"만 한다. 수량 점유와 주문 생성은 하지 않는다. 그 일은 3-5의 소비자가 접수 순서대로 한다. 계약은 [HTTP 계약](http-contracts.md#v2-비동기-주문-접수-계약)에 있다.
+
+[OrderAcceptanceService](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderAcceptanceService.java)의 순서는 다음과 같다.
+
+1. 회원별 주문 생성 제한. v1과 같은 `create` 카운터를 쓰므로 v1과 v2를 섞어 보내도 한 회원의 예산이 하나다. 초과하면 429이고 아무것도 저장하지 않는다.
+2. Redis 품절 표시 조회. 트랜잭션 밖에서 읽는다.
+3. [OrderAcceptanceTransaction](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderAcceptanceTransaction.java)의 한 트랜잭션. 먼저 같은 회원·키의 기존 접수를 찾아 재생한다. 없으면 [SaleAdmission](../../src/main/java/com/wooyongjeong/limitedsale/sale/api/SaleAdmission.java)으로 판매 행을 **잠그지 않고** 읽고 같은 DB 시각으로 존재·기간·중단을 판정한다. 거절이면 `REJECTED` 접수만 저장한다. 허용이면 `ACCEPTED` 접수와 아웃박스 행을 저장한다. 접수 시각(`accepted_at`)은 이 판정의 DB 시각이며 3-5의 기간 판단 기준이 된다.
+4. 품절 표시가 있으면 판매 행을 읽지 않고 `SALE_SOLD_OUT` 거절을 저장한다. 이때도 기존 키 재생이 먼저라서 이미 접수한 키는 품절 표시가 생긴 뒤에도 200으로 재생된다.
+5. 같은 키의 동시 요청은 유니크 충돌(`OrderRequestKeyCollision`)을 받은 요청이 새 트랜잭션에서 먼저 커밋한 요청의 결과를 읽어 응답한다. v1과 같은 방식이며 접수는 하나만 남는다.
+
+아웃박스 행은 `{"schemaVersion":1,"acceptanceId":"<UUID>","saleId":<id>}` JSON 내용과 판매 이벤트 ID 문자열 키를 갖고, 토픽은 3-2의 `limited-sale.order-acceptances.v1`이다. 소비자는 이 내용을 믿지 않고 DB의 접수 행을 읽어 검증한다. 메시지를 만드는 [AcceptanceMessage](../../src/main/java/com/wooyongjeong/limitedsale/order/domain/AcceptanceMessage.java)는 도메인 값이라 Kafka 타입을 쓰지 않는다.
+
+판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 3-3에는 발행기와 소비자가 없어서 접수는 `ACCEPTED`에 머물며 재고·주문·결제는 변하지 않는다. 그래서 스위치를 켠 채 운영해도 v2 요청은 주문으로 이어지지 않는다.
