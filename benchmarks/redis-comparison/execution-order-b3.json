@@ -1,0 +1,44 @@
+[
+  {
+    "position": 1,
+    "condition": "b3-off",
+    "run": 1,
+    "status": "passed",
+    "started_at": "2026-11-24T00:21:36.662645+00:00"
+  },
+  {
+    "position": 2,
+    "condition": "b3-on",
+    "run": 1,
+    "status": "passed",
+    "started_at": "2026-11-24T00:26:06.864771+00:00"
+  },
+  {
+    "position": 3,
+    "condition": "b3-off",
+    "run": 2,
+    "status": "passed",
+    "started_at": "2026-11-24T00:28:59.837402+00:00"
+  },
+  {
+    "position": 4,
+    "condition": "b3-on",
+    "run": 2,
+    "status": "passed",
+    "started_at": "2026-11-24T00:32:02.005014+00:00"
+  },
+  {
+    "position": 5,
+    "condition": "b3-off",
+    "run": 3,
+    "status": "passed",
+    "started_at": "2026-11-24T00:34:56.896397+00:00"
+  },
+  {
+    "position": 6,
+    "condition": "b3-on",
+    "run": 3,
+    "status": "passed",
+    "started_at": "2026-11-24T00:38:21.026969+00:00"
+  }
+]
