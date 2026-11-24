@@ -191,6 +191,41 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 9 | 지표 | `order_outbox_publish_total{result=success\|failure}`(행 단위), `order_outbox_publisher_leader`(이 인스턴스가 발행자면 1). 미발행 적체·접수~발행 지연은 3-7에서 추가한다 | 발행자 교대와 실패를 지금 볼 수 있게 한다 |
 | 10 | 완료 기준 | 실제 MySQL·Kafka 통합 테스트: 접수가 키·내용 그대로 토픽에 도착하고 `published_at`이 기록됨, 한 판매 이벤트의 접수가 접수 순서대로 도착함, 저장 뒤 발행 전 중단(발행기를 끈 채 저장 → 새 문맥에서 켬)에도 전송됨, 전송 뒤 완료 표시 전 중단(주입)에도 재전송되고 중복 1건이 생김을 확인함, 브로커 중단 중 행은 미발행으로 남고 `attempts`가 늘며 health는 UP, 브로커 재시작 뒤 앱 재시작 없이 전송됨, 앱 문맥 2개가 같은 DB를 쓸 때 발행자는 하나이고 정상 운영 중 같은 행이 두 번 가지 않음, 발행자 문맥을 닫으면 다른 문맥이 이어받아 남은 행을 보냄. 묶음 중간 실패 규칙(#2)은 가짜 전송기를 쓴 단위 테스트로 확인한다. `./gradlew clean build` 통과 | 기획 3-4 완료 기준. 중복 전달 가능성을 명시한다 |
 
+### 3-4 구현과 검증
+
+2026-11-24 워커가 구현했다. 아웃박스 행을 Kafka로 보내고 완료로 표시하는 데까지이며 소비(3-5)·재시도 정책(3-6)·적체 지표(3-7)는 없다. 접수는 여전히 `ACCEPTED`에 머문다. 새 마이그레이션과 새 컬럼은 없다(정책 #1: 이름 잠금).
+
+- 구조
+  - domain: 포트 네 개를 두었고 Kafka·JDBC 타입은 없다. `OutboxMessage`(id·topic·key·payload), `OutboxSender`(`CompletableFuture<Void> send`), `OutboxStore`(미발행 조회·완료 표시·실패 기록), `OutboxLeadership`(`tryAcquire`·`stillHeld`·`release`).
+  - application: `OutboxBatch`가 정책 #2·#6의 한 묶음 규칙을 맡고 지표 `order.outbox.publish{result}`를 올린다. `OrderOutboxPublisher`(`SmartLifecycle`)가 백그라운드 스레드 `order-outbox-publisher`에서 잠금 대기(1초)·묶음 확인·유휴(100ms)·백오프(1초에서 두 배씩 최대 10초, 성공하면 초기화)를 돌리고 게이지 `order.outbox.publisher.leader`를 올린다. `OutboxBackoff`는 백오프 계산이다. 컨텍스트가 닫히면 `stop()`이 스레드를 멈추고 잠금을 풀 때까지 기다린다.
+  - infrastructure: `MySqlOutboxLeadership`(커넥션 풀 밖에서 `DriverManager`로 연 전용 연결에 `GET_LOCK('limited-sale:order-outbox-publisher', 0)`, 묶음마다 `IS_USED_LOCK(name) = CONNECTION_ID()` 확인, 실패하면 연결을 닫음, `connectTimeout` 3초·`socketTimeout` 10초), `JdbcOutboxStore`(`JdbcTemplate`로 `published_at IS NULL ORDER BY id LIMIT 100` 읽기, `UPDATE … SET published_at = UTC_TIMESTAMP(6) WHERE published_at IS NULL AND id IN (…)`, `attempts = attempts + 1`), `KafkaOutboxSender`(기존 `KafkaTemplate`으로 저장된 topic·key·payload를 그대로, 헤더 없이).
+  - 스위치(#8): 위 빈은 모두 `limited-sale.order.async.enabled=true`이고 `limited-sale.order.outbox-publisher.enabled=true`일 때만 만들어진다. 두 값 중 하나라도 없으면 만들어지지 않으므로, 이 앱의 `application.yml`을 가린 컨텍스트(Mock PG의 것)에서는 켜질 수 없다. `application.yml`에 `limited-sale.order.outbox-publisher.enabled: true`를 두었고, `build.gradle`의 `test`와 `integrationTest`는 시스템 속성 `-Dlimited-sale.order.outbox-publisher.enabled=false`를 준다(3-2의 토픽 생성 스위치와 같은 방식). 발행기 테스트는 명령행 인자로 다시 켠다. health에는 넣지 않았다.
+  - 지표(#9): `order_outbox_publish_total{result="success"}`는 완료 표시까지 끝난 행 수, `{result="failure"}`는 전송이 실패한 행 수다. `order_outbox_publisher_leader`는 1이면 이 인스턴스가 발행자다.
+- 정책에서 구체화한 부분과 편차
+  - 이미 실패가 확인된 전송 뒤의 행은 그 묶음에서 보내지 않는다. 브로커가 없으면 `send`가 행마다 `max.block.ms`(5초) 동안 막히므로 100행을 모두 보내면 약 500초가 걸린다. 첫 실패 행 뒤의 행은 어차피 완료 표시되지 않으므로 보내지 않아도 규칙 #2의 결과는 같고 중복도 줄어든다. 보내지 않은 행은 `attempts`를 올리지 않는다. 실패가 `send` 반환 뒤에 비동기로 알려지면 정책대로 모두 보낸 뒤 결과를 본다(단위 테스트로 확인).
+  - 완료 표시가 실패하면(예외) 그 묶음의 모든 행이 미발행으로 남아 다시 전송된다. 이때 `attempts`는 올리지 않고 성공 지표도 올리지 않는다.
+  - 대기자도 첫 시도 뒤에는 전용 연결 하나를 열어 둔다(1초마다 `GET_LOCK`만 다시 묻는다). 발행기를 켠 인스턴스는 풀 밖에서 MySQL 연결을 하나 더 쓴다.
+  - 접수 순서의 기준은 `order_outbox.id`(자동 증가)이다. 트랜잭션이 동시에 진행되면 id가 작은 행이 더 늦게 커밋돼 발행기가 큰 id를 먼저 읽고 보낼 수 있다(자동 증가 값은 INSERT 때 정해지고 가시성은 커밋 때 정해진다). 정책 #3·#6이 "id 순서"를 접수 순서로 정의했으므로 그대로 따랐고, 이 역전은 막지 않았다. 정상 상태에서 한 접수 요청이 다른 요청 사이에 끼어드는 간격은 접수 트랜잭션의 길이(밀리초)다. 필요하면 3-5에서 소비자가 접수 행의 `accepted_at`·id로 판단하게 하거나 발행기가 최근 행을 잠시 건너뛰게 할 수 있다.
+- 테스트
+  - 단위: [OutboxBatchTest](../../src/test/java/com/wooyongjeong/limitedsale/order/application/OutboxBatchTest.java) 10개(가짜 전송기·가짜 저장소). 모두 성공, 100행 상한, 첫 실패 행 앞만 완료 표시, 이미 실패한 전송 뒤 행 미전송, 뒤 행이 성공해도 늦게 실패하면 미표시·다음 시도에서 재전송(중복), 전송기 예외, 같은 행의 연속 실패가 `attempts`를 올림, 완료 표시 실패 시 전부 재전송, 백오프 1·2·4·8·10·10초와 초기화.
+  - 통합(실제 MySQL 8.4.7 + Redis 7.4 + `apache/kafka:4.4.0` Testcontainers, 7개, [OrderOutboxPublisherIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderOutboxPublisherIntegrationTest.java)). 발행하지 않는 앱 하나가 HTTP로 접수를 받고, 각 테스트가 발행하는 앱을 같은 DB에 따로 띄운다. 모든 앱은 실제 `application.yml`을 쓴다.
+    - 접수한 v2 주문이 토픽에 저장된 키·내용 그대로 도착하고 헤더가 없으며 `published_at`이 UTC로 기록되고 `attempts`는 0, 성공 지표 1, 게이지 1.
+    - 한 판매 이벤트의 접수 12건이 접수 순서대로 한 파티션에 도착함.
+    - 발행하는 앱 없이 저장한 행이 3초 뒤에도 미발행이고, 발행을 켠 새 앱이 보냄.
+    - 전송은 성공하고 완료 표시만 실패하도록 주입한 경우(`OutboxStore` 빈을 감싸 첫 `markPublished`만 예외를 던지는 테스트 설정) 행이 1초 백오프 뒤 다시 전송돼 토픽에 정확히 2건(중복 1건)이고 이후 `published_at`이 기록되며 4초를 더 기다려도 늘지 않음.
+    - 브로커를 `docker stop`하면 접수는 202를 유지하고 행은 미발행으로 남으며 `attempts`가 2 이상으로 늘고 실패 지표가 오르며 `/actuator/health`는 UP이고 게이지는 1을 유지함. 브로커를 다시 켜면 같은 앱(재시작 없음)이 그 행을 보냄.
+    - 같은 DB에 앱 두 개: 게이지 합이 정확히 1이고 3초 뒤에도 같으며 `IS_FREE_LOCK`이 0. 접수 15건이 접수 순서대로 정확히 한 번씩 도착하고 두 앱의 성공 지표 합이 15. 발행자를 닫는 동안 접수한 5건을 남은 앱이 발행자가 되어 보내고(총 20건 순서·한 번씩), 마지막 앱을 닫으면 잠금이 풀리고(`IS_FREE_LOCK`=1) `order-outbox-publisher` 스레드가 남지 않음.
+    - 발행자의 잠금 연결을 `KILL`하면 다음 묶음 전 확인(`IS_USED_LOCK`)이 실패해 발행을 멈추고, 새 연결로 잠금을 다시 잡은 뒤(연결 번호가 바뀜) 이후 접수를 보냄.
+  - 위 일곱 개가 정책 #10의 통합 항목 전부다. `ArchitectureTest`(application → infrastructure 금지, domain의 Kafka 타입 금지)도 그대로 통과한다.
+- 로그 폭주 점검: 발행기 테스트 결과에서 `localhost:9092` 줄은 0이고 `Rebootstrapping`은 브로커를 멈춘 구간에서 17줄이다(3-2의 재접속 간격 설정이 유효하다). 발행기가 없는 컨텍스트는 Kafka 클라이언트를 만들지 않는다(두 스위치가 모두 켜져야 빈이 생긴다).
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 9분 12초(다른 프로세스 때문에 이 컴퓨터의 부하 평균이 10~19였다. 3-3 검증의 7분 33초와 직접 비교하지 않는다). 판매 앱 단위 169개(10개 추가)·통합 225개(7개 추가)·mock-pg 단위 11개·통합 15개·Python 183개 모두 통과, 실패·건너뜀 없음. 통합 테스트 결과 XML 전체에서 `9092`가 든 줄은 0이다. 발행기 통합 테스트 클래스는 약 80초(브로커 중단 테스트 38초 포함)다. 같은 날 첫 `clean build`는 `SaleIntegrationTest.stateFiltersUseConfirmedQuantitiesAndShareResponseTimeRules`의 HTTP 요청(`HttpClient.send`, 요청 시간 제한 없음)이 연결만 맺은 채 12분 넘게 응답을 받지 못해 멈추어 워커를 직접 종료했다(이 클래스는 발행기와 무관하고 스위치가 꺼진 컨텍스트다). 부하가 큰 컴퓨터에서 한 번 났고 같은 코드의 재실행에서는 재현되지 않았다.
+- 한계·검증하지 못한 것
+  - 프로세스 강제 종료(`kill -9`)와 네트워크 단절은 시험하지 않았다. 잠금 연결을 `KILL`로 끊는 경우와 컨텍스트를 닫는 경우만 확인했다. 연결이 정리되지 않는 단절은 MySQL의 `wait_timeout`(기본 8시간)까지 다른 인스턴스가 이어받지 못할 수 있다. 살아 있지만 멈춘 인스턴스(긴 GC 등)는 연결이 살아 있어 넘겨주지 않는다. 전용 연결의 `socketTimeout`은 10초라 응답하지 않는 연결을 확인 단계에서 실패로 본다.
+  - 접수 순서는 정상 운영에서만 보장된다. 장애 중에는 첫 실패 행 뒤의 행이 먼저 도착하고 나중에 다시 도착할 수 있다(정책 #2). 위 id 커밋 순서 역전도 막지 않았다.
+  - 발행 처리량·접수~발행 지연은 측정하지 않았다(3-7·3-8). 한 묶음이 가득 차 바로 이어지는 경로는 통합 테스트에서 100행 넘게 만들지 않았고 단위 테스트로만 확인했다.
+  - 새 지표와 게이지를 Prometheus에서 수동으로 확인하지 않았다. 통합 테스트가 앱의 `MeterRegistry` 값을 읽었다.
+  - 브로커는 한 개이고 복제 1이다. 완료 행을 지우지 않아 `order_outbox`가 계속 늘어난다(정책 #4).
+
 ## 소단계 실행 체크리스트
 
 각 소단계는 아래 순서로 진행한다. 정책 동의와 구현 시작 지시는 별개다. 구현은 별도 서브에이전트(워커)가 맡고 주 에이전트가 검증한다. 사용할 모델이 정해지지 않았다면 사용자에게 묻는다. 다음 소단계로 자동 진행하지 않는다. 완료 근거와 남은 문제는 해당 소단계 아래에 기록한다.
@@ -217,9 +252,9 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 
 ### 3-4. 신뢰할 수 있는 메시지 전달
 
-- [ ] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정
+- [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-24, 위 "3-4 확정 정책")
 - [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
+- [x] 지정 워커의 해당 범위 구현과 검증 결과 수령(2026-11-24, 위 "3-4 구현과 검증")
 - [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
 
 ### 3-5. 소비와 주문 확정

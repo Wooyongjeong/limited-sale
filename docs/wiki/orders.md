@@ -138,4 +138,13 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 
 아웃박스 행은 `{"schemaVersion":1,"acceptanceId":"<UUID>","saleId":<id>}` JSON 내용과 판매 이벤트 ID 문자열 키를 갖고, 토픽은 3-2의 `limited-sale.order-acceptances.v1`이다. 소비자는 이 내용을 믿지 않고 DB의 접수 행을 읽어 검증한다. 메시지를 만드는 [AcceptanceMessage](../../src/main/java/com/wooyongjeong/limitedsale/order/domain/AcceptanceMessage.java)는 도메인 값이라 Kafka 타입을 쓰지 않는다.
 
-판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 3-3에는 발행기와 소비자가 없어서 접수는 `ACCEPTED`에 머물며 재고·주문·결제는 변하지 않는다. 그래서 스위치를 켠 채 운영해도 v2 요청은 주문으로 이어지지 않는다.
+### 아웃박스 발행기(3-4)
+
+[OrderOutboxPublisher](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderOutboxPublisher.java)는 백그라운드 스레드 하나로 `order_outbox`의 미발행 행을 Kafka로 보낸다. `limited-sale.order.async.enabled`와 `limited-sale.order.outbox-publisher.enabled`(기본 `true`)가 모두 `true`일 때만 만들어지고 health에는 들어가지 않는다.
+
+- 발행자 하나: [MySqlOutboxLeadership](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/MySqlOutboxLeadership.java)이 커넥션 풀 밖의 전용 연결로 `GET_LOCK('limited-sale:order-outbox-publisher', 0)`을 잡는다. 잠금이 없는 인스턴스는 1초마다 다시 시도한다. 묶음마다 `IS_USED_LOCK(name) = CONNECTION_ID()`를 확인하고, 실패하면 연결을 닫고 대기자로 돌아간다. 프로세스가 죽으면 소켓이 닫혀 MySQL이 잠금을 풀고 다른 인스턴스가 이어받는다. 멈췄지만 연결이 살아 있는 인스턴스(긴 GC 등)나 네트워크가 끊겨 MySQL이 연결을 정리하지 못한 동안(`wait_timeout`)에는 넘어가지 않는다.
+- 한 묶음: [OutboxBatch](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OutboxBatch.java)가 `published_at IS NULL`인 행을 id 순서로 최대 100개 잠금 없이 읽고 [KafkaOutboxSender](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/KafkaOutboxSender.java)로 모두 비동기 전송한 뒤 결과를 기다린다. 저장된 `topic`·`message_key`·`payload`를 그대로 보내고 헤더는 없다. 첫 실패 행보다 앞의 성공 행만 `published_at = UTC_TIMESTAMP(6)`으로 표시하고 실패한 행은 `attempts`를 올린다. 다음 시도는 첫 실패 행부터 다시 보내므로 그 뒤에 이미 도착한 행은 중복 전달된다. 이미 실패한 전송이 보이면 그 뒤 행은 이번 묶음에서 보내지 않는다.
+- 주기: 묶음이 가득 차면 바로 이어서 보내고, 비어 있으면 100ms 쉰다. 실패하면 1초에서 최대 10초까지 두 배씩 기다리고 성공하면 처음으로 돌아간다.
+- 한계: 발행 처리량 상한은 인스턴스 하나다. 장애 중에는 순서가 어긋나고 중복이 생길 수 있어 소비자 멱등성(3-5)이 필요하다. 완료한 행은 지우지 않아 `order_outbox`가 계속 늘어난다.
+
+판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 3-5의 소비자가 아직 없어서 접수는 `ACCEPTED`에 머물며 재고·주문·결제는 변하지 않는다. 아웃박스 행은 3-4의 발행기가 Kafka로 보낸다(아래). 그래서 스위치를 켠 채 운영해도 v2 요청은 주문으로 이어지지 않는다.
