@@ -4,6 +4,7 @@ import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit;
 import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Decision;
 import com.wooyongjeong.limitedsale.order.domain.OrderRateLimit.Operation;
 import com.wooyongjeong.limitedsale.payment.api.PaymentGateway;
+import com.wooyongjeong.limitedsale.sale.api.SoldOutGate;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.UUID;
@@ -59,19 +60,20 @@ class OrderRateLimiterTest {
     @Test
     void aRejectedRequestNeverReachesTheTransactionOrThePaymentGateway() {
         var transaction = mock(OrderTransaction.class);
+        var gate = mock(SoldOutGate.class);
         var paymentTransaction = mock(OrderPaymentTransaction.class);
         var gateway = mock(PaymentGateway.class);
         when(limit.hit(7, Operation.CREATE)).thenReturn(new Decision.Rejected(Duration.ofSeconds(1)));
         when(limit.hit(7, Operation.PAYMENT)).thenReturn(new Decision.Rejected(Duration.ofSeconds(1)));
         var limiter = new OrderRateLimiter(limit, metrics, true);
 
-        var created = new OrderService(transaction, metrics, limiter).create(7, UUID.randomUUID(), 1, 1);
+        var created = new OrderService(transaction, metrics, limiter, gate).create(7, UUID.randomUUID(), 1, 1);
         var paid = new OrderPaymentService(paymentTransaction, gateway, metrics, limiter, Duration.ofSeconds(1))
             .pay(7, UUID.randomUUID());
 
         assertThat(created.kind()).isEqualTo(OrderResult.Kind.RATE_LIMITED);
         assertThat(paid.kind()).isEqualTo(OrderResult.Kind.RATE_LIMITED);
-        verifyNoInteractions(transaction, paymentTransaction, gateway);
+        verifyNoInteractions(transaction, paymentTransaction, gateway, gate);
         // The limit has its own counter; the business outcome counters only count requests that were processed.
         assertThat(registry.find("order.creation.results").counters())
             .allSatisfy(counter -> assertThat(counter.count()).isZero());

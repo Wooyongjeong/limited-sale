@@ -90,6 +90,14 @@ for (const endpoint of ENDPOINTS) {
   statusOther[endpoint] = new Counter(`${endpoint}_status_other`);
 }
 
+// Normal order creation latency split by the answer, so a fast SALE_SOLD_OUT rejection is not averaged into the
+// latency of the orders that were actually created.
+const LATENCY_CODES = ['ORDER_CREATED', 'SALE_SOLD_OUT'];
+const latencyByCode = {};
+for (const code of LATENCY_CODES) {
+  latencyByCode[code] = new Trend(`order_create_latency_${code}`, true);
+}
+
 const connectionErrors = new Counter('connection_errors');
 const serverErrors = new Counter('server_errors_5xx');
 // When each normal iteration ended, measured from the start of the test; its maximum is the normal scenario's end.
@@ -175,7 +183,11 @@ export function normal() {
     record('sale_detail', detail);
   }
   const created = createOrder(session, jar, session.key, 'order_create');
-  if (record('order_create', created) === 'ORDER_CREATED') {
+  const code = record('order_create', created);
+  if (latencyByCode[code]) {
+    latencyByCode[code].add(created.timings.duration);
+  }
+  if (code === 'ORDER_CREATED') {
     record('order_payment', payOrder(session, jar, created.json('data.orderId'), 'order_payment'));
   }
   normalElapsed.add(exec.instance.currentTestRunDuration);
@@ -247,6 +259,7 @@ export function handleSummary(data) {
     http_requests_per_second: requests / seconds,
     http_req_failed_rate: data.metrics.http_req_failed ? data.metrics.http_req_failed.values.rate : 0,
     endpoints,
+    latency_by_code: Object.fromEntries(LATENCY_CODES.map((code) => [code, trend(data, `order_create_latency_${code}`)])),
     server_errors_5xx: counterValue(data, 'server_errors_5xx'),
     connection_errors: counterValue(data, 'connection_errors'),
   };

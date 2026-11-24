@@ -1,8 +1,8 @@
 import unittest
 
 from comparison import (CONDITIONS, DEFAULT_CONDITIONS, Plan, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
-                        derived, evaluate, execution_order, failures, headline, hit_rate, labeled_deltas, policy_plan,
-                        rate_limit_counts, verifier_requests, with_overrides)
+                        derived, evaluate, execution_order, failures, gate_counts, gate_update_counts, headline,
+                        hit_rate, labeled_deltas, policy_plan, rate_limit_counts, verifier_requests, with_overrides)
 from load_summary import build_requests
 from verify import verify
 
@@ -42,12 +42,52 @@ def k6_b(rate_limited, vus_per_member=1):
                 'abuse_order_payment': endpoint(40, {'200': 40}, {'PAYMENT_SUCCEEDED': 40})}}
 
 
+def k6_c():
+    """Experiment C: the plain 1-11 flow, 1,000 orders and 9,000 sold-out rejections, split by answer."""
+    return {'exit_code': 0, 'iterations_completed': 10000, 'dropped_iterations': 0, 'server_errors_5xx': 0,
+            'connection_errors': 0, 'duration_seconds': 40.0, 'normal_duration_seconds': 40.0,
+            'http_requests_per_second': 2500.0,
+            'latency_by_code': {'ORDER_CREATED': endpoint(1000, p50_ms=300, p95_ms=900),
+                                'SALE_SOLD_OUT': endpoint(9000, p50_ms=40, p95_ms=120)},
+            'endpoints': {
+                'order_create': endpoint(10000, {'201': 1000, '409': 9000},
+                                         {'ORDER_CREATED': 1000, 'SALE_SOLD_OUT': 9000}),
+                'order_payment': endpoint(1000, {'200': 1000}, {'PAYMENT_SUCCEEDED': 1000}),
+                'sale_detail': endpoint(),
+                'abuse_order_create': endpoint(), 'abuse_order_payment': endpoint()}}
+
+
+NO_GATE = {'gate': {'hit': 0, 'miss': 0, 'error': 0},
+           'gate_updates': {'mark': {'success': 0, 'error': 0}, 'clear': {'success': 0, 'error': 0}},
+           'gate_metrics_present': False}
 NO_LIMIT = {'create': {'allowed': 0, 'rejected': 0, 'bypassed': 0},
             'payment': {'allowed': 0, 'rejected': 0, 'bypassed': 0}}
 
 
 def passing(name):
+    result = passing_without_gate(name)
+    if 'gate' not in result:
+        result |= NO_GATE
+    return result
+
+
+def passing_without_gate(name):
     condition = CONDITIONS[name]
+    if condition.experiment == 'C':
+        result = {'cache_metrics_present': True, 'k6': k6_c(),
+                  'db': {'orders': 1000, 'confirmed': 1000, 'remaining': 0, 'converged': True,
+                         'request_results': 10000},
+                  'verifier_violations': 0, 'sql_violations': 0, 'mysql_observe_complete': True,
+                  'order_create_by_instance': {'sales1': 5000, 'sales2': 5000},
+                  'abuse': {'stored_requests': 0, 'created': 0, 'rejections': {}, 'confirmed': 0},
+                  'rate_limit': {'create': {'allowed': 10000, 'rejected': 0, 'bypassed': 0},
+                                 'payment': {'allowed': 1000, 'rejected': 0, 'bypassed': 0}},
+                  'cache': {'hit': 0, 'miss': 0, 'error': 0}, **NO_GATE}
+        if condition.sold_out_gate:
+            result['gate'] = {'hit': 8900, 'miss': 1100, 'error': 0}
+            result['gate_updates'] = {'mark': {'success': 120, 'error': 0}, 'clear': {'success': 0, 'error': 0}}
+            result['gate_metrics_present'] = True
+        return result
     if condition.experiment == 'A':
         return {'cache_metrics_present': condition.sale_cache, 'k6': k6_a(), 'db': {'orders': 1000, 'confirmed': 1000, 'remaining': 0, 'converged': True,
                                      'request_results': 10000},
@@ -95,11 +135,19 @@ class ConditionsTest(unittest.TestCase):
                          {'a-off': (False, False, 5, 0, 1), 'a-on': (True, False, 5, 0, 1),
                           'b-off': (True, False, 0, 100, 1), 'b-on': (True, True, 0, 100, 1),
                           'b2-off': (True, False, 0, 100, 5), 'b2-on': (True, True, 0, 100, 5),
-                          'b3-off': (True, False, 0, 100, 5), 'b3-on': (True, True, 0, 100, 5)})
+                          'b3-off': (True, False, 0, 100, 5), 'b3-on': (True, True, 0, 100, 5),
+                          'c-off': (True, True, 0, 0, 1), 'c-on': (True, True, 0, 0, 1)})
         self.assertEqual({name: c.rate_limit_max_requests for name, c in CONDITIONS.items()},
                          {'a-off': 5, 'a-on': 5, 'b-off': 5, 'b-on': 5, 'b2-off': 5, 'b2-on': 5,
-                          'b3-off': 1, 'b3-on': 1})
+                          'b3-off': 1, 'b3-on': 1, 'c-off': 1, 'c-on': 1})
         self.assertEqual([name for name, c in CONDITIONS.items() if c.expects_rejections], ['b3-on'])
+        # Only the 2-7 pair differs in the gate; every earlier condition keeps it off so it stays what was measured.
+        self.assertEqual({name: c.sold_out_gate for name, c in CONDITIONS.items()},
+                         {**{name: False for name in CONDITIONS}, 'c-on': True})
+        self.assertEqual([name for name, c in CONDITIONS.items() if c.expects_gate_hits], ['c-on'])
+        self.assertEqual({c.experiment for name, c in CONDITIONS.items() if name.startswith('c-')}, {'C'})
+        self.assertEqual(policy_plan(CONDITIONS['c-on']), Plan(10000, 1000, 500, 0, 0))
+        self.assertEqual(policy_plan(CONDITIONS['c-off']), policy_plan(CONDITIONS['c-on']))
         self.assertEqual(DEFAULT_CONDITIONS, ('a-off', 'a-on', 'b-off', 'b-on'))
         self.assertEqual(policy_plan(CONDITIONS['b2-on']), Plan(10000, 1000, 500, 0, 100, 5))
         self.assertEqual(policy_plan(CONDITIONS['a-on']), Plan(10000, 1000, 500, 5, 0))
@@ -263,7 +311,7 @@ class SettingsRecordTest(unittest.TestCase):
     def test_every_condition_passes_max_requests_explicitly_and_the_record_shows_it(self):
         from run_comparison import settings_record, sales_extra_env
         for name, condition in CONDITIONS.items():
-            expected = '1' if name.startswith('b3') else '5'
+            expected = '1' if name.startswith(('b3', 'c')) else '5'
             self.assertEqual(sales_extra_env(condition)['LIMITED_SALE_ORDER_RATE_LIMIT_MAX_REQUESTS'], expected, name)
             record = settings_record(condition)
             self.assertEqual((record['order_rate_limit_max_requests'], record['order_rate_limit_window']),
@@ -277,6 +325,25 @@ class SettingsRecordTest(unittest.TestCase):
             self.assertEqual(settings_record(CONDITIONS[name])['overridden_application_defaults'],
                              {'order_rate_limit_max_requests': {'value': 5, 'application_default': 1}}, name)
         self.assertEqual(settings_record(CONDITIONS['b3-on'])['overridden_application_defaults'], {})
+
+
+    def test_every_condition_passes_the_gate_switch_explicitly_and_the_record_shows_it(self):
+        from run_comparison import settings_record, sales_extra_env
+        for name, condition in CONDITIONS.items():
+            expected = 'true' if name == 'c-on' else 'false'
+            self.assertEqual(sales_extra_env(condition)['LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED'], expected, name)
+            record = settings_record(condition)
+            self.assertEqual(record['sold_out_gate_enabled'], name == 'c-on', name)
+            self.assertTrue(record['sold_out_gate_passed_explicitly'])
+            self.assertEqual(record['defaults_not_overridden']['sold_out_gate_ttl'], 'PT5S')
+
+    def test_c_conditions_run_at_the_application_defaults_except_the_gate(self):
+        from run_comparison import settings_record
+        for name in ('c-off', 'c-on'):
+            record = settings_record(CONDITIONS[name])
+            self.assertEqual((record['sale_cache_enabled'], record['order_rate_limit_enabled'],
+                              record['order_rate_limit_max_requests']), (True, True, 1), name)
+            self.assertEqual(record['overridden_application_defaults'], {}, name)
 
 
 class CountersTest(unittest.TestCase):
@@ -314,6 +381,100 @@ class CountersTest(unittest.TestCase):
         self.assertEqual(values['abuse_rejection_rate'], round(60000 / 63040, 4))
         self.assertEqual(values['create_rejection_rate_by_server'], round(60000 / 63000, 4))
         self.assertIsNone(values['cache_hit_rate'])
+
+
+class GateTest(unittest.TestCase):
+    def test_gate_counts_and_updates_sum_over_instances(self):
+        requests = lambda result, value: {('sale_sold_out_gate_requests_total', (('result', result),)): value}
+        merged = gate_counts([labeled_deltas({}, requests('hit', 90.0) | requests('miss', 8.0),
+                                             'sale_sold_out_gate_requests_total'),
+                              labeled_deltas({}, requests('hit', 10.0) | requests('error', 1.0),
+                                             'sale_sold_out_gate_requests_total')])
+        self.assertEqual(merged, {'hit': 100, 'miss': 8, 'error': 1})
+        self.assertEqual(hit_rate(merged), round(100 / 108, 4))
+        updates = lambda op, result, value: {('sale_sold_out_gate_updates_total',
+                                              (('operation', op), ('result', result))): value}
+        merged = gate_update_counts([labeled_deltas({}, updates('mark', 'success', 5.0) | updates('clear', 'error', 1.0),
+                                                    'sale_sold_out_gate_updates_total')])
+        self.assertEqual(merged, {'mark': {'success': 5, 'error': 0}, 'clear': {'success': 0, 'error': 1}})
+
+    def test_only_this_experiments_metric_is_counted(self):
+        other = {('sale_cache_requests_total', (('result', 'hit'),)): 5.0}
+        self.assertEqual(gate_counts([labeled_deltas({}, other, 'sale_sold_out_gate_requests_total')]),
+                         {'hit': 0, 'miss': 0, 'error': 0})
+
+    def test_derived_gate_hit_rate_is_empty_without_a_gate(self):
+        k6, db = k6_c(), {'confirmed': 1000}
+        limit = {'create': {'allowed': 10000, 'rejected': 0, 'bypassed': 0}}
+        cache = {'hit': 0, 'miss': 0, 'error': 0}
+        self.assertEqual(derived(k6, db, cache, limit, 0, {'hit': 8900, 'miss': 1100, 'error': 0})['gate_hit_rate'],
+                         0.89)
+        self.assertIsNone(derived(k6, db, cache, limit, 0, NO_GATE['gate'])['gate_hit_rate'])
+        self.assertIsNone(derived(k6, db, cache, limit)['gate_hit_rate'])
+
+    def test_c_on_and_c_off_pass_when_nothing_is_wrong(self):
+        for name in ('c-off', 'c-on'):
+            condition = CONDITIONS[name]
+            self.assertEqual(failures(evaluate(passing(name), condition, policy_plan(condition))), [], name)
+
+    def test_a_gate_switch_that_did_not_reach_the_jvms_fails(self):
+        for name in ('c-off', 'c-on'):
+            condition = CONDITIONS[name]
+            result = change(passing(name), 'gate_metrics_present', not condition.sold_out_gate)
+            self.assertIn('sold_out_gate_setting_took_effect',
+                          names(evaluate(result, condition, policy_plan(condition))), name)
+
+    def test_gate_on_must_look_up_every_create_exactly_once(self):
+        on = CONDITIONS['c-on']
+        for lookups in (9999, 10001):
+            result = change(passing('c-on'), 'gate.miss', lookups - 8900)
+            self.assertIn('every_create_was_a_gate_lookup', names(evaluate(result, on, policy_plan(on))))
+
+    def test_rate_limited_creates_are_not_gate_lookups(self):
+        on = CONDITIONS['c-on']
+        result = passing('c-on')
+        result['k6']['endpoints']['order_create']['status_counts']['429'] = 5
+        result['gate']['miss'] -= 5
+        result['db']['request_results'] -= 5
+        result['rate_limit']['create'] = {'allowed': 9995, 'rejected': 5, 'bypassed': 0}
+        self.assertEqual(names(evaluate(result, on, policy_plan(on))), ['normal_users_never_rate_limited'])
+
+    def test_gate_errors_in_lookups_or_updates_fail_the_run(self):
+        on = CONDITIONS['c-on']
+        lookup = passing('c-on')
+        lookup['gate'] = {'hit': 8900, 'miss': 1099, 'error': 1}
+        self.assertEqual(names(evaluate(lookup, on, policy_plan(on))), ['gate_lookup_errors'])
+        for operation in ('mark', 'clear'):
+            update = change(passing('c-on'), f'gate_updates.{operation}.error', 1)
+            self.assertIn('gate_update_errors', names(evaluate(update, on, policy_plan(on))), operation)
+
+    def test_c_on_without_a_single_hit_means_the_marker_never_worked(self):
+        on = CONDITIONS['c-on']
+        result = passing('c-on')
+        result['gate'] = {'hit': 0, 'miss': 10000, 'error': 0}
+        self.assertEqual(names(evaluate(result, on, policy_plan(on))), ['gate_turned_requests_away'])
+
+    def test_gate_off_counts_nothing(self):
+        off = CONDITIONS['c-off']
+        for path, value in (('gate.hit', 1), ('gate_updates.mark.success', 1), ('gate_updates.clear.error', 1)):
+            result = change(passing('c-off'), path, value)
+            self.assertIn('no_gate_lookups_or_updates', names(evaluate(result, off, policy_plan(off))), path)
+
+    def test_the_earlier_experiments_never_use_the_gate(self):
+        for name in ('a-on', 'b-on', 'b3-on'):
+            condition = CONDITIONS[name]
+            result = change(passing(name), 'gate.miss', 1)
+            self.assertIn('no_gate_lookups_or_updates', names(evaluate(result, condition, policy_plan(condition))))
+
+    def test_c_keeps_the_normal_only_pass_criteria(self):
+        on = CONDITIONS['c-on']
+        for failed, (path, value) in {'confirmed': ('db.confirmed', 999), 'remaining': ('db.remaining', 1),
+                                      'server_errors_5xx': ('k6.server_errors_5xx', 1),
+                                      'connection_errors': ('k6.connection_errors', 1)}.items():
+            self.assertIn(failed, names(evaluate(change(passing('c-on'), path, value), on, policy_plan(on))))
+        # No reads and no abusers: any of them in a C run means the wrong script ran.
+        extra = change(passing('c-on'), 'k6.endpoints.abuse_order_create.count', 3)
+        self.assertIn('abusers_ran_only_when_planned', names(evaluate(extra, on, policy_plan(on))))
 
 
 class AbuseVerifierInputTest(unittest.TestCase):
@@ -424,6 +585,27 @@ class AggregateTest(unittest.TestCase):
                                                                                     [100.0, 300.0, 200.0]))
         self.assertEqual(metrics['database.confirmed']['median'], 1000)
         self.assertEqual(metrics['endpoints.order_create.p95_ms']['median'], 2)
+
+    def test_sold_out_latency_is_reported_apart_from_created_latency(self):
+        summary = self.summary(100.0, 1000)
+        summary['k6']['latency_by_code'] = k6_c()['latency_by_code']
+        summary['gate'] = {'hit': 8900, 'miss': 1100, 'error': 0}
+        summary['gate_updates'] = {'mark': {'success': 3, 'error': 0}, 'clear': {'success': 1, 'error': 0}}
+        flat = headline(summary)
+        self.assertEqual(flat['latency_by_code.SALE_SOLD_OUT.p50_ms'], 40)
+        self.assertEqual(flat['latency_by_code.SALE_SOLD_OUT.p95_ms'], 120)
+        self.assertEqual(flat['latency_by_code.ORDER_CREATED.p50_ms'], 300)
+        self.assertEqual(flat['gate.hit'], 8900)
+        self.assertEqual(flat['gate_updates.mark.success'], 3)
+        metrics = aggregate([summary, summary, summary])
+        self.assertEqual(metrics['latency_by_code.SALE_SOLD_OUT.p95_ms']['median'], 120)
+
+    def test_a_code_without_requests_is_left_out(self):
+        summary = self.summary(100.0, 1000)
+        summary['k6']['latency_by_code'] = {'ORDER_CREATED': endpoint(0), 'SALE_SOLD_OUT': endpoint(5)}
+        flat = headline(summary)
+        self.assertNotIn('latency_by_code.ORDER_CREATED.p50_ms', flat)
+        self.assertIn('latency_by_code.SALE_SOLD_OUT.p50_ms', flat)
 
     def test_headline_leaves_out_endpoints_that_saw_no_request_and_numbers_that_are_missing(self):
         flat = headline(self.summary(100.0, 1000))
