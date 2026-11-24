@@ -4,8 +4,8 @@ import com.wooyongjeong.limitedsale.order.domain.AcceptanceMessage;
 import com.wooyongjeong.limitedsale.order.domain.AcceptanceStatus;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceStore;
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
 import com.wooyongjeong.limitedsale.order.domain.OrderRejection;
-import com.wooyongjeong.limitedsale.order.infrastructure.messaging.OrderAcceptanceTopicConfiguration;
 import com.wooyongjeong.limitedsale.sale.api.SaleAdmission;
 import com.wooyongjeong.limitedsale.sale.api.SaleAdmissionResult;
 import java.time.Clock;
@@ -49,7 +49,7 @@ public class OrderAcceptanceTransaction {
             acceptances.reject(acceptanceId, memberId, key, saleId, quantity, reason, admission.time());
             return rejected(reason);
         }
-        var message = AcceptanceMessage.of(OrderAcceptanceTopicConfiguration.ORDER_ACCEPTANCES_TOPIC, acceptanceId,
+        var message = AcceptanceMessage.of(OrderAcceptanceTopic.NAME, acceptanceId,
             saleId);
         return new OrderAcceptanceResult(OrderAcceptanceResult.Kind.ACCEPTED,
             acceptances.accept(acceptanceId, memberId, key, saleId, quantity, admission.time(), message));

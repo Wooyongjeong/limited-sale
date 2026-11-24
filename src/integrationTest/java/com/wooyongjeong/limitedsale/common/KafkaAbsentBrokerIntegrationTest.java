@@ -6,7 +6,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
 import com.wooyongjeong.limitedsale.member.application.MemberService;
-import com.wooyongjeong.limitedsale.order.infrastructure.messaging.OrderAcceptanceTopicConfiguration;
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
 import com.wooyongjeong.limitedsale.product.api.ProductCommand;
 import com.wooyongjeong.limitedsale.support.FixedPortKafka;
 import java.net.CookieManager;
@@ -50,7 +50,7 @@ import static org.awaitility.Awaitility.await;
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class KafkaAbsentBrokerIntegrationTest {
-    private static final String TOPIC = OrderAcceptanceTopicConfiguration.ORDER_ACCEPTANCES_TOPIC;
+    private static final String TOPIC = OrderAcceptanceTopic.NAME;
     private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
     private static final int KAFKA_PORT = FixedPortKafka.freePort();

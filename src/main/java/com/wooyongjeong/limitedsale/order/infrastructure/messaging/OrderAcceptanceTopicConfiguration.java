@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.messaging;
 
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,15 +12,11 @@ import org.springframework.kafka.config.TopicBuilder;
  */
 @Configuration(proxyBeanMethods = false)
 public class OrderAcceptanceTopicConfiguration {
-    public static final String ORDER_ACCEPTANCES_TOPIC = "limited-sale.order-acceptances.v1";
-    public static final int ORDER_ACCEPTANCES_PARTITIONS = 6;
-    public static final short ORDER_ACCEPTANCES_REPLICAS = 1;
-
     @Bean
     NewTopic orderAcceptancesTopic() {
-        return TopicBuilder.name(ORDER_ACCEPTANCES_TOPIC)
-                .partitions(ORDER_ACCEPTANCES_PARTITIONS)
-                .replicas(ORDER_ACCEPTANCES_REPLICAS)
+        return TopicBuilder.name(OrderAcceptanceTopic.NAME)
+                .partitions(OrderAcceptanceTopic.PARTITIONS)
+                .replicas(OrderAcceptanceTopic.REPLICAS)
                 .build();
     }
 }

@@ -5,7 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.wooyongjeong.limitedsale.LimitedSaleApplication;
-import com.wooyongjeong.limitedsale.order.infrastructure.messaging.OrderAcceptanceTopicConfiguration;
+import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
 import com.wooyongjeong.limitedsale.support.FixedPortKafka;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -49,7 +49,7 @@ import static org.awaitility.Awaitility.await;
  * asserted here are the ones that ship. The broker is stopped and started with Docker to see what the app does.
  */
 class KafkaConnectionIntegrationTest {
-    private static final String TOPIC = OrderAcceptanceTopicConfiguration.ORDER_ACCEPTANCES_TOPIC;
+    private static final String TOPIC = OrderAcceptanceTopic.NAME;
     private static final String TOPIC_FOR_PROBES = "test.probe." + UUID.randomUUID();
     private static final MySQLContainer DB = new MySQLContainer("mysql:8.4.7");
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
