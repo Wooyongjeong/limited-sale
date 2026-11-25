@@ -50,12 +50,15 @@ class OrderAcceptanceEntity {
     @Column(nullable = false)
     private Instant acceptedAt;
     private Instant finishedAt;
+    @Column(length = 64)
+    private String requestId;
 
     protected OrderAcceptanceEntity() {
     }
 
     private OrderAcceptanceEntity(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
-            AcceptanceStatus status, OrderRejection rejectionReason, Instant now, Instant finishedAt) {
+            AcceptanceStatus status, OrderRejection rejectionReason, Instant now, Instant finishedAt, String requestId) {
+        this.requestId = requestId;
         this.publicId = publicId;
         this.memberId = memberId;
         this.requestKey = requestKey;
@@ -68,19 +71,19 @@ class OrderAcceptanceEntity {
     }
 
     static OrderAcceptanceEntity accepted(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
-            Instant now) {
+            Instant now, String requestId) {
         return new OrderAcceptanceEntity(publicId, memberId, requestKey, saleId, quantity, AcceptanceStatus.ACCEPTED,
-            null, now, null);
+            null, now, null, requestId);
     }
 
     static OrderAcceptanceEntity rejected(UUID publicId, long memberId, UUID requestKey, long saleId, int quantity,
-            OrderRejection reason, Instant now) {
+            OrderRejection reason, Instant now, String requestId) {
         return new OrderAcceptanceEntity(publicId, memberId, requestKey, saleId, quantity, AcceptanceStatus.REJECTED,
-            reason, now, now);
+            reason, now, now, requestId);
     }
 
     AcceptanceInProcess toInProcess() {
-        return new AcceptanceInProcess(memberId, saleId, quantity, status, acceptedAt);
+        return new AcceptanceInProcess(memberId, saleId, quantity, status, acceptedAt, requestId);
     }
 
     void orderCreated(long orderId, Instant now) {

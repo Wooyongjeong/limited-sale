@@ -3,6 +3,7 @@ package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 import com.wooyongjeong.limitedsale.order.domain.OutboxMessage;
 import com.wooyongjeong.limitedsale.order.domain.OutboxPosition;
 import com.wooyongjeong.limitedsale.order.domain.OutboxStore;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -27,9 +28,11 @@ class JdbcOutboxStore implements OutboxStore {
 
     @Override
     public List<OutboxMessage> unpublished(int limit) {
-        return jdbc.query("SELECT id, topic, message_key, payload FROM order_outbox WHERE published_at IS NULL "
-            + "ORDER BY id LIMIT ?", (rows, number) -> new OutboxMessage(rows.getLong("id"), rows.getString("topic"),
-            rows.getString("message_key"), rows.getString("payload")), limit);
+        return jdbc.query("SELECT id, topic, message_key, payload, "
+            + "TIMESTAMPDIFF(MICROSECOND, created_at, UTC_TIMESTAMP(6)) AS age_us FROM order_outbox "
+            + "WHERE published_at IS NULL ORDER BY id LIMIT ?", (rows, number) -> new OutboxMessage(rows.getLong("id"),
+            rows.getString("topic"), rows.getString("message_key"), rows.getString("payload"),
+            Duration.ofNanos(Math.max(0, rows.getLong("age_us")) * 1000)), limit);
     }
 
     @Override
