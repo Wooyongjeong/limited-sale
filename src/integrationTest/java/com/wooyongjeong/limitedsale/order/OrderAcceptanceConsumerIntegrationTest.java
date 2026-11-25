@@ -44,6 +44,7 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.testcontainers.containers.GenericContainer;
@@ -297,7 +298,9 @@ class OrderAcceptanceConsumerIntegrationTest {
                 @Override
                 public void record(Outcome outcome) {
                     if (outcome == Outcome.ORDER_CREATED && FAIL_AFTER_COMMIT.compareAndSet(true, false)) {
-                        throw new IllegalStateException("injected: the consumer stopped before acknowledging");
+                        // Transient, like a connection lost before the acknowledgement: the message comes again.
+                        throw new TransientDataAccessResourceException(
+                            "injected: the consumer stopped before acknowledging");
                     }
                     super.record(outcome);
                 }

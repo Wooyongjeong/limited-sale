@@ -16,9 +16,11 @@ ALTER TABLE order_outbox
     ADD INDEX ix_order_outbox_acceptance (acceptance_id, id),
     ADD CONSTRAINT fk_order_outbox_acceptance FOREIGN KEY (acceptance_id) REFERENCES order_acceptances (id)
         ON DELETE RESTRICT ON UPDATE RESTRICT,
+    -- IS NOT NULL is spelled out: a CHECK whose condition is UNKNOWN (a NULL comparison) passes.
     ADD CONSTRAINT ck_order_outbox_position CHECK (
         (partition_no IS NULL AND record_offset IS NULL) OR
-        (partition_no >= 0 AND record_offset >= 0 AND published_at IS NOT NULL));
+        (partition_no IS NOT NULL AND record_offset IS NOT NULL AND published_at IS NOT NULL AND
+         partition_no >= 0 AND record_offset >= 0));
 
 -- The stall check reads the unfinished acceptances; without this it would scan every acceptance ever stored.
 ALTER TABLE order_acceptances
