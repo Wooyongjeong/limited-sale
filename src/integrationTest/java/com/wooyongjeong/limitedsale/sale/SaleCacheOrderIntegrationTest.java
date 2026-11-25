@@ -63,7 +63,7 @@ class SaleCacheOrderIntegrationTest {
         PG.start();
         REDIS.start();
         pgContext = new SpringApplicationBuilder(MockPgApplication.class).run("--server.port=0",
-            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/mock-pg.yml",
             "--spring.flyway.locations=filesystem:mock-pg/src/main/resources/db/migration",
             "--spring.datasource.url=" + PG.getJdbcUrl(),
             "--spring.datasource.username=" + PG.getUsername(), "--spring.datasource.password=" + PG.getPassword(),
