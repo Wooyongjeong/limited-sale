@@ -190,7 +190,7 @@ class OutboxBatchTest {
         @Override
         public List<OutboxMessage> unpublished(int limit) {
             return all.stream().filter(id -> !published.contains(id)).limit(limit)
-                .map(id -> new OutboxMessage(id, "topic", "key", "payload-" + id)).toList();
+                .map(id -> new OutboxMessage(id, "topic", "key", "payload-" + id, java.time.Duration.ZERO)).toList();
         }
 
         @Override

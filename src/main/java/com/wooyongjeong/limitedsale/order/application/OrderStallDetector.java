@@ -1,5 +1,6 @@
 package com.wooyongjeong.limitedsale.order.application;
 
+import com.wooyongjeong.limitedsale.common.observation.RequestIdFilter;
 import com.wooyongjeong.limitedsale.order.domain.ConsumerProgress;
 import com.wooyongjeong.limitedsale.order.domain.ProcessingFailure;
 import com.wooyongjeong.limitedsale.order.domain.StallStore;
@@ -8,6 +9,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -23,6 +27,7 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = {"limited-sale.order.async.enabled", "limited-sale.order.outbox-publisher.enabled"},
     havingValue = "true")
 public class OrderStallDetector {
+    private static final Logger log = LoggerFactory.getLogger(OrderStallDetector.class);
     private static final int LIMIT = 500;
 
     private final StallStore store;
@@ -65,11 +70,22 @@ public class OrderStallDetector {
                 continue;
             }
             found++;
-            if (candidate.sends() > maxRepublishes) {
-                failures.fail(candidate.acceptanceId(), ProcessingFailure.STALLED);
-            } else {
-                store.republish(candidate);
-                metrics.republished();
+            if (candidate.requestId() != null) {
+                MDC.put(RequestIdFilter.MDC_KEY, candidate.requestId());
+            }
+            try {
+                if (candidate.sends() > maxRepublishes) {
+                    failures.fail(candidate.acceptanceId(), ProcessingFailure.STALLED);
+                    log.warn("Order acceptance {} is still unfinished after {} republishes; failed it as STALLED",
+                        candidate.acceptanceId(), maxRepublishes);
+                } else {
+                    store.republish(candidate);
+                    metrics.republished();
+                    log.warn("Republished stalled order acceptance {} ({} s after its last send)",
+                        candidate.acceptanceId(), candidate.sincePublished().toSeconds());
+                }
+            } finally {
+                MDC.remove(RequestIdFilter.MDC_KEY);
             }
         }
         stalled.set(found);

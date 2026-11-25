@@ -47,7 +47,7 @@ class OrderStallDetectorTest {
         new AcceptanceProcessingMetrics(registry), registry, Duration.ofSeconds(60), Duration.ofMinutes(5), 3);
 
     private StalledCandidate candidate(Integer partition, Long offset, Duration age, int sends) {
-        return new StalledCandidate(1, UUID.randomUUID(), "topic", "7", "{}", partition, offset, age, sends);
+        return new StalledCandidate(1, UUID.randomUUID(), "topic", "7", "{}", partition, offset, age, sends, null);
     }
 
     private double stalledGauge() {

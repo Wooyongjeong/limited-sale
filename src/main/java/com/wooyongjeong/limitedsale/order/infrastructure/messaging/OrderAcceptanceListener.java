@@ -5,10 +5,12 @@ import com.wooyongjeong.limitedsale.order.application.OrderAcceptanceProcessor;
 import com.wooyongjeong.limitedsale.order.application.OrderAcceptanceProcessor.Outcome;
 import com.wooyongjeong.limitedsale.order.domain.AcceptanceMessage;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceTopic;
+import com.wooyongjeong.limitedsale.common.observation.RequestIdFilter;
 import java.util.UUID;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
@@ -45,6 +47,8 @@ class OrderAcceptanceListener {
     // idIsGroup = false keeps the group of spring.kafka.consumer.group-id; by default the listener id would be the group.
     @KafkaListener(id = LISTENER_ID, idIsGroup = false, topics = OrderAcceptanceTopic.NAME)
     void consume(ConsumerRecord<String, String> record, Acknowledgment acknowledgment) {
+        // The previous message's request id stays until here, so the error handler could still log with it.
+        MDC.remove(RequestIdFilter.MDC_KEY);
         Message message = read(record.value());
         if (message == null) {
             log.warn("Skipping an unreadable order acceptance message at {}-{}@{}", record.topic(), record.partition(),
@@ -53,21 +57,25 @@ class OrderAcceptanceListener {
             acknowledgment.acknowledge();
             return;
         }
-        Outcome outcome;
+        OrderAcceptanceProcessor.Result result;
         try {
-            outcome = processor.process(message.acceptanceId(), message.saleId());
+            result = processor.process(message.acceptanceId(), message.saleId());
         } catch (RuntimeException failure) {
             // The error handler decides: retry, store the failure, or wait for the database.
             metrics.attemptFailed();
             throw failure;
         }
+        Outcome outcome = result.outcome();
         if (outcome == Outcome.SKIPPED) {
             log.warn("Skipping order acceptance message {} for sale {} at {}-{}@{}: no such acceptance for that sale",
                 message.acceptanceId(), message.saleId(), record.topic(), record.partition(), record.offset());
         }
         metrics.record(outcome);
+        metrics.completed(outcome, result.sinceAcceptance());
+        log.debug("Order acceptance {} processed: {}", message.acceptanceId(), outcome);
         acknowledgment.acknowledge();
         retries.finished(record);
+        MDC.remove(RequestIdFilter.MDC_KEY);
     }
 
     record Message(UUID acceptanceId, long saleId) {

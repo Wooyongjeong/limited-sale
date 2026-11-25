@@ -24,7 +24,7 @@ class JdbcStallStore implements StallStore {
     @Override
     public List<StalledCandidate> publishedAndUnfinished(Duration publishedAgo, int limit) {
         return jdbc.query("""
-            SELECT a.id, a.public_id, o.topic, o.message_key, o.payload, o.partition_no, o.record_offset,
+            SELECT a.id, a.public_id, a.request_id, o.topic, o.message_key, o.payload, o.partition_no, o.record_offset,
                    TIMESTAMPDIFF(MICROSECOND, o.published_at, UTC_TIMESTAMP(6)) AS age_us,
                    (SELECT COUNT(*) FROM order_outbox s WHERE s.acceptance_id = a.id) AS sends
             FROM order_acceptances a
@@ -39,7 +39,7 @@ class JdbcStallStore implements StallStore {
             Long offset = (Long) rows.getObject("record_offset", Long.class);
             return new StalledCandidate(rows.getLong("id"), new UUID(id.getLong(), id.getLong()),
                 rows.getString("topic"), rows.getString("message_key"), rows.getString("payload"), partition, offset,
-                Duration.ofNanos(rows.getLong("age_us") * 1000), rows.getInt("sends"));
+                Duration.ofNanos(rows.getLong("age_us") * 1000), rows.getInt("sends"), rows.getString("request_id"));
         }, publishedAgo.toNanos() / 1000, limit);
     }
 

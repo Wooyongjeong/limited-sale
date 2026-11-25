@@ -10,7 +10,9 @@ import com.wooyongjeong.limitedsale.order.domain.ProcessingFailure;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import com.wooyongjeong.limitedsale.common.observation.RequestIdFilter;
 import org.hibernate.exception.ConstraintViolationException;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Repository;
 
@@ -36,7 +38,8 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
     @Override
     public OrderAcceptance accept(UUID acceptanceId, long memberId, UUID key, long saleId, int quantity, Instant now,
             AcceptanceMessage message) {
-        var acceptance = save(OrderAcceptanceEntity.accepted(acceptanceId, memberId, key, saleId, quantity, now));
+        var acceptance = save(OrderAcceptanceEntity.accepted(acceptanceId, memberId, key, saleId, quantity, now,
+            requestId()));
         // Flushed on its own: an outbox failure here rolls the acceptance back with it, as one transaction.
         outbox.saveAndFlush(new OrderOutboxEntity(message, acceptance.id(), now));
         return acceptance.toAcceptance(null);
@@ -45,8 +48,8 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
     @Override
     public OrderAcceptance reject(UUID acceptanceId, long memberId, UUID key, long saleId, int quantity,
             OrderRejection rejection, Instant now) {
-        return save(OrderAcceptanceEntity.rejected(acceptanceId, memberId, key, saleId, quantity, rejection, now))
-            .toAcceptance(null);
+        return save(OrderAcceptanceEntity.rejected(acceptanceId, memberId, key, saleId, quantity, rejection, now,
+            requestId())).toAcceptance(null);
     }
 
     @Override
@@ -77,6 +80,11 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
     /** The row is locked by {@link #lockForProcessing} already; this returns the same managed entity. */
     private OrderAcceptanceEntity locked(UUID acceptanceId) {
         return acceptances.findForUpdate(acceptanceId).orElseThrow();
+    }
+
+    /** The id the request filter put in the log context; it has already been checked to be at most 64 safe chars. */
+    private static String requestId() {
+        return MDC.get(RequestIdFilter.MDC_KEY);
     }
 
     private OrderAcceptanceEntity save(OrderAcceptanceEntity entity) {

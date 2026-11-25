@@ -6,6 +6,7 @@ import com.wooyongjeong.limitedsale.order.domain.OutboxSender;
 import com.wooyongjeong.limitedsale.order.domain.OutboxStore;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -56,6 +57,7 @@ public class OutboxBatch {
     private final OutboxSender sender;
     private final Counter success;
     private final Counter failure;
+    private final Timer delay;
 
     public OutboxBatch(OutboxStore store, OutboxSender sender, MeterRegistry registry) {
         this.store = store;
@@ -64,10 +66,14 @@ public class OutboxBatch {
             .description("Outbox rows by publishing result, per row").register(registry);
         this.failure = Counter.builder("order.outbox.publish").tag("result", "failure")
             .description("Outbox rows by publishing result, per row").register(registry);
+        this.delay = Timer.builder("order.outbox.publish.delay")
+            .description("Time from an outbox row's creation until the broker acknowledged it, per published row")
+            .publishPercentileHistogram().maximumExpectedValue(Duration.ofMinutes(10)).register(registry);
     }
 
     public Result publish() {
         List<OutboxMessage> rows = store.unpublished(SIZE);
+        long readAt = System.nanoTime();
         if (rows.isEmpty()) {
             return new Result(0, 0, 0);
         }
@@ -98,6 +104,10 @@ public class OutboxBatch {
         if (!acknowledged.isEmpty()) {
             store.markPublished(acknowledged);
             success.increment(acknowledged.size());
+            Duration sinceRead = Duration.ofNanos(System.nanoTime() - readAt);
+            for (int index = 0; index < acknowledged.size(); index++) {
+                delay.record(rows.get(index).age().plus(sinceRead));
+            }
         }
         if (!failed.isEmpty()) {
             store.recordFailures(failed);

@@ -1,0 +1,331 @@
+{
+  "stage": "3-7",
+  "date": "2026-11-25",
+  "description": "Consumer stopped while 200 v2 acceptances are taken, then resumed on a second instance",
+  "setup": {
+    "compose": "mysql, redis, kafka, monitoring profile (prometheus 5 s scrape, kafka-exporter)",
+    "instances": {
+      "A": "8080/8090 publisher+consumer (warm-up 20)",
+      "A2": "8080/8090 publisher only, consumer off (200 acceptances)",
+      "B": "8082/8092 publisher+consumer (drain)"
+    },
+    "backlogRefresh": "10 s",
+    "sale": "total 1000, per member 1, 200 members, 8 client threads"
+  },
+  "marks": {
+    "p0": "2026-11-25T00:42:55.735Z",
+    "p1": "2026-11-25T00:43:21.680Z",
+    "p1loaded": "2026-11-25T00:43:31.152Z",
+    "p2": "2026-11-25T00:44:08.257Z",
+    "end": "2026-11-25T00:44:41.582Z"
+  },
+  "drainedAtDb": "2026-11-25T00:44:16.582Z",
+  "series_seconds_since_p1": {
+    "accepted": [
+      [
+        -10,
+        0
+      ],
+      [
+        -5,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        20,
+        200
+      ],
+      [
+        25,
+        200
+      ],
+      [
+        30,
+        200
+      ],
+      [
+        35,
+        200
+      ],
+      [
+        40,
+        200
+      ],
+      [
+        45,
+        200
+      ],
+      [
+        50,
+        200
+      ],
+      [
+        55,
+        200
+      ],
+      [
+        60,
+        200
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        75,
+        0
+      ]
+    ],
+    "oldest_accepted_s": [
+      [
+        -10,
+        0
+      ],
+      [
+        -5,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        20,
+        9.01
+      ],
+      [
+        25,
+        9.01
+      ],
+      [
+        30,
+        19.04
+      ],
+      [
+        35,
+        19.04
+      ],
+      [
+        40,
+        29.07
+      ],
+      [
+        45,
+        29.07
+      ],
+      [
+        50,
+        39.09
+      ],
+      [
+        55,
+        45.86
+      ],
+      [
+        60,
+        45.86
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        75,
+        0
+      ]
+    ],
+    "unpublished": [
+      [
+        -10,
+        0
+      ],
+      [
+        -5,
+        0
+      ],
+      [
+        5,
+        0
+      ],
+      [
+        10,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        20,
+        0
+      ],
+      [
+        25,
+        0
+      ],
+      [
+        30,
+        0
+      ],
+      [
+        35,
+        0
+      ],
+      [
+        40,
+        0
+      ],
+      [
+        45,
+        0
+      ],
+      [
+        50,
+        0
+      ],
+      [
+        55,
+        0
+      ],
+      [
+        60,
+        0
+      ],
+      [
+        65,
+        0
+      ],
+      [
+        70,
+        0
+      ],
+      [
+        75,
+        0
+      ]
+    ],
+    "lag": [
+      [
+        -10,
+        -5
+      ],
+      [
+        -5,
+        -5
+      ],
+      [
+        0,
+        -5
+      ],
+      [
+        5,
+        -5
+      ],
+      [
+        10,
+        132
+      ],
+      [
+        15,
+        195
+      ],
+      [
+        20,
+        195
+      ],
+      [
+        25,
+        195
+      ],
+      [
+        30,
+        195
+      ],
+      [
+        35,
+        195
+      ],
+      [
+        40,
+        195
+      ],
+      [
+        45,
+        195
+      ],
+      [
+        50,
+        195
+      ],
+      [
+        55,
+        195
+      ],
+      [
+        60,
+        -5
+      ],
+      [
+        65,
+        -5
+      ],
+      [
+        70,
+        -5
+      ],
+      [
+        75,
+        -5
+      ]
+    ]
+  },
+  "cumulative": {
+    "completion_count_B": 200,
+    "completion_p50_B": 43.495,
+    "completion_p95_B": 49.75,
+    "completion_max_B": 46.161,
+    "publish_count_A2": 200,
+    "publish_p95_A2": 0.157,
+    "publish_max_A2": 0.268,
+    "accept_count_A2": 200,
+    "accept_p95_A2": 0.045
+  },
+  "db": {
+    "created": 220,
+    "obsCompletionSecondsMinMax": [
+      44.574,
+      46.161
+    ]
+  },
+  "notes": [
+    "kafka_consumergroup_lag reports -1 for each partition the group never committed; the sum 195 is 200 minus five such partitions",
+    "histogram p95 (49.75 s) lies above the max (46.16 s) because of bucket interpolation"
+  ]
+}
