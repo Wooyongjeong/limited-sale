@@ -25,6 +25,7 @@ from balanced import parse_access_log, split, summarize_access_log
 from clock_guard import record, sample
 from comparison import (CONDITIONS, DEFAULT_CONDITIONS, FINAL_DEADLINE_SECONDS, abuse_attempts, abuse_server_summary,
                         aggregate, async_db_summary, build_manifest, cache_counts, derived, evaluate, evaluate_async,
+                        evaluate_v1_fault,
                         execution_order, failures, gate_counts, gate_update_counts, labeled_deltas, policy_plan,
                         rate_limit_counts, verifier_requests, with_overrides)
 from http_client import Client
@@ -63,12 +64,12 @@ def write_sessions(clients, normal, plan):
     return path
 
 
-def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path, script=K6_SCRIPT):
+def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path, script=K6_SCRIPT, retries=0):
     k6_env = inherited_environment(os.environ) | {
         'K6_NO_USAGE_REPORT': 'true', 'ITERATIONS': str(plan.users), 'VUS': str(plan.vus),
         'DETAIL_VIEWS': str(plan.detail_views), 'ABUSERS': str(plan.abusers),
         'ABUSER_VUS': str(plan.abuser_vus_per_member), 'SALE_ID': str(sale_id),
-        'SESSIONS_FILE': sessions_path, 'SUMMARY_PATH': str(summary_path),
+        'SESSIONS_FILE': sessions_path, 'SUMMARY_PATH': str(summary_path), 'RETRIES': str(retries),
         'BASE_URL': f"http://127.0.0.1:{env.ports['lb']}"}
     with open(log_path, 'w') as log:
         done = subprocess.run(['k6', 'run', '--no-color', '--quiet', str(script)], env=k6_env, stdout=log,
@@ -125,6 +126,22 @@ def wait_final(env, sale_id, deadline_seconds=FINAL_DEADLINE_SECONDS):
         time.sleep(1)
 
 
+def tolerant_snapshot(env, output, label, before):
+    """Like management_snapshot, for fault runs: an instance that does not answer (killed and not restarted) keeps
+    its earlier snapshot, so its counters show no change instead of failing the run."""
+    snapshot, missing = {}, []
+    for name in env.instances:
+        try:
+            snapshot[name] = management_snapshot(SimpleNamespace(instances=(name,), ports=env.ports), output,
+                                                 label)[name]
+        except OSError:
+            snapshot[name] = before[name]
+            missing.append(name)
+    if missing:
+        (output / f'management-{label}-missing.txt').write_text('\n'.join(missing) + '\n')
+    return snapshot
+
+
 def completion_recorded(before, after, instances):
     """Acceptances the consumers recorded in order_acceptance_completion_seconds, over all instances."""
     return int(round(sum(sum(labeled_deltas(before[n], after[n], 'order_acceptance_completion_seconds_count').values())
@@ -172,8 +189,9 @@ async def run_once(env, condition, plan, label, prepare_concurrency, fault=None)
         cpu_before = resource.getrusage(resource.RUSAGE_CHILDREN)
         if fault is not None:
             fault.start(env, sale_id)
+        # The v2 script always retries 5xx; the v1 script only in fault runs, so comparison runs stay as measured.
         exit_code, k6_summary = run_k6(env, plan, sale_id, sessions_path, k6_summary_path, env.output / 'k6.log',
-                                       K6_ASYNC_SCRIPT if v2 else K6_SCRIPT)
+                                       K6_ASYNC_SCRIPT if v2 else K6_SCRIPT, 30 if fault is not None else 0)
         cpu_after = resource.getrusage(resource.RUSAGE_CHILDREN)
         phases['k6_seconds'] = round(time.monotonic() - phase, 2)
     except BaseException:
@@ -199,11 +217,17 @@ async def run_once(env, condition, plan, label, prepare_concurrency, fault=None)
             all_final = all_final and all_final_again
             phases['final_seconds_after_fault'] = extra
         created = int(env.mysql('sales', f"SELECT COUNT(*) FROM limited_sale.purchase_orders WHERE sale_id={sale_id};"))
+    elif fault is not None:
+        fault.after_final(env, sale_id)
+        fault.join()
+        # Retries may find an order again (ORDER_FOUND), so the database is the count of orders here.
+        created = int(env.mysql('sales', f"SELECT COUNT(*) FROM limited_sale.purchase_orders WHERE sale_id={sale_id};"))
     else:
         created = sum(k6_summary['endpoints'][name]['business_codes'].get('ORDER_CREATED', 0)
                       for name in ('order_create', 'abuse_order_create'))
     converged, phases['convergence_seconds'] = converge(env, sale_id, created)
-    management_after = management_snapshot(env, env.output, 'after')
+    management_after = (management_snapshot(env, env.output, 'after') if fault is None
+                        else tolerant_snapshot(env, env.output, 'after', management_before))
     sampler.finish()
     save(env.output / 'management-samples.json', sampler.series)
     observe_after = mysql_observe(env, env.output, 'after')
@@ -279,9 +303,13 @@ async def run_once(env, condition, plan, label, prepare_concurrency, fault=None)
                    'completion_recorded': completion_recorded(management_before, management_after, env.instances)}
         if fault is not None:
             result['expected_confirmed'] = fault.expected_confirmed(env, sale_id, plan, store_rows)
+            result['pg_payments'] = final['pg_payments']
         checks = evaluate_async(result, condition, plan, fault)
         if fault is not None:
             checks += fault.checks(env, sale_id, store_rows, result)
+    elif fault is not None:
+        result['pg_payments'] = final['pg_payments']
+        checks = evaluate_v1_fault(result, plan) + fault.checks(env, sale_id, [], result)
     else:
         checks = evaluate(result, condition, plan)
     phases['total_seconds'] = round(time.monotonic() - started, 2)

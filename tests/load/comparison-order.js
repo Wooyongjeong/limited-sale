@@ -24,6 +24,7 @@ import http from 'k6/http';
 import exec from 'k6/execution';
 import { SharedArray } from 'k6/data';
 import { Counter, Trend } from 'k6/metrics';
+import { sleep } from 'k6';
 
 const ITERATIONS = Number(__ENV.ITERATIONS || 10000);
 const VUS = Number(__ENV.VUS || 500);
@@ -33,6 +34,9 @@ const ABUSER_VUS = Number(__ENV.ABUSER_VUS || 1);
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8000';
 const SALE_ID = Number(__ENV.SALE_ID);
 const SUMMARY_PATH = __ENV.SUMMARY_PATH;
+// Stage 4-3 fault runs: a 5xx or lost connection is sent again with the same request (same Idempotency-Key) up to
+// RETRIES times, one second apart. 0 (the default, and every comparison run) sends each request once.
+const RETRIES = Number(__ENV.RETRIES || 0);
 
 const sessions = new SharedArray('sessions', () => JSON.parse(open(__ENV.SESSIONS_FILE)));
 
@@ -102,6 +106,13 @@ for (const code of LATENCY_CODES) {
 const requestToConfirmed = new Trend('request_to_confirmed_ms', true);
 
 const connectionErrors = new Counter('connection_errors');
+const retriedRequests = new Counter('retried_requests');
+const unresolvedRequests = new Counter('unresolved_requests');
+// A 2xx whose body has no readable business code: the response was cut short (2-5 finding 1, fixed in 4-2).
+const broken2xx = new Counter('broken_2xx');
+// What each normal user ended with, after retries: the order (created now or found again) and its payment.
+const finalOrders = new Counter('final_orders');
+const finalPaid = new Counter('final_paid');
 const serverErrors = new Counter('server_errors_5xx');
 // When each normal iteration ended, measured from the start of the test; its maximum is the normal scenario's end.
 const normalElapsed = new Trend('normal_elapsed_ms');
@@ -139,12 +150,34 @@ function record(endpoint, response) {
     serverErrors.add(1);
   }
   const code = businessCode(response);
+  if (code === undefined && response.status >= 200 && response.status < 300) {
+    broken2xx.add(1);
+  }
   if (code === undefined) {
     codeCounters[`${endpoint}_none`].add(1);
   } else {
     (codeCounters[`${endpoint}_${code}`] || codeCounters[`${endpoint}_other`]).add(1);
   }
   return code;
+}
+
+/** Sends until the answer is not a 5xx or lost connection, at most RETRIES more times. Returns [response, code]. */
+function withRetry(endpoint, send) {
+  for (let attempt = 0; ; attempt++) {
+    const response = send();
+    const code = record(endpoint, response);
+    if (response.status !== 0 && response.status < 500) {
+      return [response, code];
+    }
+    if (attempt >= RETRIES) {
+      if (RETRIES > 0) {
+        unresolvedRequests.add(1);
+      }
+      return [response, code];
+    }
+    retriedRequests.add(1);
+    sleep(1);
+  }
 }
 
 function createOrder(session, jar, key, endpoint) {
@@ -186,13 +219,18 @@ export function normal() {
     record('sale_detail', detail);
   }
   const started = Date.now();
-  const created = createOrder(session, jar, session.key, 'order_create');
-  const code = record('order_create', created);
+  const [created, code] = withRetry('order_create', () => createOrder(session, jar, session.key, 'order_create'));
   if (latencyByCode[code]) {
     latencyByCode[code].add(created.timings.duration);
   }
-  if (code === 'ORDER_CREATED') {
-    const paid = record('order_payment', payOrder(session, jar, created.json('data.orderId'), 'order_payment'));
+  // ORDER_FOUND: a retry after a lost answer found the order the first attempt had created.
+  if (code === 'ORDER_CREATED' || code === 'ORDER_FOUND') {
+    finalOrders.add(1);
+    const orderId = created.json('data.orderId');
+    const [, paid] = withRetry('order_payment', () => payOrder(session, jar, orderId, 'order_payment'));
+    if (paid === 'PAYMENT_SUCCEEDED' || paid === 'PAYMENT_PENDING') {
+      finalPaid.add(1);
+    }
     if (paid === 'PAYMENT_SUCCEEDED') {
       requestToConfirmed.add(Date.now() - started);
     }
@@ -268,6 +306,11 @@ export function handleSummary(data) {
     endpoints,
     latency_by_code: Object.fromEntries(LATENCY_CODES.map((code) => [code, trend(data, `order_create_latency_${code}`)])),
     request_to_confirmed: trend(data, 'request_to_confirmed_ms'),
+    retried_requests: counterValue(data, 'retried_requests'),
+    unresolved_requests: counterValue(data, 'unresolved_requests'),
+    broken_2xx: counterValue(data, 'broken_2xx'),
+    final_orders: counterValue(data, 'final_orders'),
+    final_paid: counterValue(data, 'final_paid'),
     server_errors_5xx: counterValue(data, 'server_errors_5xx'),
     connection_errors: counterValue(data, 'connection_errors'),
   };

@@ -396,6 +396,8 @@ def evaluate_async(result, condition, plan, fault=None):
     check('iterations_completed', plan.users, k6['iterations_completed'])
     check('dropped_iterations', 0, k6['dropped_iterations'])
     check('unresolved_requests', 0, k6['unresolved_requests'])
+    if 'broken_2xx' in k6:
+        check('no_broken_2xx_responses', 0, k6['broken_2xx'])
     if fault is None:
         check('server_errors_5xx', 0, k6['server_errors_5xx'])
         check('connection_errors', 0, k6['connection_errors'])
@@ -436,6 +438,31 @@ def evaluate_async(result, condition, plan, fault=None):
               and all(count > 0 for count in result['order_create_by_instance'].values()))
         # The servers' completion histogram saw exactly the acceptances the consumer decided.
         check('completion_histogram_matches_database', store['consumed'], result['completion_recorded'])
+    return checks
+
+
+def evaluate_v1_fault(result, plan):
+    """Pass criteria of a v1 fault run (stage 4-3): every user ended with an answer, answered 5xx were retried."""
+    checks = []
+
+    def check(name, expected, actual, passed=None):
+        checks.append({'name': name, 'passed': expected == actual if passed is None else passed,
+                       'expected': expected, 'actual': actual})
+
+    k6, db = result['k6'], result['db']
+    check('k6_exit_code', 0, k6['exit_code'])
+    check('iterations_completed', plan.users, k6['iterations_completed'])
+    check('dropped_iterations', 0, k6['dropped_iterations'])
+    check('unresolved_requests', 0, k6['unresolved_requests'])
+    check('no_broken_2xx_responses', 0, k6['broken_2xx'])
+    check('converged', True, db['converged'])
+    check('confirmed', plan.expected_confirmed, db['confirmed'])
+    check('remaining', plan.stock - plan.expected_confirmed, db['remaining'])
+    check('every_user_with_an_order_saw_it', db['orders'], k6['final_orders'])
+    check('every_order_got_a_payment_answer', db['orders'], k6['final_paid'])
+    check('verifier_violations', 0, result['verifier_violations'])
+    check('reconciliation_violations', 0, result['sql_violations'])
+    check('mysql_observe_complete', True, result['mysql_observe_complete'])
     return checks
 
 
