@@ -491,7 +491,7 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
   - ④는 종료 시각을 SQL로 직접 바꿔 "종료 시각 도래"를 흉내 냈다(관리 API는 시작 뒤 기간 변경을 막는다).
   - 브로커 중단은 `docker stop`·`start`라 데이터가 남는다.
   - 여러 판매·여러 브로커·운영 규모는 측정하지 않았다.
-- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 결과는 아래 PR에 적는다(Python 196개 포함).
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 10분 37초. 판매 앱 단위 182·통합 246개, mock-pg 11·15개, Python 196개(13개 추가), 실패 0. 애플리케이션 코드 변경은 없다(실행기·k6 시나리오·문서·결과만).
 
 ## 소단계 실행 체크리스트
 
