@@ -1,8 +1,8 @@
 """Pure logic of the stage 3-8 v2 comparison: inversion counts, the acceptance summary and the v2 pass criteria."""
 import unittest
 
-from comparison import (CONDITIONS, Plan, async_db_summary, count_inversions, evaluate, evaluate_async, failures,
-                        percentile, policy_plan)
+from comparison import (CONDITIONS, Plan, async_db_summary, count_inversions, evaluate, evaluate_async,
+                        evaluate_v1_fault, failures, percentile, policy_plan)
 from test_comparison import passing
 
 
@@ -137,6 +137,31 @@ class EvaluateTest(unittest.TestCase):
         self.assertEqual(v2.api, 'v2')
         self.assertEqual({k: v for k, v in v1.__dict__.items() if k not in ('name', 'api')},
                          {k: v for k, v in v2.__dict__.items() if k not in ('name', 'api')})
+
+
+class V1FaultTest(unittest.TestCase):
+    def fault_result(self, **k6):
+        base = {'exit_code': 0, 'iterations_completed': 100, 'dropped_iterations': 0, 'unresolved_requests': 0,
+                'broken_2xx': 0, 'final_orders': 10, 'final_paid': 10, 'server_errors_5xx': 40}
+        base.update(k6)
+        return {'k6': base, 'db': {'orders': 10, 'confirmed': 10, 'remaining': 0, 'converged': True},
+                'verifier_violations': 0, 'sql_violations': 0, 'mysql_observe_complete': True}
+
+    def test_answered_5xx_are_allowed_when_every_user_ended_with_an_answer(self):
+        self.assertEqual(failures(evaluate_v1_fault(self.fault_result(), PLAN)), [])
+
+    def test_an_unanswered_request_a_cut_response_or_an_unpaid_order_fails(self):
+        names = {c['name'] for c in evaluate_v1_fault(self.fault_result(unresolved_requests=1, broken_2xx=2,
+                                                                         final_paid=9), PLAN) if not c['passed']}
+        self.assertEqual(names, {'unresolved_requests', 'no_broken_2xx_responses', 'every_order_got_a_payment_answer'})
+
+
+class ReliabilityPlanTest(unittest.TestCase):
+    def test_v1_runs_only_where_redis_or_the_database_is_involved(self):
+        from run_reliability import SCENARIOS, runs
+        both = {name for name, path in runs(list(SCENARIOS)) if path == 'v1'}
+        self.assertEqual(both, {'S1-redis', 'S5-read-only', 'S6-mysql-stop'})
+        self.assertEqual(len(runs(list(SCENARIOS))), 12)
 
 
 if __name__ == '__main__':

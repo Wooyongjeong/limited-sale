@@ -1,0 +1,74 @@
+[
+  {
+    "position": 1,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 2,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 3,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 4,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 5,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 6,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 7,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 8,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 9,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  }
+]

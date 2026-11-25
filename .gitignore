@@ -13,3 +13,5 @@ benchmarks/redis-outage/*/raw/
 benchmarks/redis-comparison/*/raw/
 benchmarks/async-comparison/*/raw/
 benchmarks/async-comparison/faults/raw/
+benchmarks/reliability/raw/
+benchmarks/reliability-after-fix/raw/

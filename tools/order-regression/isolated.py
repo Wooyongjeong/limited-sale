@@ -53,7 +53,7 @@ LB_UPSTREAM_HOST = 'host.docker.internal'
 
 class Isolated:
     def __init__(self, output, instances=('sales1', 'sales2'), load_balancer=False, order_rate_limit=False,
-                 sales_extra_env=None, fixed_redis_port=False):
+                 sales_extra_env=None, fixed_redis_port=False, fixed_mysql_port=False):
         self.instances = tuple(instances)
         self.load_balancer = load_balancer
         self.order_rate_limit = order_rate_limit
@@ -61,6 +61,8 @@ class Isolated:
         self.sales_extra_env = dict(sales_extra_env or {})
         # A published port chosen by Docker may change when the container is stopped and started again.
         self.fixed_redis_port = fixed_redis_port
+        # The same for the sales MySQL, so a stopped and started database keeps its address (stage 4-3 S6).
+        self.fixed_mysql_port = fixed_mysql_port
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.source_sha256 = {p.name: file_hash(p) for p in sorted((ROOT / 'tools/order-regression').iterdir())
                               if p.is_file() and p.suffix in ('.py', '.java')}
@@ -164,7 +166,8 @@ class Isolated:
     def start(self):
         for suffix, database in [('sales', 'limited_sale'), ('pgdb', 'mock_pg')]:
             self.container(suffix, 'mysql:8.4.7', 3306,
-                           {'MYSQL_DATABASE': database, 'MYSQL_ROOT_PASSWORD': self.password})
+                           {'MYSQL_DATABASE': database, 'MYSQL_ROOT_PASSWORD': self.password},
+                           host_port=reserve_port() if self.fixed_mysql_port and suffix == 'sales' else None)
         # Same memory limit and eviction policy as compose.yaml so experiments run against the deployed shape.
         self.container('redis', 'redis:7.4-alpine', 6379,
                        args=('--maxmemory', '256mb', '--maxmemory-policy', 'noeviction'),
@@ -210,7 +213,7 @@ class Isolated:
         for cid in self.containers:
             inspection = json.loads(command('docker', 'inspect', cid))[0]
             mounts[cid] = [{'type': item['Type'], 'name': item.get('Name')} for item in inspection.get('Mounts', [])]
-        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'instances': list(self.instances), 'load_balancer': self.load_balancer, 'order_rate_limit_enabled': self.order_rate_limit, 'sales_extra_env': self.sales_extra_env, 'fixed_redis_port': self.fixed_redis_port, 'containers': self.containers, 'ports': self.ports,
+        metadata = {'source_sha256': self.source_sha256, 'mounts': mounts, 'started_at': self.started_at, 'run_id': self.run_id, 'instances': list(self.instances), 'load_balancer': self.load_balancer, 'order_rate_limit_enabled': self.order_rate_limit, 'sales_extra_env': self.sales_extra_env, 'fixed_redis_port': self.fixed_redis_port, 'fixed_mysql_port': self.fixed_mysql_port, 'containers': self.containers, 'ports': self.ports,
                     'os': platform.platform(), 'cpu_count': os.cpu_count(), 'python_version': sys.version.split()[0],
                     'cpu_model': command('sysctl', '-n', 'machdep.cpu.brand_string') if platform.system() == 'Darwin' else platform.processor(),
                     'open_file_limit': list(resource.getrlimit(resource.RLIMIT_NOFILE)),

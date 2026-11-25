@@ -46,6 +46,9 @@ class SessionSaveFailureIntegrationTest {
     private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static final AtomicBoolean SAVE_FAILS = new AtomicBoolean();
+    /** While set, every session lookup after the first one fails, as Redis does when it goes away mid-request. */
+    private static final AtomicBoolean LATER_LOOKUPS_FAIL = new AtomicBoolean();
+    private static final java.util.concurrent.atomic.AtomicInteger LOOKUPS = new java.util.concurrent.atomic.AtomicInteger();
     private static ConfigurableApplicationContext app;
     private static JdbcTemplate jdbc;
     private static int port;
@@ -116,6 +119,10 @@ class SessionSaveFailureIntegrationTest {
 
                 @Override
                 public Session findById(String id) {
+                    if (LATER_LOOKUPS_FAIL.get() && LOOKUPS.incrementAndGet() > 1) {
+                        throw new QueryTimeoutException("injected: Redis command timed out",
+                            new io.lettuce.core.RedisCommandTimeoutException("Command timed out after 1 second(s)"));
+                    }
                     return (Session) real.findById(id);
                 }
 
@@ -146,6 +153,50 @@ class SessionSaveFailureIntegrationTest {
     private static String csrf(HttpClient http) throws Exception {
         return JSON.readTree(send(http, "GET", "/api/v1/csrf", null, null, null).body()).path("data").path("token")
             .asString();
+    }
+
+    /**
+     * 4-3 S1: Spring Session looks the session up again when it commits it in its finally block. When Redis is gone by
+     * then, the failure used to reach Tomcat after the response was committed and the connection was dropped (the load
+     * balancer answered 502). Now the written response is kept.
+     */
+    @Test
+    void aCommittedOrderStillGetsItsWholeResponseWhenRedisFailsAfterTheCommit() throws Exception {
+        app.getBean(MemberService.class).register("late-lookup@example.com", "password", "latelookup");
+        long product = app.getBean(ProductCommand.class).register("late product", "", 1000L).productId();
+        jdbc.update("INSERT INTO sales(product_id,name,description,product_name_snapshot,unit_price,starts_at,ends_at,"
+            + "total_quantity,per_member_limit,created_at,updated_at) VALUES (?, 'sale', '', 'product', 1000, "
+            + "UTC_TIMESTAMP(6)-INTERVAL 1 HOUR, UTC_TIMESTAMP(6)+INTERVAL 1 HOUR, 5, 2, UTC_TIMESTAMP(6), "
+            + "UTC_TIMESTAMP(6))", product);
+        long sale = jdbc.queryForObject("SELECT MAX(id) FROM sales", Long.class);
+        HttpClient http = HttpClient.newBuilder().cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ALL)).build();
+        assertThat(send(http, "POST", "/api/v1/sessions",
+            "{\"email\":\"late-lookup@example.com\",\"password\":\"password\"}", csrf(http), null).statusCode())
+            .isEqualTo(200);
+        String token = csrf(http);
+        double before = lateFailures();
+
+        LOOKUPS.set(0);
+        SAVE_FAILS.set(true);
+        LATER_LOOKUPS_FAIL.set(true);
+        HttpResponse<String> created;
+        try {
+            created = send(http, "POST", "/api/v1/orders", "{\"saleId\":" + sale + ",\"quantity\":1}", token,
+                UUID.randomUUID().toString());
+        } finally {
+            SAVE_FAILS.set(false);
+            LATER_LOOKUPS_FAIL.set(false);
+        }
+
+        assertThat(created.statusCode()).isEqualTo(201);
+        assertThat(JSON.readTree(created.body()).path("code").asString()).isEqualTo("ORDER_CREATED");
+        assertThat(LOOKUPS.get()).as("the session was looked up again after the response").isGreaterThan(1);
+        assertThat(lateFailures()).isGreaterThan(before);
+    }
+
+    private static double lateFailures() {
+        var counter = app.getBean(MeterRegistry.class).find("redis.failure.after.commit").counter();
+        return counter == null ? 0 : counter.count();
     }
 
     @Test

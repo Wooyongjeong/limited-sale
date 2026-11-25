@@ -83,6 +83,15 @@ caffeinate -ims python3 -B tools/order-regression/run_async_faults.py --output b
 
 `run_async_faults.py`는 `v2-async`를 사용자 2,000·재고 300·VU 200으로 장애마다 새 격리 환경에서 한 번씩 돌린다: `broker-outage`(첫 접수가 저장되면 브로커 20초 정지), `instance-kill`(대기 접수가 20건 이상이면 판매 JVM 하나를 SIGKILL, 10초 뒤 재기동), `duplicate-delivery`(모든 접수가 끝난 뒤 접수마다 마지막 아웃박스 행을 한 번 더 넣음), `end-during-backlog`(브로커를 멈추고 모든 VU의 접수가 대기 중이면 판매 종료 시각을 지금으로 당긴 뒤 8초 뒤 브로커 재기동). 장애 실행은 응답을 받은 5xx를 허용하지만 응답을 끝내 못 받은 요청은 실패로 본다. 결과는 `<장애>.json`, 원본은 `raw/`(Git 제외)다.
 
+## 4-3 장애 실험
+
+`run_reliability.py`는 9가지 시나리오(S1 Redis 중단, S2 브로커 중단, S3·S4 파티션을 가진 인스턴스 SIGKILL 뒤 재기동/재기동 없음, S5 DB 읽기 전용 20초, S6 MySQL 정지, S7 Mock PG 결제 응답 유실, S8 Redis·브로커 동시 중단, S9 순차 재시작)를 v2로, S1·S5·S6은 v1로도 돌린다. 프로필은 사용자 2,000·재고 300·VU 200이고, 조합마다 새 격리 환경을 쓴다(Redis·MySQL 호스트 포트 고정). 장애는 DB에 첫 요청이 저장되면 주입한다. v1 사용자는 장애 실행에서만 5xx·연결 오류를 같은 요청 키로 재시도한다. 기대 결과와 통과 기준은 [4단계 문서](../../docs/stages/04-reliability.md)의 "4-3 장애 실험"에 있다. Caddy 오류 로그는 `lb-errors.log`로 남는다.
+
+```sh
+./gradlew bootJar :mock-pg:bootJar
+caffeinate -ims python3 -B tools/order-regression/run_reliability.py --rounds 3 --output benchmarks/reliability
+```
+
 ## 2-5 Redis 장애 실험
 
 `run_redis_outage.py`는 1-10의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공, 전용 MySQL·Redis)에서 **주문 요청 제한을 켠 채**(허용 횟수 5를 명시 전달한다. 측정 당시 앱 기본값이었고 이후 1로 바뀌었다) 부하를 보내다가 Redis 컨테이너를 `docker stop`으로 멈추고 `--outage-seconds` 뒤 `docker start`로 되살린다. 2-1·2-2·2-3·2-4의 Redis 장애 정책이 실제 부하에서 지켜지는지와 명령·연결 타임아웃(`--redis-timeout`) 값에 따른 차이를 잰다. 필요한 것은 위 실험과 같다(Java 25, Docker, Python 3.9+). `k6`는 쓰지 않는다.

@@ -105,6 +105,8 @@ const connectionErrors = new Counter('connection_errors');
 const serverErrors = new Counter('server_errors_5xx');
 const retriedRequests = new Counter('retried_requests');
 const unresolvedRequests = new Counter('unresolved_requests');
+// A 2xx whose body has no readable business code: the response was cut short (2-5 finding 1, fixed in 4-2).
+const broken2xx = new Counter('broken_2xx');
 const normalElapsed = new Trend('normal_elapsed_ms');
 const normalIterations = new Counter('normal_iterations');
 
@@ -139,6 +141,9 @@ function record(endpoint, response) {
     serverErrors.add(1);
   }
   const code = businessCode(response);
+  if (code === undefined && response.status >= 200 && response.status < 300) {
+    broken2xx.add(1);
+  }
   if (code === undefined) {
     codeCounters[`${endpoint}_none`].add(1);
   } else {
@@ -310,6 +315,7 @@ export function handleSummary(data) {
     connection_errors: counterValue(data, 'connection_errors'),
     retried_requests: counterValue(data, 'retried_requests'),
     unresolved_requests: counterValue(data, 'unresolved_requests'),
+    broken_2xx: counterValue(data, 'broken_2xx'),
   };
   return {
     [SUMMARY_PATH]: JSON.stringify(summary, null, 2),
