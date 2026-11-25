@@ -4,6 +4,7 @@ import com.wooyongjeong.limitedsale.order.domain.AcceptanceInProcess;
 import com.wooyongjeong.limitedsale.order.domain.AcceptanceStatus;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
 import com.wooyongjeong.limitedsale.order.domain.OrderRejection;
+import com.wooyongjeong.limitedsale.order.domain.ProcessingFailure;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -96,6 +97,13 @@ class OrderAcceptanceEntity {
         finishedAt = now;
     }
 
+    void failed(ProcessingFailure reason, Instant now) {
+        requireAccepted();
+        status = AcceptanceStatus.PROCESSING_FAILED;
+        failureReason = reason.name();
+        finishedAt = now;
+    }
+
     private void requireAccepted() {
         if (status != AcceptanceStatus.ACCEPTED) {
             throw new IllegalStateException("Only an ACCEPTED acceptance can be finished, not " + status);
@@ -110,5 +118,9 @@ class OrderAcceptanceEntity {
 
     Long orderId() {
         return orderId;
+    }
+
+    long id() {
+        return id;
     }
 }

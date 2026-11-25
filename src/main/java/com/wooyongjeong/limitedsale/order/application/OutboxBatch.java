@@ -1,13 +1,16 @@
 package com.wooyongjeong.limitedsale.order.application;
 
 import com.wooyongjeong.limitedsale.order.domain.OutboxMessage;
+import com.wooyongjeong.limitedsale.order.domain.OutboxPosition;
 import com.wooyongjeong.limitedsale.order.domain.OutboxSender;
 import com.wooyongjeong.limitedsale.order.domain.OutboxStore;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -68,9 +71,9 @@ public class OutboxBatch {
         if (rows.isEmpty()) {
             return new Result(0, 0, 0);
         }
-        List<CompletableFuture<Void>> sent = new ArrayList<>(rows.size());
+        List<CompletableFuture<OutboxPosition>> sent = new ArrayList<>(rows.size());
         for (OutboxMessage row : rows) {
-            CompletableFuture<Void> result = start(row);
+            CompletableFuture<OutboxPosition> result = start(row);
             sent.add(result);
             if (result.isCompletedExceptionally()) {
                 // A send that has failed already (a broker that is gone blocks each send for the producer's
@@ -78,17 +81,17 @@ public class OutboxBatch {
                 break;
             }
         }
-        List<Long> acknowledged = new ArrayList<>();
+        Map<Long, OutboxPosition> acknowledged = new LinkedHashMap<>();
         List<Long> failed = new ArrayList<>();
         boolean reachedFailure = false;
         for (int index = 0; index < sent.size(); index++) {
-            boolean ok = await(sent.get(index));
+            OutboxPosition position = await(sent.get(index));
             long id = rows.get(index).id();
-            if (!ok) {
+            if (position == null) {
                 failed.add(id);
                 reachedFailure = true;
             } else if (!reachedFailure) {
-                acknowledged.add(id);
+                acknowledged.put(id, position);
             }
         }
         // Mark first, so a failure to mark leaves every row unpublished and resends them: at least once, never lost.
@@ -103,7 +106,7 @@ public class OutboxBatch {
         return new Result(rows.size(), acknowledged.size(), failed.size());
     }
 
-    private CompletableFuture<Void> start(OutboxMessage row) {
+    private CompletableFuture<OutboxPosition> start(OutboxMessage row) {
         try {
             return sender.send(row);
         } catch (RuntimeException failure) {
@@ -111,12 +114,12 @@ public class OutboxBatch {
         }
     }
 
-    private static boolean await(CompletableFuture<Void> result) {
+    /** The position the broker acknowledged, or null when the send failed or never completed. */
+    private static OutboxPosition await(CompletableFuture<OutboxPosition> result) {
         try {
-            result.get(RESULT_WAIT.toMillis(), TimeUnit.MILLISECONDS);
-            return true;
+            return result.get(RESULT_WAIT.toMillis(), TimeUnit.MILLISECONDS);
         } catch (ExecutionException | TimeoutException failure) {
-            return false;
+            return null;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for the broker", interrupted);

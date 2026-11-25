@@ -93,7 +93,7 @@ class OrderAcceptanceIntegrationTest {
         DB.stop();
     }
 
-    /** Uses the shipped application.yml, as the request limit test does; the switch is only set when asked. */
+    /** Uses the shipped application.yml, as the request limit test does; the switch is always set explicitly. */
     private static ConfigurableApplicationContext application(boolean switchOn, boolean limitOn) {
         List<String> arguments = new ArrayList<>(List.of("--server.port=0", "--management.server.port=0",
             "--limited-sale.order.rate-limit.enabled=" + limitOn,
@@ -105,9 +105,8 @@ class OrderAcceptanceIntegrationTest {
             "--spring.datasource.url=" + DB.getJdbcUrl(), "--spring.datasource.username=" + DB.getUsername(),
             "--spring.datasource.password=" + DB.getPassword(), "--spring.data.redis.host=" + REDIS.getHost(),
             "--spring.data.redis.port=" + REDIS.getMappedPort(6379), "--spring.data.redis.timeout=1s"));
-        if (switchOn) {
-            arguments.add("--limited-sale.order.async.enabled=true");
-        }
+        // Set either way: the shipped application.yml switches the API on.
+        arguments.add("--limited-sale.order.async.enabled=" + switchOn);
         return new SpringApplicationBuilder(LimitedSaleApplication.class).run(arguments.toArray(String[]::new));
     }
 
@@ -677,10 +676,22 @@ class OrderAcceptanceIntegrationTest {
         assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_acceptances(public_id, member_id, request_key, "
             + "sale_id, quantity, status, accepted_at) SELECT RANDOM_BYTES(16), member_id, request_key, sale_id, "
             + "quantity, 'ACCEPTED', accepted_at FROM order_acceptances LIMIT 1"))).isEqualTo(1062);
-        assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at) "
-            + "VALUES ('t', 'k', 'not json', UTC_TIMESTAMP(6))"))).isEqualTo(3819);
+        long acceptance = jdbc.queryForObject("SELECT MIN(id) FROM order_acceptances", Long.class);
         assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at, "
-            + "attempts) VALUES ('t', 'k', '{}', UTC_TIMESTAMP(6), -1)"))).isEqualTo(3819);
+            + "acceptance_id) VALUES ('t', 'k', 'not json', UTC_TIMESTAMP(6), ?)", acceptance))).isEqualTo(3819);
+        assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at, "
+            + "attempts, acceptance_id) VALUES ('t', 'k', '{}', UTC_TIMESTAMP(6), -1, ?)", acceptance))).isEqualTo(3819);
+        // V7: every row names an existing acceptance, and a position is recorded only with a publish time.
+        assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at) "
+            + "VALUES ('t', 'k', '{}', UTC_TIMESTAMP(6))"))).isEqualTo(1364);
+        assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at, "
+            + "acceptance_id) VALUES ('t', 'k', '{}', UTC_TIMESTAMP(6), 999999999)"))).isEqualTo(1452);
+        for (String position : List.of("NULL, 0, 1", "UTC_TIMESTAMP(6), 0, NULL", "UTC_TIMESTAMP(6), -1, 1",
+                "UTC_TIMESTAMP(6), 0, -1")) {
+            assertThat(sqlErrorCode(() -> jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, "
+                + "created_at, acceptance_id, published_at, partition_no, record_offset) VALUES ('t', 'k', '{}', "
+                + "UTC_TIMESTAMP(6), ?, " + position + ")", acceptance))).as(position).isEqualTo(3819);
+        }
         // Unpublished rows are read in id order through one index on (published_at, id).
         assertThat(jdbc.queryForList("SELECT column_name FROM information_schema.statistics WHERE table_schema = "
             + "DATABASE() AND table_name = 'order_outbox' AND index_name = 'ix_order_outbox_unpublished' "

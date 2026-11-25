@@ -24,4 +24,7 @@ public interface OrderAcceptanceStore {
 
     /** Moves a locked ACCEPTED acceptance to REJECTED. */
     void finishRejected(UUID acceptanceId, OrderRejection rejection, Instant now);
+
+    /** Moves a locked ACCEPTED acceptance to PROCESSING_FAILED. */
+    void finishFailed(UUID acceptanceId, ProcessingFailure reason, Instant now);
 }

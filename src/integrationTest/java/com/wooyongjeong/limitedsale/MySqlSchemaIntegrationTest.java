@@ -80,7 +80,7 @@ class MySqlSchemaIntegrationTest {
             VALUES (UNHEX('21223344556677889900AABBCCDDEEFF'), 1000000000000000, 'PROCESSING',
             'SUCCESS', NOW(6), NOW(6))
             """);
-        assertThat(sales.migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(sales.migrate().migrationsExecuted).isEqualTo(6);
         assertThat(pg.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "
@@ -147,6 +147,39 @@ class MySqlSchemaIntegrationTest {
             sql("DROP DATABASE nickname_boundaries");
         }
     }
+    @Test
+    void v7GivesOutboxRowsWrittenBeforeItTheirAcceptance() throws Exception {
+        sql("CREATE DATABASE outbox_backfill CHARACTER SET utf8mb4");
+        try {
+            String url = db.getJdbcUrl().replace("/sales", "/outbox_backfill");
+            Flyway.configure().dataSource(url, "root", db.getPassword())
+                .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration")
+                .target("6").load().migrate();
+            sql("INSERT INTO outbox_backfill.members(email, password_hash, role, nickname, nickname_key, created_at, "
+                + "updated_at) VALUES ('v6@example.com', 'hash', 'USER', 'v6', 'v6', NOW(6), NOW(6))");
+            for (String id : List.of("0b6f0f35-3a3c-4a43-9a43-3b1c2f9c4e11", "1c7a1f46-4b4d-4b54-8b54-4c2d3a0d5f22")) {
+                sql("INSERT INTO outbox_backfill.order_acceptances(public_id, member_id, request_key, sale_id, quantity, "
+                    + "status, accepted_at) VALUES (UNHEX(REPLACE('" + id + "', '-', '')), (SELECT id FROM "
+                    + "outbox_backfill.members), RANDOM_BYTES(16), 1, 1, 'ACCEPTED', UTC_TIMESTAMP(6))");
+                sql("INSERT INTO outbox_backfill.order_outbox(topic, message_key, payload, created_at, published_at) "
+                    + "VALUES ('limited-sale.order-acceptances.v1', '1', '{\"schemaVersion\":1,\"acceptanceId\":\""
+                    + id + "\",\"saleId\":1}', UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))");
+            }
+
+            Flyway.configure().dataSource(url, "root", db.getPassword())
+                .locations("filesystem:src/main/resources/db/migration", "classpath:db/nickmigration")
+                .load().migrate();
+
+            assertThat(count("SELECT COUNT(*) FROM outbox_backfill.order_outbox o JOIN outbox_backfill.order_acceptances a "
+                + "ON a.id = o.acceptance_id WHERE o.payload LIKE CONCAT('%', LOWER(INSERT(INSERT(INSERT(INSERT("
+                + "HEX(a.public_id), 9, 0, '-'), 14, 0, '-'), 19, 0, '-'), 24, 0, '-')), '%')")).isEqualTo(2);
+            assertThat(count("SELECT COUNT(*) FROM outbox_backfill.order_outbox WHERE partition_no IS NULL "
+                + "AND record_offset IS NULL")).isEqualTo(2);
+        } finally {
+            sql("DROP DATABASE outbox_backfill");
+        }
+    }
+
     @AfterAll
     static void stop() throws Exception {
         if (root != null) root.close();
@@ -159,7 +192,7 @@ class MySqlSchemaIntegrationTest {
         assertThat(pg.migrate().migrationsExecuted).isZero();
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(6);
+        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(7);
         assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(3);
     }
     @Test

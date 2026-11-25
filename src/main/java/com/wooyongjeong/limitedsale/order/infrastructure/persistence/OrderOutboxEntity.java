@@ -26,11 +26,14 @@ class OrderOutboxEntity {
     private Instant publishedAt;
     @Column(nullable = false)
     private int attempts;
+    @Column(nullable = false)
+    private long acceptanceId;
 
     protected OrderOutboxEntity() {
     }
 
-    OrderOutboxEntity(AcceptanceMessage message, Instant now) {
+    OrderOutboxEntity(AcceptanceMessage message, long acceptanceId, Instant now) {
+        this.acceptanceId = acceptanceId;
         topic = message.topic();
         messageKey = message.key();
         payload = message.payload();

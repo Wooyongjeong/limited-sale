@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
@@ -31,12 +32,19 @@ public class OrderOutboxPublisher implements SmartLifecycle {
 
     private final OutboxLeadership leadership;
     private final OutboxBatch batch;
+    private final OrderStallDetector stalls;
+    private final Duration stallScanInterval;
+    private long lastStallScan = System.nanoTime();
     private final AtomicInteger leader = new AtomicInteger();
     private volatile Thread worker;
 
-    public OrderOutboxPublisher(OutboxLeadership leadership, OutboxBatch batch, MeterRegistry registry) {
+    public OrderOutboxPublisher(OutboxLeadership leadership, OutboxBatch batch, OrderStallDetector stalls,
+            MeterRegistry registry,
+            @Value("${limited-sale.order.stall.scan-interval:PT10S}") Duration stallScanInterval) {
         this.leadership = leadership;
         this.batch = batch;
+        this.stalls = stalls;
+        this.stallScanInterval = stallScanInterval;
         Gauge.builder("order.outbox.publisher.leader", leader, AtomicInteger::get)
             .description("1 while this instance holds the right to publish the outbox, otherwise 0").register(registry);
     }
@@ -93,6 +101,7 @@ public class OrderOutboxPublisher implements SmartLifecycle {
                         Thread.sleep(WAIT_FOR_LEADERSHIP);
                         continue;
                     }
+                    scanForStallsWhenDue();
                     OutboxBatch.Result result = batch.publish();
                     if (result.failedAny()) {
                         Duration wait = backoff.failure();
@@ -122,6 +131,23 @@ public class OrderOutboxPublisher implements SmartLifecycle {
             }
         } finally {
             stepDown("The outbox publisher stopped");
+        }
+    }
+
+    /** The stall check rides on the publisher thread, so it also runs on one instance only. */
+    private void scanForStallsWhenDue() {
+        if (System.nanoTime() - lastStallScan < stallScanInterval.toNanos()) {
+            return;
+        }
+        lastStallScan = System.nanoTime();
+        try {
+            int found = stalls.scan();
+            if (found > 0) {
+                log.warn("Found {} stalled order acceptances; republished or failed them", found);
+            }
+        } catch (RuntimeException failure) {
+            // Publishing goes on; the next check tries again.
+            log.warn("The stall check failed: {}", failure.toString());
         }
     }
 

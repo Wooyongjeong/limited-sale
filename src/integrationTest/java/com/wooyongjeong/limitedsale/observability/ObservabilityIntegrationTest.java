@@ -290,7 +290,7 @@ class ObservabilityIntegrationTest {
             }
         }
         assertThat(labelNames).isSubsetOf("result", "client_name", "exception", "method", "outcome", "status", "uri",
-                "error", "le", "operation");
+                "error", "le", "operation", "reason");
     }
 
     @Test
