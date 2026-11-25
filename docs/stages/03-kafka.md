@@ -344,7 +344,7 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 5 | 완료 지연 세부 | `result`는 `order_created`·`rejected`·`processing_failed`. 중복·건너뜀은 기록하지 않는다. 실패 저장(재시도 소진·즉시 실패·`STALLED`)도 같은 히스토그램에 기록한다. 히스토그램 버킷을 내보내고(`percentiles-histogram`) 최대 기대값은 10분이다 | 최종 상태 종류별 분포를 본다 |
 | 6 | 발행 지연 세부 | 발행기가 읽을 때의 행 나이(DB 시각)에 전송~확인 시간을 더해 행마다 기록한다. 재발행 행도 같은 지표에 들어간다 | 읽기 쿼리 하나로 계산한다 |
 | 7 | 적체 세부 | 게이지 이름 `order_outbox_unpublished`, `order_outbox_oldest_unpublished_seconds`, `order_acceptance_accepted`, `order_acceptance_oldest_accepted_seconds`. 없으면 0, 조회 실패면 NaN(기존 게이지와 같은 규칙). 갱신 간격은 기존 `limited-sale.observability.backlog-interval`(10초) | 기존 규칙을 따른다 |
-| 8 | 요청 ID 세부 | 컬럼은 `VARCHAR(64)` NULL(V8 이전 접수는 NULL). 소비자는 처리 전에 접수 행의 요청 ID를 읽어 MDC에 넣고 다음 메시지에서 바꾼다. 처리 결과마다 DEBUG 로그 한 줄(접수 ID·결과)을 남기고, 실패·건너뜀·재발행은 기존 WARN에 요청 ID가 붙는다. 상태 조회 응답에는 넣지 않는다 | 요청 ID는 진단용이다 |
+| 8 | 요청 ID 세부 | 컬럼은 `VARCHAR(64)` NULL(V8 이전 접수는 NULL). 소비자는 처리 트랜잭션이 접수 행을 잠근 직후 그 행의 요청 ID를 MDC에 넣고(별도 조회 없음) 다음 메시지에서 바꾼다. 그래서 접수 행 잠금 자체가 실패한 시도의 로그에는 요청 ID가 없다. 처리 결과마다 DEBUG 로그 한 줄(접수 ID·결과)을 남기고, 실패·건너뜀·재발행은 기존 WARN에 요청 ID가 붙는다. 상태 조회 응답에는 넣지 않는다 | 요청 ID는 진단용이다 |
 | 9 | 대시보드 | `infra/grafana/dashboards/limited-sale.json`에 v2 행을 더한다: v2 접수 API p95, 완료 지연 p50·p95(결과별), 발행 지연 p95, 적체 게이지 4개, 소비 지연, 실패·재시도·재발행 비율 | 한 화면에서 API 지연과 완료 지연을 나란히 본다 |
 | 10 | 완료 기준 | 통합 테스트: 소비자를 멈춘 동안 `order_acceptance_accepted`와 가장 오래된 나이가 늘고 재개 뒤 0이 됨, 발행기를 멈춘 동안 미발행 게이지가 늘고 재개 뒤 0이 됨, 처리 뒤 완료·발행 지연 히스토그램 건수가 접수 수와 같음, 접수의 요청 ID가 저장되고 소비자 로그에 같은 요청 ID가 찍힘. 수동: Prometheus 쿼리로 적체 증가·감소와 지연 분위수를 기록. 관측 테스트의 라벨 허용 목록 유지(식별자 라벨 없음). `./gradlew clean build` 통과 | 기획 3-7 완료 기준 |
 

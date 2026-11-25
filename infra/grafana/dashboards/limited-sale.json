@@ -1847,7 +1847,7 @@
       "id": 36,
       "type": "timeseries",
       "title": "Consumer lag by partition",
-      "description": "kafka-exporter (monitoring profile), group limited-sale-order-consumer.",
+      "description": "kafka-exporter (monitoring profile), group limited-sale-order-consumer. A partition the group has never committed reports -1; it is shown as 0.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1892,7 +1892,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (partition) (kafka_consumergroup_lag{consumergroup=\"limited-sale-order-consumer\"})",
+          "expr": "clamp_min(sum by (partition) (kafka_consumergroup_lag{consumergroup=\"limited-sale-order-consumer\"}), 0)",
           "legendFormat": "partition {{partition}}",
           "range": true
         }
