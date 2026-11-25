@@ -6,7 +6,7 @@
 
 ## 상태
 
-3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 구현·검증 완료. 3-3 영속 접수·상태 조회 구현·검증 완료(v2는 기본 꺼짐). 3-4 아웃박스 발행기(이름 잠금 단일 발행자) 구현·검증 완료. 3-5 주문 소비자 구현·검증 완료(v2는 기본 꺼짐). 3-6 재시도·실패 복구 정책 확정(2026-11-25).
+3-1 비동기 계약 확정(2026-11-24): DB 접수 + 아웃박스, 점유부터 비동기, 판매 이벤트 ID 파티션, v2 비동기 API 추가. 3-2 Kafka 실행·연결 정책 확정(2026-11-24), 구현·검증 완료. 3-3 영속 접수·상태 조회 구현·검증 완료(v2는 기본 꺼짐). 3-4 아웃박스 발행기(이름 잠금 단일 발행자) 구현·검증 완료. 3-5 주문 소비자 구현·검증 완료. 3-6 재시도·실패 복구 구현·검증 완료, v2 기본 켜짐. 3-7 착수 전.
 
 ## 확정한 방향
 
@@ -295,6 +295,42 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 | 9 | 지표·공개 | `order_acceptance_failed_total{reason}`, `order_acceptance_retries_total`, `order_acceptance_republished_total`, `order_acceptance_stalled`(마지막 탐지의 정체 수). 3-6 완료와 함께 `limited-sale.order.async.enabled` 기본값을 `true`로 바꾼다(3-3 #4). 테스트는 지금처럼 발행기·소비자를 기본으로 끈다 | 기획: 3-6까지 끝나야 v2가 중간 결과가 아니다 |
 | 10 | 완료 기준 | 실제 MySQL·Kafka 통합 테스트: 일시 오류가 30초 안에 풀리면 정상 처리, 30초를 넘으면 `PROCESSING_FAILED`(`TRANSIENT_RETRIES_EXHAUSTED`)이고 같은 파티션의 다음 메시지가 처리됨(다른 메시지를 무기한 막지 않음), 일시 오류가 아닌 예외는 즉시 `PROCESSING_ERROR`, 실패 저장도 안 되는 DB 장애 뒤 DB가 돌아오면 정상 처리, 실패한 접수는 재고·주문을 남기지 않음, 소비자가 지나친 `ACCEPTED` 접수는 60초 뒤 재발행되어 주문 1개, 아직 차례가 오지 않은 접수는 60초가 지나도 재발행되지 않음, 5분 안전망, 재발행 3회 뒤 `STALLED`, 재처리·재발행에도 주문 중복 없음(대조 SQL), 같은 판매의 순서 정책과 충돌 없음(실패한 메시지 뒤 메시지가 실패 저장 뒤에 처리됨). 시간이 긴 기준(60초·5분·30초)은 테스트에서 설정으로 줄인다. `./gradlew clean build` 통과 | 기획 3-6 완료 기준 |
 
+### 3-6 구현과 검증
+
+2026-11-25 주 에이전트가 직접 구현했다(사용자 지시). 재시도·실패 저장·DB 장애 대기·정체 재발행과 v2 기본 켜기까지이며 처리 지연·적체 지표(3-7)와 종단 간 비교(3-8)는 없다.
+
+- 구조
+  - 스키마 [V7](../../src/main/resources/db/migration/V7__order_outbox_tracking.sql): `order_outbox`에 `acceptance_id`(기존 행은 내용의 접수 ID로 채운 뒤 NOT NULL, FK)·`partition_no`·`record_offset`, CHECK(둘 다 NULL이거나 둘 다 있고 발행 시각도 있음), `(acceptance_id, id)` 인덱스. `order_acceptances`에 `(status, id)` 인덱스. 적용된 V1~V6은 고치지 않았다.
+  - 발행 위치: `OutboxSender`가 `OutboxPosition(partition, offset)`을 돌려주고 `OutboxStore.markPublished`가 행마다 위치를 기록한다. 3-4 묶음 규칙은 그대로다.
+  - 재시도(#3~#5): `OrderAcceptanceConsumerConfiguration`의 `DefaultErrorHandler`. `TransientFailures`가 원인 사슬에서 Spring의 일시 DB 예외·연결 실패·트랜잭션 생성 실패·SQL 일시 예외와 MySQL 1205·1213·3024·SQLState 08xxx·40001을 일시 오류로 본다. 일시 오류는 `WallClockBackOff`(0.5초부터 두 배, 최대 8초, 첫 실패부터 실제 시간 30초)로, 그 밖은 재시도 없이 복구 단계로 간다. 복구 단계는 `OrderAcceptanceFailures.fail`(새 트랜잭션, 접수 잠금, `ACCEPTED`일 때만 저장)이다. 이것도 실패하면 `AcceptanceRetryState`에 표시하고 예외를 다시 던진다. 컨테이너는 그 메시지의 재시도 상태를 새로 만들고, 백오프 함수가 표시된 메시지에 5초 고정 무제한 간격을 준다. 성공하면 표시를 지운다. 기간 값은 `limited-sale.order.consumer.retry-budget`·`outage-retry-interval`.
+  - 정체(#1·#2·#7): `OrderStallDetector`가 발행기 스레드에서 `limited-sale.order.stall.scan-interval`(10초)마다 돈다. `JdbcStallStore`가 `ACCEPTED` 접수의 마지막 아웃박스 행(발행 60초 경과)을 최대 500개 읽는다. `KafkaConsumerProgress`가 한 번 만든 관리 클라이언트로 그룹의 커밋 오프셋을 읽는다. 오프셋을 지났거나 5분이 지난 접수는 같은 내용의 새 아웃박스 행을 넣고, 행이 이미 4개(재발행 3회)면 `STALLED`로 끝낸다.
+  - 실패 사유(#6): `ProcessingFailure`(`TRANSIENT_RETRIES_EXHAUSTED`·`PROCESSING_ERROR`·`STALLED`)를 `failure_reason`에 저장하고 상태 조회 `failureReason`으로 보인다.
+  - 지표(#9): `order.acceptance.failed{reason}`, `order.acceptance.retries`(실패한 처리 시도), `order.acceptance.republished`, `order.acceptance.stalled`(게이지). 관측 테스트의 라벨 허용 목록에 `reason`을 더했다(값 3개, 식별자 아님).
+  - 공개(#9): 배포 `application.yml`에 `limited-sale.order.async.enabled: true`. 테스트는 발행기·소비자 스위치를 계속 시스템 속성으로 끈다. 3-3 테스트는 스위치를 켜고 끄는 값을 항상 명시한다.
+- 구현 중 발견해 고친 결함
+  - V7의 위치 CHECK가 처음에는 `partition_no >= 0 AND record_offset >= 0 AND …`였다. 값 하나가 NULL이면 조건이 UNKNOWN이 되고, CHECK는 UNKNOWN을 통과시킨다. 위치가 반만 기록된 행이 들어갔다(제약 테스트로 발견). `IS NOT NULL`을 명시했다.
+  - 정체 탐지가 처음에는 확인할 때마다 관리 클라이언트를 새로 만들었다. 그러면 Kafka 클라이언트가 설정 전체(수십 줄)를 매번 INFO로 남긴다. 클라이언트 하나를 유지하고 컨텍스트 종료 때 닫게 바꿨다.
+  - "실패 저장도 안 되는 DB 장애" 테스트의 첫 버전은 앱 기동 직후 리밸런스로 재시도 상태가 초기화되어, 그 경로를 지나지 않고도 통과했다. 소비자 세 개의 파티션 배정이 끝난 뒤 시작하도록 바꾸고, `Could not store the failure` 로그가 실제로 나왔는지를 단언한다.
+  - 3-5의 "커밋 뒤 확인 전 실패" 테스트는 일시 오류가 아닌 예외를 주입하고 있었다. 이제 그런 예외는 재전달 없이 실패 처리된다. 이미 끝난 접수라 저장할 것은 없고 확인만 된다. 연결이 끊긴 경우처럼 일시 오류를 주입하게 바꿨다.
+- 테스트
+  - 단위: [WallClockBackOffTest](../../src/test/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/WallClockBackOffTest.java) 3개(대기 0.5·1·2·4·8·8·6.5초 뒤 중단, 시도 시간도 예산에 포함, 시작마다 새 예산), [TransientFailuresTest](../../src/test/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/TransientFailuresTest.java) 2개, [OrderStallDetectorTest](../../src/test/java/com/wooyongjeong/limitedsale/order/application/OrderStallDetectorTest.java) 5개(지난 메시지만 재발행, 앞선 메시지·다른 파티션·위치 없음은 기한까지 대기, 오프셋을 모르면 기한만, 재발행 3회 뒤 `STALLED`, 게이지 초기화). `OutboxBatchTest`는 위치를 돌려주는 가짜 전송기로 바꿨다.
+  - 통합 [OrderAcceptanceRecoveryIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/OrderAcceptanceRecoveryIntegrationTest.java) 7개. 실제 MySQL(`innodb_lock_wait_timeout` 2초) + Redis + `apache/kafka:4.4.0`이고, 예산 6초·DB 장애 간격 1초·정체 3초·기한 20초·탐지 1초로 줄였다. 테스트마다 끝에 대조 SQL이 비어 있어야 한다.
+    - 판매 행 잠금이 한 번의 잠금 대기 안에 풀리면 정상 주문.
+    - 판매 A를 계속 잠근 채 A 접수와 같은 파티션의 판매 B 접수를 보내면, A는 `TRANSIENT_RETRIES_EXHAUSTED`로 끝나고(상태 조회에도 표시, 주문·점유 없음) 잠금이 남아 있는 동안 B가 주문이 되며 완료 시각이 A 뒤다.
+    - 결제 준비에서 일시 오류가 아닌 예외를 주입하면 5초 안에 `PROCESSING_ERROR`, 시도 실패 1회, 주문·점유 없음.
+    - 다른 연결이 접수 행을 잠그면 처리와 실패 저장이 모두 막혀 `Could not store the failure` 경고가 나온다. 4초 더 `ACCEPTED`로 남고, 잠금을 놓으면 실패가 아니라 `ORDER_CREATED`(실패 지표 그대로).
+    - 소비자가 이미 지난 오프셋에 발행된 것처럼 꾸민 `ACCEPTED` 접수는 재발행되어 아웃박스 행 2개, 주문 1개.
+    - 소비자가 아직 닿지 않은 오프셋의 접수는 발행 10초 뒤 5초를 더 기다려도 재발행되지 않고, 20초 기한이 지나면 재발행되어 주문이 된다.
+    - 판매 ID가 다른 내용으로만 발행되는 접수는 매번 건너뛰어져 재발행 3회(행 4개) 뒤 `STALLED`.
+  - [MySqlSchemaIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/MySqlSchemaIntegrationTest.java): V6에서 데이터가 있는 아웃박스 행 2개를 V7로 올리면 각 행이 자기 접수를 가리킨다. 마이그레이션 수를 맞췄다. `OrderAcceptanceIntegrationTest`에 V7 제약(접수 ID 없음 1364, 없는 접수 1452, 위치 CHECK 4가지)을 더했다.
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 10분 33초(부하 평균 약 8). 판매 앱 단위 182개(10개 추가)·통합 243개(8개 추가)·mock-pg 11·15개·Python 183개, 실패·오류 0. 통합 테스트 결과 XML 중 `9092`가 든 파일은 0개다. 같은 변경의 첫 전체 빌드에서는 위의 테스트 결함 4건이 실패했고 고친 뒤 통과했다.
+- 한계·검증하지 못한 것
+  - DB 장애는 행 잠금으로만 흉내 냈다. MySQL 프로세스를 멈추거나 네트워크를 끊는 시험은 하지 않았다. 실제 연결 장애에서는 Hikari `connectionTimeout`(30초) 동안 한 시도가 막힐 수 있다.
+  - DB 장애 대기 중인 메시지는 DB가 돌아온 뒤 일시 오류가 아닌 예외가 나도 5초 간격 재시도를 계속한다. 컨테이너가 재시도 방식을 메시지마다 처음 실패할 때만 정하기 때문이다. 정상 처리나 재시작이 아니면 풀리지 않는다.
+  - 30초 예산은 시도 사이의 실제 시간으로 잰다. 잠금 대기 하나(운영 기본 50초)가 예산보다 길면 그 시도가 끝날 때까지 파티션이 더 막힌다.
+  - 5분 기한은 적체와 무관하게 재발행한다. 5분 넘게 밀리는 부하에서는 중복 메시지가 생긴다(주문은 하나다).
+  - 정체 탐지는 한 번에 접수 500개까지 본다. 처리량·지연은 3-7·3-8에서 잰다. Prometheus에서 새 지표를 직접 보지 않았다.
+
 ## 소단계 실행 체크리스트
 
 각 소단계는 아래 순서로 진행한다. 정책 동의와 구현 시작 지시는 별개다. 구현은 별도 서브에이전트(워커)가 맡고 주 에이전트가 검증한다. 사용할 모델이 정해지지 않았다면 사용자에게 묻는다. 다음 소단계로 자동 진행하지 않는다. 완료 근거와 남은 문제는 해당 소단계 아래에 기록한다.
@@ -336,9 +372,9 @@ Kafka를 단계적으로 도입해 비동기 처리 경험을 보여준다. 앞 
 ### 3-6. 재시도와 실패 복구
 
 - [x] 현재 소단계의 미정 사항 확인·합의 및 범위·완료 기준 확정(2026-11-25, 위 "3-6 확정 정책")
-- [ ] 사용자로부터 이 소단계의 구현 시작 지시 받음
-- [ ] 지정 워커의 해당 범위 구현과 검증 결과 수령
-- [ ] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고
+- [x] 사용자로부터 이 소단계의 구현 시작 지시 받음(2026-11-25, 주 에이전트가 직접 구현)
+- [x] 지정 워커의 해당 범위 구현과 검증 결과 수령(주 에이전트가 직접 구현, 위 "3-6 구현과 검증")
+- [x] 주 에이전트가 변경·산출물·검증 근거를 확인하고 결과 보고(2026-11-25)
 
 ### 3-7. 비동기 관측
 
