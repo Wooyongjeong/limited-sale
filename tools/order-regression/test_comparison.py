@@ -1,10 +1,13 @@
 import unittest
 
-from comparison import (CONDITIONS, DEFAULT_CONDITIONS, Plan, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
+from comparison import (CONDITIONS as ALL_CONDITIONS, DEFAULT_CONDITIONS, Plan, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
                         derived, evaluate, execution_order, failures, gate_counts, gate_update_counts, headline,
                         hit_rate, labeled_deltas, policy_plan, rate_limit_counts, verifier_requests, with_overrides)
 from load_summary import build_requests
 from verify import verify
+
+# The stage 2 conditions; the stage 3-8 pair (experiment D) is covered by test_async_comparison.py.
+CONDITIONS = {name: condition for name, condition in ALL_CONDITIONS.items() if condition.experiment != 'D'}
 
 
 def endpoint(count=0, statuses=None, codes=None, **latency):

@@ -98,6 +98,9 @@ for (const code of LATENCY_CODES) {
   latencyByCode[code] = new Trend(`order_create_latency_${code}`, true);
 }
 
+// From sending the order request until the payment came back succeeded; the v2 script measures the same (3-8).
+const requestToConfirmed = new Trend('request_to_confirmed_ms', true);
+
 const connectionErrors = new Counter('connection_errors');
 const serverErrors = new Counter('server_errors_5xx');
 // When each normal iteration ended, measured from the start of the test; its maximum is the normal scenario's end.
@@ -182,13 +185,17 @@ export function normal() {
     });
     record('sale_detail', detail);
   }
+  const started = Date.now();
   const created = createOrder(session, jar, session.key, 'order_create');
   const code = record('order_create', created);
   if (latencyByCode[code]) {
     latencyByCode[code].add(created.timings.duration);
   }
   if (code === 'ORDER_CREATED') {
-    record('order_payment', payOrder(session, jar, created.json('data.orderId'), 'order_payment'));
+    const paid = record('order_payment', payOrder(session, jar, created.json('data.orderId'), 'order_payment'));
+    if (paid === 'PAYMENT_SUCCEEDED') {
+      requestToConfirmed.add(Date.now() - started);
+    }
   }
   normalElapsed.add(exec.instance.currentTestRunDuration);
   normalIterations.add(1);
@@ -260,6 +267,7 @@ export function handleSummary(data) {
     http_req_failed_rate: data.metrics.http_req_failed ? data.metrics.http_req_failed.values.rate : 0,
     endpoints,
     latency_by_code: Object.fromEntries(LATENCY_CODES.map((code) => [code, trend(data, `order_create_latency_${code}`)])),
+    request_to_confirmed: trend(data, 'request_to_confirmed_ms'),
     server_errors_5xx: counterValue(data, 'server_errors_5xx'),
     connection_errors: counterValue(data, 'connection_errors'),
   };
