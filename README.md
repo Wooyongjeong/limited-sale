@@ -4,6 +4,17 @@
 
 코드와 요청 흐름은 [개발자 위키](docs/wiki/README.md)에서 살펴본다.
 
+## 포트폴리오 요약
+
+선착순 한정 판매에서 초과 판매·중복 주문·중복 결제가 생기지 않음을 MySQL 기반 구현으로 먼저 보이고, Redis(캐시·요청 제한·품절 표시)와 Kafka(DB 접수 + 아웃박스 비동기 주문)를 단계적으로 더하면서 무엇이 빨라지고 무엇이 그대로인지 측정했다. 마지막으로 2인스턴스 전체 구성에 장애 9가지를 일으켜 규칙이 지켜지는지 확인했다. 설계 결정·대안·한계·AI 협업 기록은 [포트폴리오 요약](docs/portfolio.md)에 있다.
+
+| 실험 | 결과 |
+|---|---|
+| 기준 부하(사용자 1만·재고 1,000, v1) | 확정 1,000·위반 0. 처리량 상한은 판매 행 잠금 직렬화 |
+| Redis 품절 사전 판정(2-7) | 부하 시간 38.9 → 19.8초, 행 잠금 대기 10,998 → 2,230회 |
+| v1 동기 대 v2 비동기(3-8) | 응답 p50 2.34 → 0.15초(202)이지만 최종 확정 처리량은 51.8 → 36.6/초. 빠른 202가 곧 빠른 주문은 아니다 |
+| 전체 구성 장애 9가지 × 3회(4-3) | 36회 모두 확정 300·초과 판매·중복 주문·중복 결제 0, 응답을 못 받은 요청 0 |
+
 ## 세션 인증
 
 `GET /api/v1/csrf` 응답의 `data.token`을 변경 요청의 `X-CSRF-TOKEN` 헤더에 넣고 세션 쿠키를 함께 보낸다. 회원가입과 `POST /api/v1/sessions` 로그인 전에도 토큰을 조회한다. 로그인 또는 `DELETE /api/v1/sessions/current` 성공 후 다음 변경 요청 전에 토큰을 다시 조회한다. `GET /api/v1/members/me`는 현재 회원의 이메일·닉네임·역할을 반환한다.
@@ -20,7 +31,7 @@ ADMIN 세션과 CSRF 토큰으로 `POST /api/v1/admin/products`에 `{"name":"제
 
 `GET /api/v1/sales?productId=1&status=SCHEDULED&page=0&size=20`과 `GET /api/v1/sales/{id}`는 공개 조회다. 수량은 총수량만 공개한다. PATCH는 조회한 version을 보내야 하며 충돌 시 409다. 시작 후에는 이름·설명만 수정할 수 있다. 중단·재개는 시작 전에도 가능하며 종료 후에는 거절한다. [전체 계약](docs/stages/01-6-sale-management-and-query.md)을 참고한다.
 
-Kafka(3-2, 연결만 구현)는 `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`)로 접속한다. Compose 브로커의 게시 포트는 `KAFKA_PORT`(기본 9092)이며 두 값을 함께 바꾼다. 앱은 브로커 없이도 기동하고 `/actuator/health`에 Kafka를 넣지 않는다. 운영 토픽 `limited-sale.order-acceptances.v1`(파티션 6, 복제 1)은 앱이 백그라운드에서 만들고 브로커가 없으면 경고를 남기며 재시도한다. 브로커의 자동 토픽 생성은 끈다. 프로듀서는 `acks=all`·멱등이고 `max.block.ms`·`delivery.timeout.ms`가 5초, 소비자는 그룹 `limited-sale-order-consumer`·자동 커밋 끔·수동 확인·인스턴스당 동시성 3(`spring.kafka.listener.concurrency`)이다. 업무 접수 저장과 상태 조회는 3-3에서, 아웃박스 발행은 3-4에서 구현했고(아래 설정, 기본 꺼짐), 소비는 3-5 이후다. 브로커는 한 개라 고가용성이 아니다.
+Kafka(3단계)는 `KAFKA_BOOTSTRAP_SERVERS`(기본 `localhost:9092`)로 접속한다. Compose 브로커의 게시 포트는 `KAFKA_PORT`(기본 9092)이며 두 값을 함께 바꾼다. 앱은 브로커 없이도 기동하고 `/actuator/health`에 Kafka를 넣지 않는다. 운영 토픽 `limited-sale.order-acceptances.v1`(파티션 6, 복제 1)은 앱이 백그라운드에서 만들고 브로커가 없으면 경고를 남기며 재시도한다. 브로커의 자동 토픽 생성은 끈다. 프로듀서는 `acks=all`·멱등이고 `max.block.ms`·`delivery.timeout.ms`가 5초, 소비자는 그룹 `limited-sale-order-consumer`·자동 커밋 끔·수동 확인·인스턴스당 동시성 3(`spring.kafka.listener.concurrency`)이다. 업무 접수 저장과 상태 조회(3-3), 아웃박스 발행(3-4), 소비(3-5), 재시도·정체 재발행(3-6), 관측(3-7)은 아래 설정에 있다. 브로커는 한 개라 고가용성이 아니다.
 
 비동기 주문 접수(3-3)는 `limited-sale.order.async.enabled`(3-6부터 기본 `true`, 환경변수 `LIMITED_SALE_ORDER_ASYNC_ENABLED`)로 켜고 끈다. 끄면 `POST /api/v2/orders`와 `GET /api/v2/order-requests/{acceptanceId}`가 등록되지 않아 404이고 `order_acceptances`·`order_outbox`에 아무것도 쌓이지 않는다. 켜면 접수를 `ACCEPTED`로 저장하고 발행 대기 행(`order_outbox`)을 같은 트랜잭션에 넣어 202로 응답한다. 3-4의 발행기가 아웃박스 행을 Kafka로 보내고 3-5의 소비자가 점유·주문·READY 결제를 만들어 접수를 `ORDER_CREATED`(또는 `REJECTED`)로 끝낸다. 결제는 v1 결제 API로 한다. 요청 키 공간은 v1과 분리되며, 요청 제한(회원별 주문 생성 카운터)과 세션·CSRF 규칙은 v1과 같다. 3-6에서 재시도·실패 복구까지 갖춰 기본으로 켰다. 인스턴스마다 스위치를 따로 읽으므로 여러 인스턴스는 같은 값으로 맞춘다.
 
