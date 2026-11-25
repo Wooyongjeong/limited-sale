@@ -31,7 +31,8 @@ class SessionExceptionHandlerTest {
     void setUp() {
         mvc = MockMvcBuilders.standaloneSetup(new SessionController(service, null, null))
             .setControllerAdvice(new SessionExceptionHandler())
-            .addFilters(new RedisFailureFilter(JsonMapper.builder().build())).build();
+            .addFilters(new RedisFailureFilter(JsonMapper.builder().build(),
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry())).build();
     }
 
     @Test
