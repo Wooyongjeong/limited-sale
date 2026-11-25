@@ -84,6 +84,10 @@
   - 실행: 발행기 스레드가 `limited-sale.order.outbox.cleanup.interval`(24시간, 첫 실행은 기동 `initial-delay` 1분 뒤)마다 시작한다. 지울 것이 남아 있는 동안 발행 루프 한 바퀴에 한 묶음씩 지운다. 보존 기간은 `limited-sale.order.outbox.retention`(7일), 지표는 `order_outbox_deleted_total`이다.
   - 처음에는 삭제를 `JdbcOutboxStore`에 넣었다. 그러자 3-4의 완료 표시 실패 주입 테스트(`OutboxStore`만 구현하는 프록시)가 새 인터페이스를 가려 문맥이 뜨지 않았다. 별도 클래스로 나눴다.
   - 테스트: 단위 [OutboxCleanupTest](../../src/test/java/com/wooyongjeong/limitedsale/order/application/OutboxCleanupTest.java)(가득 찬 묶음이면 계속, 지운 수 계수). 통합 `OrderOutboxPublisherIntegrationTest`의 새 테스트(보존 1시간): 2시간 전에 발행된 끝난 접수의 행만 지우고, 최근 행과 `ACCEPTED` 접수의 오래된 행은 남기며, 접수 행은 그대로임을 확인한다.
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 10분 40초(부하 평균 약 10~12). 판매 앱 단위 188·통합 249개, mock-pg 11·15개, Python 196개, 실패 0.
+  - 같은 커밋의 첫 전체 빌드는 30분 넘게 멈춰 중단했다. 스레드 덤프로 보니 `SaleCacheOrderIntegrationTest.declinedPaymentAndReleasedStockLeaveTheEntry`가 Mock PG에 보낸 HTTP 요청(시간 제한 없음)의 응답을 기다리고 있었고, 서버 쪽에는 그 요청을 처리 중인 스레드가 없었다.
+  - 3-4 때 `SaleIntegrationTest`에서 본 것과 같은 모양의 멈춤으로 두 번째다. 다시 돌린 빌드에서는 재현되지 않았고 원인은 확정하지 못했다.
+  - 그 요청에 30초 시간 제한을 넣어, 다시 일어나면 빌드 전체가 멈추지 않고 그 테스트만 실패하게 했다.
 
 ## 실행 체크리스트
 
