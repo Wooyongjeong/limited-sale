@@ -124,7 +124,7 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 
 [JpaOrderStore.list](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/JpaOrderStore.java)는 회원의 주문 수를 센 뒤 한 페이지를 읽는다. 결제 상태는 `payment.api`의 `PaymentOperations.statuses`로 페이지 전체를 한 번에 읽는다. 주문마다 결제를 따로 읽지 않는다. 오프셋이 주문 수 이상이면 페이지 조회 없이 빈 목록을 반환한다. READ COMMITTED이므로 복구 작업이 동시에 상태를 바꾸면 총수와 항목이 같은 순간의 값이 아닐 수 있다. 정책 원문은 [1-8 단계 문서](../stages/01-8-order-result-query.md)에 있다.
 
-## v2 비동기 접수(기본 꺼짐)
+## v2 비동기 접수
 
 `limited-sale.order.async.enabled=true`로 켠 서버는 `POST /api/v2/orders`로 주문을 "접수"만 한다. 수량 점유와 주문 생성은 하지 않는다. 그 일은 3-5의 소비자가 발행 순서대로 한다(아래). 계약은 [HTTP 계약](http-contracts.md#v2-비동기-주문-접수-계약)에 있다.
 
@@ -157,6 +157,16 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 4. 거절이면 접수를 `REJECTED`(사유 포함)로 끝낸다. 허용이면 v1과 같이 점유·주문·READY 결제를 만들고 접수를 `ORDER_CREATED`(주문 ID·완료 시각)로 끝낸다. 주문의 요청 키는 접수 ID이고 `order_request_results`는 쓰지 않는다. 만료 5분은 주문을 만든 처리 시각부터 센다. 2-7 품절 표시는 v1과 같은 경로로 기록·해제된다.
 5. 커밋 뒤 오프셋을 확인한다. 커밋과 확인 사이에 멈추면 같은 메시지가 다시 오고 2의 잠금이 중복으로 걸러낸다.
 
-처리 중 예외(DB 연결·잠금 대기 시간 초과 등)는 컨테이너의 `DefaultErrorHandler`가 1초 간격으로 끝없이 재시도한다([OrderAcceptanceConsumerConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/OrderAcceptanceConsumerConfiguration.java)). 그동안 그 파티션은 멈추고 유실은 없다. 3-6에서 약 30초 제한과 `PROCESSING_FAILED`로 바꾼다. 선착순은 아웃박스 행이 커밋되어 발행된 순서이며, 동시에 커밋된 접수는 id가 큰 쪽이 먼저 처리될 수 있다([3-5 확정 정책](../stages/03-kafka.md#3-5-확정-정책) #2).
+처리 중 예외는 컨테이너의 `DefaultErrorHandler`가 다룬다([OrderAcceptanceConsumerConfiguration](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/OrderAcceptanceConsumerConfiguration.java), 3-6).
 
-판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 아웃박스 행은 3-4의 발행기가 Kafka로 보내고 3-5의 소비자가 주문으로 만든다(아래). 재시도 제한과 `PROCESSING_FAILED` 저장은 3-6에서 더한다.
+- 일시 오류([TransientFailures](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/TransientFailures.java): DB 연결 실패, 잠금 대기 시간 초과, 데드락, 쿼리 시간 초과)는 같은 메시지를 0.5초부터 두 배씩(최대 8초) 기다리며 재시도한다. 예산은 재시도 사이의 대기만이 아니라 첫 실패부터 흐른 실제 시간 30초다([WallClockBackOff](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/WallClockBackOff.java)). 예산이 끝나면 [OrderAcceptanceFailures](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderAcceptanceFailures.java)가 새 트랜잭션에서 접수를 잠그고 아직 `ACCEPTED`이면 `PROCESSING_FAILED`(`TRANSIENT_RETRIES_EXHAUSTED`)로 저장한 뒤 메시지를 확인 처리한다.
+- 그 밖의 예외는 재시도 없이 바로 `PROCESSING_FAILED`(`PROCESSING_ERROR`)다.
+- 실패 저장도 실패하면 DB 장애로 보고 확인 처리하지 않는다. 그 메시지는 5초 간격으로 처리 자체를 다시 시도하고, DB가 돌아오면 실패가 아니라 정상 처리된다.
+- 처리 트랜잭션은 롤백되므로 실패한 접수는 재고·주문·결제를 남기지 않는다. 사용자는 상태 조회의 `failureReason`을 보고 새 요청 키로 다시 주문한다.
+- 재시도 동안 같은 파티션의 다음 메시지는 기다린다. 그래서 실패가 저장된 뒤에야 다음 메시지가 처리되어 판매 이벤트별 처리 순서가 유지된다. 한 메시지가 파티션을 막는 시간은 일시 오류일 때 약 30초(잠금 대기 하나가 그보다 길면 그만큼 더)다.
+
+### 정체 재발행(3-6)
+
+[OrderStallDetector](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OrderStallDetector.java)는 발행기 스레드에서 10초마다 돈다(발행자 인스턴스 하나만). `ACCEPTED` 접수의 마지막 아웃박스 행이 발행된 지 60초가 지났고 소비자 그룹의 커밋 오프셋([KafkaConsumerProgress](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/KafkaConsumerProgress.java))이 그 행의 오프셋을 지났으면 정체다. 발행 뒤 5분이 지나면 오프셋과 관계없이 정체다. 정체 접수에는 같은 토픽·키·내용의 새 아웃박스 행을 넣어 발행기가 평소처럼 보낸다. 접수당 3번까지이고, 그 뒤에도 정체면 `PROCESSING_FAILED`(`STALLED`)로 끝낸다. 오프셋 기준 덕분에 한 판매에 접수가 몰려 정상 대기가 60초를 넘어도 대량 재발행이 생기지 않는다. 브로커가 오프셋을 알려주지 못하면 5분 기준만 적용한다. 재발행으로 같은 메시지가 두 번 처리되어도 접수 행 잠금이 중복을 걸러낸다. 선착순은 아웃박스 행이 커밋되어 발행된 순서이며, 동시에 커밋된 접수는 id가 큰 쪽이 먼저 처리될 수 있다([3-5 확정 정책](../stages/03-kafka.md#3-5-확정-정책) #2).
+
+판매 행을 잠그지 않기 때문에 이 경로는 v1의 행 잠금 대기열에 서지 않는다. 대신 재고와 구매 한도는 이 시점에 판정하지 않으므로, 접수에 성공해도 나중에 소비자가 `SALE_SOLD_OUT`·`PURCHASE_LIMIT_EXCEEDED`로 거절할 수 있다. 아웃박스 행은 3-4의 발행기가 Kafka로 보내고 3-5의 소비자가 주문으로 만든다(아래).
