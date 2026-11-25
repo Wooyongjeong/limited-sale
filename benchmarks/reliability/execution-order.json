@@ -1,0 +1,290 @@
+[
+  {
+    "position": 1,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 2,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 3,
+    "scenario": "S2-kafka",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 4,
+    "scenario": "S3-kill-restart",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 5,
+    "scenario": "S4-kill-no-restart",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 6,
+    "scenario": "S5-read-only",
+    "path": "v1",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 7,
+    "scenario": "S5-read-only",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 8,
+    "scenario": "S6-mysql-stop",
+    "path": "v1",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 9,
+    "scenario": "S6-mysql-stop",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 10,
+    "scenario": "S7-response-loss",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 11,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 12,
+    "scenario": "S9-rolling-restart",
+    "path": "v2",
+    "run": 1,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 13,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 14,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 15,
+    "scenario": "S2-kafka",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 16,
+    "scenario": "S3-kill-restart",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 17,
+    "scenario": "S4-kill-no-restart",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 18,
+    "scenario": "S5-read-only",
+    "path": "v1",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 19,
+    "scenario": "S5-read-only",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 20,
+    "scenario": "S6-mysql-stop",
+    "path": "v1",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 21,
+    "scenario": "S6-mysql-stop",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 22,
+    "scenario": "S7-response-loss",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 23,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 24,
+    "scenario": "S9-rolling-restart",
+    "path": "v2",
+    "run": 2,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 25,
+    "scenario": "S1-redis",
+    "path": "v1",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 26,
+    "scenario": "S1-redis",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 27,
+    "scenario": "S2-kafka",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 28,
+    "scenario": "S3-kill-restart",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 29,
+    "scenario": "S4-kill-no-restart",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 30,
+    "scenario": "S5-read-only",
+    "path": "v1",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 31,
+    "scenario": "S5-read-only",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 32,
+    "scenario": "S6-mysql-stop",
+    "path": "v1",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 33,
+    "scenario": "S6-mysql-stop",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 34,
+    "scenario": "S7-response-loss",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 35,
+    "scenario": "S8-redis-and-kafka",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  },
+  {
+    "position": 36,
+    "scenario": "S9-rolling-restart",
+    "path": "v2",
+    "run": 3,
+    "status": "passed",
+    "failures": []
+  }
+]

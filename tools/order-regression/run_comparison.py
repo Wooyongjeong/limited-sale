@@ -257,7 +257,9 @@ async def run_once(env, condition, plan, label, prepare_concurrency, fault=None)
     phases['verify_seconds'] = round(time.monotonic() - phase, 2)
     save(env.output / 'clock-guard.json', record(clock_start, sample()))
 
-    access_log, _ = env.load_balancer_logs()
+    access_log, lb_errors = env.load_balancer_logs()
+    # Caddy's own messages say why a request got 502 (stage 4-3); the access log is summarised below.
+    (env.output / 'lb-errors.log').write_text(lb_errors)
     access = summarize_access_log(parse_access_log(access_log))
     sale_row = final['sales'][0]
     instances = {name: management_summary(management_before[name], management_after[name], sampler.samples[name])
