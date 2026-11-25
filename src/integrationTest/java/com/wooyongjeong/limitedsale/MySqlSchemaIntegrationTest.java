@@ -80,7 +80,7 @@ class MySqlSchemaIntegrationTest {
             VALUES (UNHEX('21223344556677889900AABBCCDDEEFF'), 1000000000000000, 'PROCESSING',
             'SUCCESS', NOW(6), NOW(6))
             """);
-        assertThat(sales.migrate().migrationsExecuted).isEqualTo(6);
+        assertThat(sales.migrate().migrationsExecuted).isEqualTo(7);
         assertThat(pg.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "
@@ -192,7 +192,7 @@ class MySqlSchemaIntegrationTest {
         assertThat(pg.migrate().migrationsExecuted).isZero();
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM pg.mock_payments")).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(7);
+        assertThat(count("SELECT COUNT(*) FROM sales.flyway_schema_history WHERE success=1")).isEqualTo(8);
         assertThat(count("SELECT COUNT(*) FROM pg.flyway_schema_history WHERE success=1")).isEqualTo(3);
     }
     @Test
