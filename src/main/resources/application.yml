@@ -64,6 +64,11 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
+        # A consumer that dies without leaving the group (SIGKILL, a lost machine) keeps its partitions until the
+        # broker gives up on it: 45 s by default stopped a whole sale in 3-8. 10 s, with a heartbeat every 3 s, hands
+        # them over sooner; a pause longer than 10 s (a long GC) now costs a rebalance (stage 4-2).
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
         reconnect.backoff.ms: 1000
         reconnect.backoff.max.ms: 5000
         retry.backoff.ms: 1000

@@ -92,7 +92,7 @@ class OrderAcceptanceConsumerIntegrationTest {
         REDIS.start();
         KAFKA.start();
         pgContext = new SpringApplicationBuilder(MockPgApplication.class).run("--server.port=0",
-            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/mock-pg.yml",
             "--spring.flyway.locations=filesystem:mock-pg/src/main/resources/db/migration",
             "--spring.datasource.url=" + PG.getJdbcUrl(),
             "--spring.datasource.username=" + PG.getUsername(), "--spring.datasource.password=" + PG.getPassword(),
@@ -491,6 +491,11 @@ class OrderAcceptanceConsumerIntegrationTest {
                 var container = context.getBean(KafkaListenerEndpointRegistry.class).getListenerContainer(LISTENER);
                 assertThat(container.getAssignedPartitions()).isNotEmpty();
                 assertThat(container.getGroupId()).isEqualTo("limited-sale-order-consumer");
+                // 4-2: a killed consumer's partitions are handed over after 10 s, not the 45 s default.
+                var config = context.getBean(org.springframework.kafka.core.ConsumerFactory.class)
+                    .getConfigurationProperties();
+                assertThat(config).containsEntry("session.timeout.ms", "10000")
+                    .containsEntry("heartbeat.interval.ms", "3000");
             }
         });
         var secondPartitions = second.getBean(KafkaListenerEndpointRegistry.class).getListenerContainer(LISTENER)
