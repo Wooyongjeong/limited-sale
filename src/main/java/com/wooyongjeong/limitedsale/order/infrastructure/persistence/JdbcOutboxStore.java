@@ -1,10 +1,12 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.persistence;
 
 import com.wooyongjeong.limitedsale.order.domain.OutboxMessage;
+import com.wooyongjeong.limitedsale.order.domain.OutboxPosition;
 import com.wooyongjeong.limitedsale.order.domain.OutboxStore;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -31,8 +33,14 @@ class JdbcOutboxStore implements OutboxStore {
     }
 
     @Override
-    public void markPublished(Collection<Long> ids) {
-        update("UPDATE order_outbox SET published_at = UTC_TIMESTAMP(6) WHERE published_at IS NULL AND id IN ", ids);
+    public void markPublished(Map<Long, OutboxPosition> positions) {
+        if (positions.isEmpty()) {
+            return;
+        }
+        List<Object[]> rows = positions.entrySet().stream()
+            .map(row -> new Object[] {row.getValue().partition(), row.getValue().offset(), row.getKey()}).toList();
+        jdbc.batchUpdate("UPDATE order_outbox SET published_at = UTC_TIMESTAMP(6), partition_no = ?, record_offset = ? "
+            + "WHERE published_at IS NULL AND id = ?", rows);
     }
 
     @Override

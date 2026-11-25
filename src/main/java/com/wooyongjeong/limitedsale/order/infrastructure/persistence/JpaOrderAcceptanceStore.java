@@ -6,6 +6,7 @@ import com.wooyongjeong.limitedsale.order.domain.OrderAcceptance;
 import com.wooyongjeong.limitedsale.order.domain.OrderAcceptanceStore;
 import com.wooyongjeong.limitedsale.order.domain.OrderRejection;
 import com.wooyongjeong.limitedsale.order.domain.OrderRequestKeyCollision;
+import com.wooyongjeong.limitedsale.order.domain.ProcessingFailure;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,7 +38,7 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
             AcceptanceMessage message) {
         var acceptance = save(OrderAcceptanceEntity.accepted(acceptanceId, memberId, key, saleId, quantity, now));
         // Flushed on its own: an outbox failure here rolls the acceptance back with it, as one transaction.
-        outbox.saveAndFlush(new OrderOutboxEntity(message, now));
+        outbox.saveAndFlush(new OrderOutboxEntity(message, acceptance.id(), now));
         return acceptance.toAcceptance(null);
     }
 
@@ -66,6 +67,11 @@ public class JpaOrderAcceptanceStore implements OrderAcceptanceStore {
     @Override
     public void finishRejected(UUID acceptanceId, OrderRejection rejection, Instant now) {
         locked(acceptanceId).rejected(rejection, now);
+    }
+
+    @Override
+    public void finishFailed(UUID acceptanceId, ProcessingFailure reason, Instant now) {
+        locked(acceptanceId).failed(reason, now);
     }
 
     /** The row is locked by {@link #lockForProcessing} already; this returns the same managed entity. */

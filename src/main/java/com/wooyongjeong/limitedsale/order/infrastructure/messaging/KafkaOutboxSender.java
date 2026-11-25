@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.infrastructure.messaging;
 
 import com.wooyongjeong.limitedsale.order.domain.OutboxMessage;
+import com.wooyongjeong.limitedsale.order.domain.OutboxPosition;
 import com.wooyongjeong.limitedsale.order.domain.OutboxSender;
 import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +20,8 @@ class KafkaOutboxSender implements OutboxSender {
     }
 
     @Override
-    public CompletableFuture<Void> send(OutboxMessage message) {
-        return template.send(message.topic(), message.key(), message.payload()).thenApply(result -> null);
+    public CompletableFuture<OutboxPosition> send(OutboxMessage message) {
+        return template.send(message.topic(), message.key(), message.payload()).thenApply(result ->
+            new OutboxPosition(result.getRecordMetadata().partition(), result.getRecordMetadata().offset()));
     }
 }

@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Consumes accepted order requests. The offset is acknowledged only after the processing transaction has committed,
  * so a consumer that stops in between gets the message again and the locked acceptance row turns it into a no-op.
  * A message that can never be processed (unreadable, or naming no acceptance) is logged, counted and acknowledged;
- * any other failure is thrown to the container's error handler, which retries the same message.
+ * any other failure is thrown to the container's error handler ({@link OrderAcceptanceConsumerConfiguration}).
  */
 @Component
 @ConditionalOnProperty(name = {"limited-sale.order.async.enabled", "limited-sale.order.consumer.enabled"},
@@ -33,10 +33,13 @@ class OrderAcceptanceListener {
 
     private final OrderAcceptanceProcessor processor;
     private final AcceptanceProcessingMetrics metrics;
+    private final AcceptanceRetryState retries;
 
-    OrderAcceptanceListener(OrderAcceptanceProcessor processor, AcceptanceProcessingMetrics metrics) {
+    OrderAcceptanceListener(OrderAcceptanceProcessor processor, AcceptanceProcessingMetrics metrics,
+            AcceptanceRetryState retries) {
         this.processor = processor;
         this.metrics = metrics;
+        this.retries = retries;
     }
 
     // idIsGroup = false keeps the group of spring.kafka.consumer.group-id; by default the listener id would be the group.
@@ -50,13 +53,21 @@ class OrderAcceptanceListener {
             acknowledgment.acknowledge();
             return;
         }
-        Outcome outcome = processor.process(message.acceptanceId(), message.saleId());
+        Outcome outcome;
+        try {
+            outcome = processor.process(message.acceptanceId(), message.saleId());
+        } catch (RuntimeException failure) {
+            // The error handler decides: retry, store the failure, or wait for the database.
+            metrics.attemptFailed();
+            throw failure;
+        }
         if (outcome == Outcome.SKIPPED) {
             log.warn("Skipping order acceptance message {} for sale {} at {}-{}@{}: no such acceptance for that sale",
                 message.acceptanceId(), message.saleId(), record.topic(), record.partition(), record.offset());
         }
         metrics.record(outcome);
         acknowledgment.acknowledge();
+        retries.finished(record);
     }
 
     record Message(UUID acceptanceId, long saleId) {

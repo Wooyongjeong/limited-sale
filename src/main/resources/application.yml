@@ -88,6 +88,9 @@ spring:
       hibernate.jdbc.time_zone: UTC
 limited-sale:
   order:
+    async:
+      # The v2 asynchronous order API (accept, publish, consume). On since 3-6 finished; v1 is unaffected either way.
+      enabled: true
     outbox-publisher:
       # Sends the order outbox rows to Kafka. It runs only together with limited-sale.order.async.enabled=true, and the
       # tests turn it off with a system property so a context that does not test it never opens a Kafka client.
