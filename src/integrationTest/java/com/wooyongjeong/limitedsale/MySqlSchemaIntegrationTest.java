@@ -80,7 +80,7 @@ class MySqlSchemaIntegrationTest {
             VALUES (UNHEX('21223344556677889900AABBCCDDEEFF'), 1000000000000000, 'PROCESSING',
             'SUCCESS', NOW(6), NOW(6))
             """);
-        assertThat(sales.migrate().migrationsExecuted).isEqualTo(5);
+        assertThat(sales.migrate().migrationsExecuted).isEqualTo(6);
         assertThat(pg.migrate().migrationsExecuted).isEqualTo(2);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders")).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM sales.purchase_orders o JOIN sales.members m ON o.member_id=m.id "

@@ -93,7 +93,7 @@ class OrderAcceptanceIntegrationTest {
         DB.stop();
     }
 
-    /** Uses the shipped application.yml, as the request limit test does; the switch is only set when asked. */
+    /** Uses the shipped application.yml, as the request limit test does; the switch is always set explicitly. */
     private static ConfigurableApplicationContext application(boolean switchOn, boolean limitOn) {
         List<String> arguments = new ArrayList<>(List.of("--server.port=0", "--management.server.port=0",
             "--limited-sale.order.rate-limit.enabled=" + limitOn,
@@ -105,9 +105,8 @@ class OrderAcceptanceIntegrationTest {
             "--spring.datasource.url=" + DB.getJdbcUrl(), "--spring.datasource.username=" + DB.getUsername(),
             "--spring.datasource.password=" + DB.getPassword(), "--spring.data.redis.host=" + REDIS.getHost(),
             "--spring.data.redis.port=" + REDIS.getMappedPort(6379), "--spring.data.redis.timeout=1s"));
-        if (switchOn) {
-            arguments.add("--limited-sale.order.async.enabled=true");
-        }
+        // Set either way: the shipped application.yml switches the API on.
+        arguments.add("--limited-sale.order.async.enabled=" + switchOn);
         return new SpringApplicationBuilder(LimitedSaleApplication.class).run(arguments.toArray(String[]::new));
     }
 

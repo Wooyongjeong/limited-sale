@@ -1,6 +1,7 @@
 package com.wooyongjeong.limitedsale.order.application;
 
 import com.wooyongjeong.limitedsale.order.domain.OutboxMessage;
+import com.wooyongjeong.limitedsale.order.domain.OutboxPosition;
 import com.wooyongjeong.limitedsale.order.domain.OutboxSender;
 import com.wooyongjeong.limitedsale.order.domain.OutboxStore;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -95,7 +96,7 @@ class OutboxBatchTest {
     @Test
     void laterRowsThatSucceedWhileAnEarlierOneFailsLaterAreNotMarkedAndAreSentAgain() {
         // Row 3 fails after rows 4 and 5 have been acknowledged: the failure is only known once results are awaited.
-        CompletableFuture<Void> slow = new CompletableFuture<>();
+        CompletableFuture<OutboxPosition> slow = new CompletableFuture<>();
         sender.pending.put(3L, slow);
         sender.afterSend = id -> {
             if (id == 5L) {
@@ -193,11 +194,11 @@ class OutboxBatchTest {
         }
 
         @Override
-        public void markPublished(Collection<Long> ids) {
+        public void markPublished(Map<Long, OutboxPosition> positions) {
             if (failMark) {
                 throw new IllegalStateException("the database is gone");
             }
-            published.addAll(ids);
+            published.addAll(positions.keySet());
         }
 
         @Override
@@ -210,18 +211,18 @@ class OutboxBatchTest {
         final List<Long> sent = new ArrayList<>();
         final List<Long> failing = new ArrayList<>();
         final List<Long> throwing = new ArrayList<>();
-        final Map<Long, CompletableFuture<Void>> pending = new HashMap<>();
+        final Map<Long, CompletableFuture<OutboxPosition>> pending = new HashMap<>();
         Consumer<Long> afterSend = id -> { };
 
         @Override
-        public CompletableFuture<Void> send(OutboxMessage message) {
+        public CompletableFuture<OutboxPosition> send(OutboxMessage message) {
             sent.add(message.id());
             if (throwing.contains(message.id())) {
                 throw new IllegalStateException("cannot even start");
             }
-            CompletableFuture<Void> result = pending.containsKey(message.id()) ? pending.get(message.id())
+            CompletableFuture<OutboxPosition> result = pending.containsKey(message.id()) ? pending.get(message.id())
                 : failing.contains(message.id()) ? CompletableFuture.failedFuture(new IllegalStateException("nack"))
-                : CompletableFuture.completedFuture(null);
+                : CompletableFuture.completedFuture(new OutboxPosition(0, message.id()));
             afterSend.accept(message.id());
             return result;
         }
