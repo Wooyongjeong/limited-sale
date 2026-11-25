@@ -70,6 +70,19 @@ caffeinate -ims python3 -B tools/order-regression/run_baseline.py --scenario und
 
 실행 시간은 환경 시작 약 25초, 사용자 준비(가입·Argon2 로그인), 부하, 수렴·검증으로 나뉘며 `durations_seconds`에 기록된다. 순수 로직(지표 파싱·차이·집계·통과 판정) 테스트는 `python3 -B -m unittest discover -s tools/order-regression -v`에 포함된다.
 
+## 3-8 v1·v2 종단 간 비교와 장애 실행
+
+`run_comparison.py`의 `v1-sync`·`v2-async` 조건은 2-7 `c-on` 설정(조회 캐시 켬, 주문 요청 제한 1초 1회, 품절 사전 판정 켬)과 같은 계획(사용자 10,000·재고 1,000·VU 500)이고 API 방식만 다르다. `v2-async`는 `tests/load/async-order.js`로 `POST /api/v2/orders` 접수 → 0.5초부터 두 배씩(최대 2초) 상태 폴링 → `ORDER_CREATED`면 v1 결제를 한다. 5xx와 연결 오류는 같은 요청으로 1초 간격 최대 30회 다시 보내며(장애 실행용), 모든 5xx는 `server_errors_5xx`에 남는다. 부하가 끝나면 모든 접수가 5분 안에 최종 상태가 되는지 기다리고, `verify.py` 대신 접수 행(`acceptances.json`)과 대조 SQL로 검증한다. 순서 역전 수(접수 ID 순서 대 처리 완료 순서의 역전 쌍)와 앞선 접수가 품절로 거절되는데 뒤 접수가 주문이 된 건수도 기록한다.
+
+```sh
+./gradlew bootJar :mock-pg:bootJar
+caffeinate -ims python3 -B tools/order-regression/run_comparison.py --conditions v1-sync,v2-async --rounds 3 \
+  --order-file execution-order.json --output benchmarks/async-comparison
+caffeinate -ims python3 -B tools/order-regression/run_async_faults.py --output benchmarks/async-comparison/faults
+```
+
+`run_async_faults.py`는 `v2-async`를 사용자 2,000·재고 300·VU 200으로 장애마다 새 격리 환경에서 한 번씩 돌린다: `broker-outage`(첫 접수가 저장되면 브로커 20초 정지), `instance-kill`(대기 접수가 20건 이상이면 판매 JVM 하나를 SIGKILL, 10초 뒤 재기동), `duplicate-delivery`(모든 접수가 끝난 뒤 접수마다 마지막 아웃박스 행을 한 번 더 넣음), `end-during-backlog`(브로커를 멈추고 모든 VU의 접수가 대기 중이면 판매 종료 시각을 지금으로 당긴 뒤 8초 뒤 브로커 재기동). 장애 실행은 응답을 받은 5xx를 허용하지만 응답을 끝내 못 받은 요청은 실패로 본다. 결과는 `<장애>.json`, 원본은 `raw/`(Git 제외)다.
+
 ## 2-5 Redis 장애 실험
 
 `run_redis_outage.py`는 1-10의 격리 환경(판매 JVM 2개, Caddy, Mock PG 전체 성공, 전용 MySQL·Redis)에서 **주문 요청 제한을 켠 채**(허용 횟수 5를 명시 전달한다. 측정 당시 앱 기본값이었고 이후 1로 바뀌었다) 부하를 보내다가 Redis 컨테이너를 `docker stop`으로 멈추고 `--outage-seconds` 뒤 `docker start`로 되살린다. 2-1·2-2·2-3·2-4의 Redis 장애 정책이 실제 부하에서 지켜지는지와 명령·연결 타임아웃(`--redis-timeout`) 값에 따른 차이를 잰다. 필요한 것은 위 실험과 같다(Java 25, Docker, Python 3.9+). `k6`는 쓰지 않는다.

@@ -9,6 +9,7 @@ Redis sold-out pre-check off or on. The gate switch is passed to every run; the 
 before the gate existed, so they keep it off and stay comparable.
 """
 from dataclasses import dataclass, replace
+import math
 import statistics
 
 from load_summary import _flatten, _management_headline, build_requests
@@ -36,6 +37,8 @@ class Condition:
     sold_out_gate: bool = False
     # True for the condition whose over-demand must be turned away by the marker at least once.
     expects_gate_hits: bool = False
+    # Stage 3-8: 'v1' orders through POST /api/v1/orders, 'v2' accepts through POST /api/v2/orders, polls and pays.
+    api: str = 'v1'
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,15 @@ CONDITIONS['c-off'] = Condition('c-off', 'C', sale_cache=True, order_rate_limit=
                                 rate_limit_max_requests=1, sold_out_gate=False)
 CONDITIONS['c-on'] = Condition('c-on', 'C', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=0,
                                rate_limit_max_requests=1, sold_out_gate=True, expects_gate_hits=True)
+# Stage 3-8: the c-on settings (cache on, request limit one per second, sold-out pre-check on), one API each. The same JAR
+# runs both; the v1 condition simply never calls the v2 API.
+CONDITIONS['v1-sync'] = Condition('v1-sync', 'D', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=0,
+                                  rate_limit_max_requests=1, sold_out_gate=True, expects_gate_hits=True)
+CONDITIONS['v2-async'] = Condition('v2-async', 'D', sale_cache=True, order_rate_limit=True, detail_views=0, abusers=0,
+                                   rate_limit_max_requests=1, sold_out_gate=True, expects_gate_hits=True, api='v2')
 DEFAULT_CONDITIONS = ('a-off', 'a-on', 'b-off', 'b-on')
+# Every acceptance must be final this long after the load ended (3-1 #8).
+FINAL_DEADLINE_SECONDS = 300
 
 
 def policy_plan(condition):
@@ -304,6 +315,130 @@ def evaluate(result, condition, plan):
     return checks
 
 
+def count_inversions(values):
+    """Pairs i < j with values[i] > values[j], by merge sort (the runs have 10,000 acceptances)."""
+    def sort(items):
+        if len(items) <= 1:
+            return items, 0
+        middle = len(items) // 2
+        left, a = sort(items[:middle])
+        right, b = sort(items[middle:])
+        merged, inversions, i, j = [], a + b, 0, 0
+        while i < len(left) and j < len(right):
+            if left[i] <= right[j]:
+                merged.append(left[i])
+                i += 1
+            else:
+                merged.append(right[j])
+                inversions += len(left) - i
+                j += 1
+        merged += left[i:] + right[j:]
+        return merged, inversions
+    return sort(list(values))[1]
+
+
+def percentile(values, fraction):
+    """Nearest-rank percentile of a list; None when it is empty."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[max(0, min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1))]
+
+
+def async_db_summary(acceptances):
+    """What the database says about the v2 run, from one row per acceptance of the sale.
+
+    Each row: id, status, rejection_reason, failure_reason, consumed (it had an outbox row, so the consumer decided it),
+    completion_ms (finished_at - accepted_at, None while unfinished), orders (purchase orders with its id as key),
+    sends (outbox rows). The processing order is the finish time; ties keep the id order.
+    """
+    by_status = {}
+    reasons = {}
+    for row in acceptances:
+        by_status[row['status']] = by_status.get(row['status'], 0) + 1
+        reason = row.get('rejection_reason') or row.get('failure_reason')
+        if reason:
+            reasons[f"{row['status']}:{reason}"] = reasons.get(f"{row['status']}:{reason}", 0) + 1
+    consumed = sorted((r for r in acceptances if r['consumed'] and r['completion_ms'] is not None),
+                      key=lambda r: r['id'])
+    order = [r['finished_at_us'] for r in consumed]
+    created_ids = [r['id'] for r in consumed if r['status'] == 'ORDER_CREATED']
+    last_created = max(created_ids) if created_ids else None
+    # A request that lost to a later one: rejected as sold out although an acceptance after it got an order.
+    overtaken = sum(1 for r in consumed if r['status'] == 'REJECTED' and r.get('rejection_reason') == 'SALE_SOLD_OUT'
+                    and last_created is not None and r['id'] < last_created)
+    completion = [r['completion_ms'] for r in consumed if r['status'] == 'ORDER_CREATED']
+    return {
+        'acceptances': len(acceptances), 'by_status': by_status, 'reasons': reasons,
+        'consumed': len(consumed), 'unfinished': by_status.get('ACCEPTED', 0),
+        'processing_failed': by_status.get('PROCESSING_FAILED', 0),
+        'acceptances_with_more_than_one_order': sum(1 for r in acceptances if r['orders'] > 1),
+        'republished_acceptances': sum(1 for r in acceptances if r['sends'] > 1),
+        'order_inversions': count_inversions(order),
+        'sold_out_before_a_later_order': overtaken,
+        'completion_ms': {'count': len(completion), 'p50': percentile(completion, 0.5),
+                          'p95': percentile(completion, 0.95), 'p99': percentile(completion, 0.99),
+                          'max': max(completion) if completion else None},
+    }
+
+
+def evaluate_async(result, condition, plan, fault=None):
+    """Pass criteria of the v2 condition (3-8 #7); a fault run (3-8 #8) tolerates answered 5xx and its own outcome."""
+    checks = []
+
+    def check(name, expected, actual, passed=None):
+        checks.append({'name': name, 'passed': expected == actual if passed is None else passed,
+                       'expected': expected, 'actual': actual})
+
+    k6, db, store = result['k6'], result['db'], result['async']
+    create, payment = k6['endpoints']['order_create'], k6['endpoints']['order_payment']
+    check('k6_exit_code', 0, k6['exit_code'])
+    check('iterations_completed', plan.users, k6['iterations_completed'])
+    check('dropped_iterations', 0, k6['dropped_iterations'])
+    check('unresolved_requests', 0, k6['unresolved_requests'])
+    if fault is None:
+        check('server_errors_5xx', 0, k6['server_errors_5xx'])
+        check('connection_errors', 0, k6['connection_errors'])
+        unexpected = {f'{name}:{status}': count for name, endpoint in k6['endpoints'].items()
+                      for status, count in endpoint['status_counts'].items() if status not in BUSINESS_STATUSES}
+        check('unexpected_statuses', {}, unexpected)
+    check('all_final_within_deadline', True, result['all_final_within_deadline'])
+    check('no_unfinished_acceptances', 0, store['unfinished'])
+    check('no_processing_failures', 0, store['processing_failed'])
+    check('at_most_one_order_per_acceptance', 0, store['acceptances_with_more_than_one_order'])
+    check('client_never_hit_the_poll_deadline', 0, k6['finals'].get('POLL_DEADLINE', 0))
+    rate_limited = status_total(create, '429')
+    check('normal_users_never_rate_limited', 0, rate_limited + status_total(payment, '429'))
+    check('one_acceptance_per_user', plan.users - rate_limited, store['acceptances'])
+    expected_confirmed = result.get('expected_confirmed', plan.expected_confirmed)
+    check('converged', True, db['converged'])
+    check('confirmed', expected_confirmed, db['confirmed'])
+    check('remaining', plan.stock - expected_confirmed, db['remaining'])
+    check('orders_match_order_created', db['orders'], store['by_status'].get('ORDER_CREATED', 0))
+    check('client_saw_every_order', db['orders'], k6['finals'].get('ORDER_CREATED', 0))
+    if fault is None:
+        check('every_order_paid', db['orders'], payment['business_codes'].get('PAYMENT_SUCCEEDED', 0))
+    else:
+        # A payment retried after a killed instance may be answered 202 (still pending); 'confirmed' shows it ended.
+        check('every_order_got_a_payment_answer', db['orders'],
+              payment['business_codes'].get('PAYMENT_SUCCEEDED', 0) + payment['business_codes'].get('PAYMENT_PENDING', 0))
+    check('reconciliation_violations', 0, result['sql_violations'])
+    check('mysql_observe_complete', True, result['mysql_observe_complete'])
+    check('sale_cache_setting_took_effect', condition.sale_cache, result['cache_metrics_present'])
+    check('sold_out_gate_setting_took_effect', condition.sold_out_gate, result['gate_metrics_present'])
+    if fault is None:
+        gate = result['gate']
+        check('every_acceptance_was_a_gate_lookup', create['count'] - rate_limited,
+              gate['hit'] + gate['miss'] + gate['error'])
+        check('gate_lookup_errors', 0, gate['error'])
+        check('every_instance_served_acceptances', True,
+              bool(result['order_create_by_instance'])
+              and all(count > 0 for count in result['order_create_by_instance'].values()))
+        # The servers' completion histogram saw exactly the acceptances the consumer decided.
+        check('completion_histogram_matches_database', store['consumed'], result['completion_recorded'])
+    return checks
+
+
 def failures(checks):
     return [f"{c['name']}: expected {c['expected']} actual {c['actual']}" for c in checks if not c['passed']]
 
@@ -338,7 +473,23 @@ def headline(summary):
                   ('row_lock_waits', 'row_lock_time_ms', 'deadlocks', 'lock_timeouts')},
         'load_generator': summary['load_generator'],
         'durations_seconds': summary['durations_seconds'],
+        # Client time from the order request until the payment succeeded, both flows (stage 3-8).
+        'request_to_confirmed': {key: k6.get('request_to_confirmed', {}).get(key)
+                                 for key in ('count', 'p50_ms', 'p95_ms', 'p99_ms', 'max_ms')},
     }
+    if summary.get('async'):
+        store = summary['async']
+        selected['async'] = {
+            'acceptances': store['acceptances'], 'order_inversions': store['order_inversions'],
+            'sold_out_before_a_later_order': store['sold_out_before_a_later_order'],
+            'republished_acceptances': store['republished_acceptances'],
+            'completion_ms': store['completion_ms'], 'final_seconds_after_load': summary['final_seconds_after_load'],
+            'acceptance_window_seconds': store.get('acceptance_window_seconds'),
+            'acceptances_per_second': store.get('acceptances_per_second'),
+            'accept_to_final': {key: k6['accept_to_final'].get(key) for key in ('p50_ms', 'p95_ms', 'p99_ms', 'max_ms')},
+            'polls_per_acceptance': k6['polls_per_acceptance'],
+            'status_polls': k6['endpoints']['order_status']['count'],
+        }
     flat = {}
     _flatten('', selected, flat)
     return flat

@@ -23,9 +23,10 @@ import uuid
 
 from balanced import parse_access_log, split, summarize_access_log
 from clock_guard import record, sample
-from comparison import (CONDITIONS, DEFAULT_CONDITIONS, abuse_attempts, abuse_server_summary, aggregate, build_manifest, cache_counts,
-                        derived, evaluate, execution_order, failures, gate_counts, gate_update_counts, labeled_deltas,
-                        policy_plan, rate_limit_counts, verifier_requests, with_overrides)
+from comparison import (CONDITIONS, DEFAULT_CONDITIONS, FINAL_DEADLINE_SECONDS, abuse_attempts, abuse_server_summary,
+                        aggregate, async_db_summary, build_manifest, cache_counts, derived, evaluate, evaluate_async,
+                        execution_order, failures, gate_counts, gate_update_counts, labeled_deltas, policy_plan,
+                        rate_limit_counts, verifier_requests, with_overrides)
 from http_client import Client
 from isolated import Isolated, ROOT
 from load_metrics import combine_management, endpoint_requests, management_summary, observe_delta
@@ -38,6 +39,8 @@ from service_env import inherited_environment, order_rate_limit_max_requests_set
 from snapshot import collect
 
 K6_SCRIPT = ROOT / 'tests/load/comparison-order.js'
+# Stage 3-8: accept, poll and pay through the v2 API.
+K6_ASYNC_SCRIPT = ROOT / 'tests/load/async-order.js'
 CACHE_SWITCH = 'LIMITED_SALE_SALE_CACHE_ENABLED'
 GATE_SWITCH = 'LIMITED_SALE_SALE_SOLD_OUT_GATE_ENABLED'
 # The sales JVMs use these application defaults except the three switches and max-requests, which every condition
@@ -60,7 +63,7 @@ def write_sessions(clients, normal, plan):
     return path
 
 
-def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path):
+def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path, script=K6_SCRIPT):
     k6_env = inherited_environment(os.environ) | {
         'K6_NO_USAGE_REPORT': 'true', 'ITERATIONS': str(plan.users), 'VUS': str(plan.vus),
         'DETAIL_VIEWS': str(plan.detail_views), 'ABUSERS': str(plan.abusers),
@@ -68,7 +71,7 @@ def run_k6(env, plan, sale_id, sessions_path, summary_path, log_path):
         'SESSIONS_FILE': sessions_path, 'SUMMARY_PATH': str(summary_path),
         'BASE_URL': f"http://127.0.0.1:{env.ports['lb']}"}
     with open(log_path, 'w') as log:
-        done = subprocess.run(['k6', 'run', '--no-color', '--quiet', str(K6_SCRIPT)], env=k6_env, stdout=log,
+        done = subprocess.run(['k6', 'run', '--no-color', '--quiet', str(script)], env=k6_env, stdout=log,
                               stderr=subprocess.STDOUT, timeout=K6_TIMEOUT_SECONDS)
     summary = json.loads(Path(summary_path).read_text()) if Path(summary_path).exists() else None
     return done.returncode, summary
@@ -85,7 +88,50 @@ def dirty_outside(results_root):
     return any(not (prefix and path.startswith(prefix)) for path in paths)
 
 
-async def run_once(env, condition, plan, label, prepare_concurrency):
+ACCEPTANCE_ROWS = """
+SELECT JSON_OBJECT('id', a.id, 'status', a.status, 'rejection_reason', a.rejection_reason,
+  'failure_reason', a.failure_reason,
+  'accepted_at_us', TIMESTAMPDIFF(MICROSECOND, '2000-01-01', a.accepted_at),
+  'finished_at_us', IF(a.finished_at IS NULL, NULL, TIMESTAMPDIFF(MICROSECOND, '2000-01-01', a.finished_at)),
+  'completion_ms', IF(a.finished_at IS NULL, NULL, TIMESTAMPDIFF(MICROSECOND, a.accepted_at, a.finished_at) / 1000),
+  'sends', (SELECT COUNT(*) FROM order_outbox o WHERE o.acceptance_id = a.id),
+  'orders', (SELECT COUNT(*) FROM purchase_orders p WHERE p.member_id = a.member_id AND p.request_key = a.public_id))
+FROM order_acceptances a WHERE a.sale_id = {sale_id};
+"""
+
+
+def acceptance_rows(env, sale_id):
+    """One row per acceptance of the sale; 'consumed' means it had an outbox row, so the consumer decided it."""
+    found = rows(env, 'sales', 'limited_sale', ACCEPTANCE_ROWS.format(sale_id=int(sale_id)))
+    for row in found:
+        row['consumed'] = row['sends'] > 0
+        row['completion_ms'] = None if row['completion_ms'] is None else float(row['completion_ms'])
+    return found
+
+
+def unfinished_acceptances(env, sale_id):
+    return int(env.mysql('sales', f"SELECT COUNT(*) FROM limited_sale.order_acceptances WHERE sale_id={int(sale_id)} "
+                                  "AND status='ACCEPTED';"))
+
+
+def wait_final(env, sale_id, deadline_seconds=FINAL_DEADLINE_SECONDS):
+    """Wait until no acceptance of the sale is ACCEPTED; returns (reached in time, seconds waited)."""
+    started = time.monotonic()
+    while True:
+        if unfinished_acceptances(env, sale_id) == 0:
+            return True, round(time.monotonic() - started, 2)
+        if time.monotonic() - started >= deadline_seconds:
+            return False, round(time.monotonic() - started, 2)
+        time.sleep(1)
+
+
+def completion_recorded(before, after, instances):
+    """Acceptances the consumers recorded in order_acceptance_completion_seconds, over all instances."""
+    return int(round(sum(sum(labeled_deltas(before[n], after[n], 'order_acceptance_completion_seconds_count').values())
+                         for n in instances)))
+
+
+async def run_once(env, condition, plan, label, prepare_concurrency, fault=None):
     phases = {}
     started = time.monotonic()
     clock_start = sample()
@@ -119,11 +165,15 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
     sessions_path = write_sessions(clients, normal, plan)
     sampler = Sampler({name: env.ports[name + '_management'] for name in env.instances})
     k6_summary_path = env.output / 'k6-summary.json'
+    v2 = condition.api == 'v2'
     try:
         sampler.start()
         phase = time.monotonic()
         cpu_before = resource.getrusage(resource.RUSAGE_CHILDREN)
-        exit_code, k6_summary = run_k6(env, plan, sale_id, sessions_path, k6_summary_path, env.output / 'k6.log')
+        if fault is not None:
+            fault.start(env, sale_id)
+        exit_code, k6_summary = run_k6(env, plan, sale_id, sessions_path, k6_summary_path, env.output / 'k6.log',
+                                       K6_ASYNC_SCRIPT if v2 else K6_SCRIPT)
         cpu_after = resource.getrusage(resource.RUSAGE_CHILDREN)
         phases['k6_seconds'] = round(time.monotonic() - phase, 2)
     except BaseException:
@@ -139,8 +189,19 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
 
     k6_cpu = cpu_after.ru_utime + cpu_after.ru_stime - cpu_before.ru_utime - cpu_before.ru_stime
     load_generator = {'cpu_seconds': round(k6_cpu, 2), 'cpu_cores_mean': round(k6_cpu / phases['k6_seconds'], 2)}
-    created = sum(k6_summary['endpoints'][name]['business_codes'].get('ORDER_CREATED', 0)
-                  for name in ('order_create', 'abuse_order_create'))
+    if v2:
+        # Every acceptance must be final within the deadline (3-1 #8); the orders are the ORDER_CREATED ones.
+        all_final, phases['final_seconds_after_load'] = wait_final(env, sale_id)
+        if fault is not None:
+            fault.after_final(env, sale_id)
+            fault.join()
+            all_final_again, extra = wait_final(env, sale_id)
+            all_final = all_final and all_final_again
+            phases['final_seconds_after_fault'] = extra
+        created = int(env.mysql('sales', f"SELECT COUNT(*) FROM limited_sale.purchase_orders WHERE sale_id={sale_id};"))
+    else:
+        created = sum(k6_summary['endpoints'][name]['business_codes'].get('ORDER_CREATED', 0)
+                      for name in ('order_create', 'abuse_order_create'))
     converged, phases['convergence_seconds'] = converge(env, sale_id, created)
     management_after = management_snapshot(env, env.output, 'after')
     sampler.finish()
@@ -152,14 +213,21 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
     abuse = abuse_attempts(abuser_ids, final['request_results'])
     manifest = build_manifest(normal, abuse, sale_id, plan)
     save(env.output / 'manifest.json', manifest)
-    requests = verifier_requests(normal, abuse, sale_id, final['request_results'])
-    save(env.output / 'snapshot.json', {'final': True, 'manifest': manifest, 'requests': requests, **final,
-                                         'recovery': None})
-    verifier = subprocess.run([sys.executable, '-B', str(ROOT / 'tools/order-regression/verify.py'),
-                               str(env.output / 'snapshot.json')], text=True, capture_output=True)
-    (env.output / 'verifier.log').write_text(verifier.stdout + verifier.stderr)
-    verifier_violations = max(len([x for x in verifier.stderr.splitlines() if x.strip()]), 1) \
-        if verifier.returncode else 0
+    if v2:
+        # verify.py reads order_request_results, which the v2 path never writes; the acceptance rows and the
+        # reconciliation SQL (ACCEPTANCE_VS_ORDER and the rest) are its checks instead.
+        store_rows = acceptance_rows(env, sale_id)
+        save(env.output / 'acceptances.json', store_rows)
+        verifier_violations = 0
+    else:
+        requests = verifier_requests(normal, abuse, sale_id, final['request_results'])
+        save(env.output / 'snapshot.json', {'final': True, 'manifest': manifest, 'requests': requests, **final,
+                                             'recovery': None})
+        verifier = subprocess.run([sys.executable, '-B', str(ROOT / 'tools/order-regression/verify.py'),
+                                   str(env.output / 'snapshot.json')], text=True, capture_output=True)
+        (env.output / 'verifier.log').write_text(verifier.stdout + verifier.stderr)
+        verifier_violations = max(len([x for x in verifier.stderr.splitlines() if x.strip()]), 1) \
+            if verifier.returncode else 0
     violations = reconciliation_rows(env)
     (env.output / 'reconciliation-violations.tsv').write_text('\n'.join(violations) + ('\n' if violations else ''))
     phases['verify_seconds'] = round(time.monotonic() - phase, 2)
@@ -170,7 +238,9 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
     sale_row = final['sales'][0]
     instances = {name: management_summary(management_before[name], management_after[name], sampler.samples[name])
                  for name in env.instances}
-    order_create_by_instance = {name: endpoint_requests(summary, *ORDER_CREATE) for name, summary in instances.items()}
+    create_endpoint = ('POST', '/api/v2/orders') if v2 else ORDER_CREATE
+    order_create_by_instance = {name: endpoint_requests(summary, *create_endpoint)
+                                for name, summary in instances.items()}
     mysql = observe_delta(observe_before, observe_after)
     cache = cache_counts([labeled_deltas(management_before[n], management_after[n], 'sale_cache_requests_total')
                           for n in env.instances])
@@ -197,7 +267,23 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
         'gate_metrics_present': any(labeled_deltas({}, management_after[n], 'sale_sold_out_gate_requests_total')
                                     for n in env.instances),
     }
-    checks = evaluate(result, condition, plan)
+    store = None
+    if v2:
+        store = async_db_summary(store_rows)
+        consumed = [r for r in store_rows if r['consumed']]
+        if consumed:
+            window = (max(r['accepted_at_us'] for r in consumed) - min(r['accepted_at_us'] for r in consumed)) / 1e6
+            store['acceptance_window_seconds'] = round(window, 3)
+            store['acceptances_per_second'] = round(len(consumed) / window, 3) if window else None
+        result |= {'async': store, 'all_final_within_deadline': all_final,
+                   'completion_recorded': completion_recorded(management_before, management_after, env.instances)}
+        if fault is not None:
+            result['expected_confirmed'] = fault.expected_confirmed(env, sale_id, plan, store_rows)
+        checks = evaluate_async(result, condition, plan, fault)
+        if fault is not None:
+            checks += fault.checks(env, sale_id, store_rows, result)
+    else:
+        checks = evaluate(result, condition, plan)
     phases['total_seconds'] = round(time.monotonic() - started, 2)
     return {
         'condition': condition.name, 'experiment': condition.experiment, 'label': None,
@@ -214,6 +300,11 @@ async def run_once(env, condition, plan, label, prepare_concurrency):
                                  'auth_failures': access['auth_failures']},
         'management': {'instances': instances, 'combined': combine_management(instances)},
         'mysql': mysql, 'durations_seconds': phases, 'started_at': env.started_at, 'run_id': env.run_id,
+        'api': condition.api, 'async': store,
+        'final_seconds_after_load': phases.get('final_seconds_after_load'),
+        'all_final_within_deadline': result.get('all_final_within_deadline'),
+        'completion_recorded': result.get('completion_recorded'),
+        'fault': fault.record() if fault is not None else None,
     }
 
 
