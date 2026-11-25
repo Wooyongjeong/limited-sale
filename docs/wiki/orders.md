@@ -145,7 +145,7 @@ Redis 명령이 실패하면 제한 없이 통과시키고 경고 로그를 남�
 - 발행자 하나: [MySqlOutboxLeadership](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/MySqlOutboxLeadership.java)이 커넥션 풀 밖의 전용 연결로 `GET_LOCK('limited-sale:order-outbox-publisher', 0)`을 잡는다. 잠금이 없는 인스턴스는 1초마다 다시 시도한다. 묶음마다 `IS_USED_LOCK(name) = CONNECTION_ID()`를 확인하고, 실패하면 연결을 닫고 대기자로 돌아간다. 프로세스가 죽으면 소켓이 닫혀 MySQL이 잠금을 풀고 다른 인스턴스가 이어받는다. 멈췄지만 연결이 살아 있는 인스턴스(긴 GC 등)나 네트워크가 끊겨 MySQL이 연결을 정리하지 못한 동안(`wait_timeout`)에는 넘어가지 않는다.
 - 한 묶음: [OutboxBatch](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OutboxBatch.java)가 `published_at IS NULL`인 행을 id 순서로 최대 100개 잠금 없이 읽고 [KafkaOutboxSender](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/messaging/KafkaOutboxSender.java)로 모두 비동기 전송한 뒤 결과를 기다린다. 저장된 `topic`·`message_key`·`payload`를 그대로 보내고 헤더는 없다. 첫 실패 행보다 앞의 성공 행만 `published_at = UTC_TIMESTAMP(6)`으로 표시하고 실패한 행은 `attempts`를 올린다. 다음 시도는 첫 실패 행부터 다시 보내므로 그 뒤에 이미 도착한 행은 중복 전달된다. 이미 실패한 전송이 보이면 그 뒤 행은 이번 묶음에서 보내지 않는다.
 - 주기: 묶음이 가득 차면 바로 이어서 보내고, 비어 있으면 100ms 쉰다. 실패하면 1초에서 최대 10초까지 두 배씩 기다리고 성공하면 처음으로 돌아간다.
-- 한계: 발행 처리량 상한은 인스턴스 하나다. 장애 중에는 순서가 어긋나고 중복이 생길 수 있어 소비자 멱등성(3-5)이 필요하다. 완료한 행은 지우지 않아 `order_outbox`가 계속 늘어난다.
+- 한계: 발행 처리량 상한은 인스턴스 하나다. 장애 중에는 순서가 어긋나고 중복이 생길 수 있어 소비자 멱등성(3-5)이 필요하다. 발행 뒤 7일이 지난 행은 발행자가 하루 한 번 지운다(4-2, [운영](operations.md)). 그 이전의 발행 이력(재발행 횟수·파티션 위치)은 남지 않고 접수 행은 그대로 남는다.
 
 ### 주문 소비자(3-5)
 
