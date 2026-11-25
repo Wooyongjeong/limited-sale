@@ -486,7 +486,7 @@ class MySqlSchemaIntegrationTest {
         try (var context = new org.springframework.boot.builder.SpringApplicationBuilder(com.wooyongjeong.mockpg.MockPgApplication.class)
                 .web(org.springframework.boot.WebApplicationType.SERVLET)
                 .run("--server.port=0", "--mock-pg.api-key=integration-test-key",
-                     "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+                     "--spring.config.location=file:mock-pg/src/main/resources/mock-pg.yml",
                      "--spring.datasource.url=" + url, "--spring.datasource.username=pg_user",
                      "--spring.datasource.password=test_password_pg", "--spring.flyway.enabled=false",
                      "--management.health.redis.enabled=false",

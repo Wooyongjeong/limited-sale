@@ -58,7 +58,7 @@ class ObservabilityIntegrationTest {
         PG.start();
         REDIS.start();
         pgContext = new SpringApplicationBuilder(MockPgApplication.class).run("--server.port=0",
-                "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+                "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/mock-pg.yml",
                 "--spring.flyway.locations=filesystem:mock-pg/src/main/resources/db/migration",
                 "--spring.datasource.url=" + PG.getJdbcUrl(),
                 "--spring.datasource.username=" + PG.getUsername(), "--spring.datasource.password=" + PG.getPassword(),
@@ -70,7 +70,7 @@ class ObservabilityIntegrationTest {
                         + "org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration,"
                         + "org.springframework.boot.security.autoconfigure.actuate.web.servlet.ManagementWebSecurityAutoConfiguration");
         pgPort = ((ServletWebServerApplicationContext) pgContext).getWebServer().getPort();
-        // mock-pg's application.yml shadows the sales one on this classpath, so load the real one explicitly.
+        // Loads the shipped settings explicitly (until 4-2 the Mock PG's application.yml shadowed them on this classpath).
         salesContext = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
                 "--limited-sale.order.rate-limit.enabled=false",
                 "--spring.config.additional-location=file:src/main/resources/application.yml",

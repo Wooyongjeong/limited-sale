@@ -63,7 +63,7 @@ class SaleCacheOrderIntegrationTest {
         PG.start();
         REDIS.start();
         pgContext = new SpringApplicationBuilder(MockPgApplication.class).run("--server.port=0",
-            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/application.yml",
+            "--mock-pg.api-key=test-secret", "--spring.config.location=file:mock-pg/src/main/resources/mock-pg.yml",
             "--spring.flyway.locations=filesystem:mock-pg/src/main/resources/db/migration",
             "--spring.datasource.url=" + PG.getJdbcUrl(),
             "--spring.datasource.username=" + PG.getUsername(), "--spring.datasource.password=" + PG.getPassword(),
@@ -194,8 +194,9 @@ class SaleCacheOrderIntegrationTest {
         String hex = sales.queryForObject("SELECT HEX(p.pg_key) FROM payments p JOIN purchase_orders o "
             + "ON o.id=p.order_id WHERE o.public_id=UNHEX(REPLACE(?, '-', ''))", String.class, orderId);
         String pgKey = hex.replaceFirst("(........)(....)(....)(....)(............)", "$1-$2-$3-$4-$5").toLowerCase();
+        // A timeout, so an unanswered call fails the test instead of holding the whole build (seen once in 4-2).
         var request = HttpRequest.newBuilder(URI.create("http://localhost:" + pgPort + "/api/v1/simulations/" + pgKey))
-            .header("X-Mock-PG-Key", "test-secret").header("Content-Type", "application/json")
+            .timeout(Duration.ofSeconds(30)).header("X-Mock-PG-Key", "test-secret").header("Content-Type", "application/json")
             .PUT(HttpRequest.BodyPublishers.ofString("{\"scenario\":\"" + scenario + "\"}")).build();
         assertThat(ANONYMOUS.send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
     }

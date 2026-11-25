@@ -64,7 +64,7 @@ class RedisConnectionIntegrationTest {
     static void start() {
         DB.start();
         REDIS.start();
-        // mock-pg's application.yml shadows the sales one on this classpath, so load the real one explicitly.
+        // Loads the shipped settings explicitly (until 4-2 the Mock PG's application.yml shadowed them on this classpath).
         context = new SpringApplicationBuilder(LimitedSaleApplication.class).run("--server.port=0",
                 "--spring.config.additional-location=file:src/main/resources/application.yml",
                 "--limited-sale.recovery.enabled=false",

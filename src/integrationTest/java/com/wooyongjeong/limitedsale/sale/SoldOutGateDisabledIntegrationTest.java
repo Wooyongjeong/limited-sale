@@ -66,7 +66,7 @@ class SoldOutGateDisabledIntegrationTest {
     }
 
     private static ConfigurableApplicationContext application(String... extra) {
-        // mock-pg's application.yml shadows the sales one on this classpath, so load the shipped settings explicitly.
+        // Loads the shipped settings explicitly (until 4-2 the Mock PG's application.yml shadowed them on this classpath).
         List<String> arguments = new ArrayList<>(List.of("--server.port=0", "--management.server.port=" + freePort(),
             "--spring.config.additional-location=file:src/main/resources/application.yml",
             "--limited-sale.recovery.enabled=false", "--limited-sale.order.rate-limit.enabled=false",

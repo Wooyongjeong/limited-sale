@@ -108,3 +108,7 @@ PG 연결·응답 오류는 판매 앱의 503, 설정 변경 충돌은 409로 �
 [PaymentHttpIntegrationTest](../../mock-pg/src/integrationTest/java/com/wooyongjeong/mockpg/PaymentHttpIntegrationTest.java)는 실제 MySQL과 HTTP에서 경쟁·재시작·타임아웃·인증을 검증한다. [판매 앱 통합 테스트](../../src/integrationTest/java/com/wooyongjeong/limitedsale/order/PaymentSimulationIntegrationTest.java)는 ADMIN·CSRF·환경 제한·공통 오류 응답·설정만 전달하는 동작을 검증한다. 정책 원문은 [1-7-2 문서](../stages/01-7-2-mock-pg-http-and-scenarios.md)를 따른다.
 
 [ScenarioInsertIntegrationTest](../../mock-pg/src/integrationTest/java/com/wooyongjeong/mockpg/infrastructure/persistence/ScenarioInsertIntegrationTest.java)는 다른 요청이 먼저 저장한 설정을 뒤늦은 기본 행 삽입이 덮어쓰지 않는지 실제 MySQL로 검사한다. [PaymentControllerMvcTest](../../mock-pg/src/test/java/com/wooyongjeong/mockpg/presentation/PaymentControllerMvcTest.java)는 입력 오류 400과 내부 오류 500을 구분하는 회귀 검사다.
+
+## 설정 파일
+
+Mock PG의 설정은 `application.yml`이 아니라 [mock-pg.yml](../../mock-pg/src/main/resources/mock-pg.yml)이다(4-2). [MockPgConfigName](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgConfigName.java)이 `MockPgApplication`으로 시작하는 애플리케이션에만 `spring.config.name=mock-pg`를 가장 낮은 우선순위로 넣는다. 판매 앱의 통합 테스트 클래스패스에는 이 모듈도 올라가는데, 4-2 이전에는 Mock PG의 `application.yml`이 판매 앱의 것을 가려서 설정 위치를 명시하지 않은 판매 앱 문맥이 Mock PG 설정으로 돌았다. 실행 방법(`./gradlew :mock-pg:bootRun`, JAR)은 그대로다. 명시한 `spring.config.name`·`spring.config.location`이 우선한다.

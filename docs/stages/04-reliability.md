@@ -6,7 +6,7 @@
 
 ## 상태
 
-4-1 정책 확정(2026-11-25). 4-2(넘어온 과제 수정) 착수 전. 소단계: 4-1 정책 → 4-2 넘어온 과제 수정 → 4-3 장애 실험 → 4-4 포트폴리오 정리.
+4-1 정책 확정, 4-2 넘어온 과제 수정 구현·검증 완료(2026-11-25). 4-3(장애 실험) 착수 전. 소단계: 4-1 정책 → 4-2 넘어온 과제 수정 → 4-3 장애 실험 → 4-4 포트폴리오 정리.
 
 ## 확정한 방향
 
@@ -49,6 +49,46 @@
 | S8 | Redis·Kafka 동시 중단 | v2 | 둘을 같은 구간에 정지 | S1과 S2의 기대 결과를 합친 것과 같고, 서로의 복구를 막지 않는다 |
 | S9 | 판매 앱 순차 재시작 | v2 | 인스턴스 하나씩 SIGTERM → 재기동 | 로드 밸런서 뒤에서 요청은 남은 인스턴스로 가고(재시도 포함), 발행자·소비자는 교대한다. 중복 주문은 0이다 |
 
+## 4-2 넘어온 과제 수정
+
+### 확정 정책
+
+2026-11-25 사용자와 선택지로 확정했다(4개 모두 추천안, 각 선택지의 장단점·트레이드오프를 함께 제시).
+
+| # | 과제 | 확정 내용 | 이유·트레이드오프 |
+|---|---|---|---|
+| 1 | Redis 중단 때 커밋된 응답이 깨짐(2-5 발견 1) | 세션 저장소를 감싸, 이 요청이 읽어 온 기존 세션의 id가 바뀌지 않았을 때 응답 마무리 저장의 Redis 실패만 WARN·지표로 남기고 응답은 그대로 보낸다. 새로 만든 세션과 id가 바뀐 세션(로그인)은 지금처럼 오류로 낸다 | 이미 커밋된 주문을 사용자가 성공으로 받는다. 장애 동안 접근 시각 확인이 빠질 수 있다 |
+| 2 | 죽은 소비자의 파티션 인계(3-8) | 소비자 `session.timeout.ms=10000`, `heartbeat.interval.ms=3000`(현재 classic 프로토콜) | 인계가 약 45초에서 약 10초로 준다. 10초 넘는 정지도 리밸런스를 일으킨다 |
+| 3 | 테스트 설정 가림(3-2) | Mock PG 설정 파일을 `mock-pg.yml`로 바꾸고 Mock PG 애플리케이션만 그 이름을 읽는다 | 원인(클래스패스의 application.yml 두 개)을 없앤다. 그동안 Mock PG 설정으로 돌던 판매 앱 테스트 문맥이 판매 앱 설정으로 돌게 된다 |
+| 4 | 아웃박스 무한 증가(3-4) | 발행자 인스턴스가 하루 1회, 발행 뒤 7일이 지난 행을 1,000행씩 지운다. 접수 행은 남긴다 | 테이블 크기를 제한한다. 7일 이전의 발행 이력(재발행 횟수·파티션 위치)은 사라진다 |
+
+### 구현과 검증
+
+2026-11-25 주 에이전트가 직접 구현했다.
+
+- #1 세션
+  - 구현: [AccessTimeTolerantSessionRepository](../../src/main/java/com/wooyongjeong/limitedsale/common/session/AccessTimeTolerantSessionRepository.java)와 그것으로 세션 저장소 빈을 감싸는 [SessionRepositoryTolerance](../../src/main/java/com/wooyongjeong/limitedsale/common/session/SessionRepositoryTolerance.java). `flush-mode: immediate`라 속성·접근 시각 변경은 요청 중에 `RedisSession` 안에서 바로 저장되므로 감싼 저장소를 거치지 않는다. 그래서 감싼 저장소의 `save`는 응답 마무리 저장뿐이다.
+  - 판정: `findById`로 받은 세션의 id를 기억해 두고, 저장 때 id가 같고 실패가 `DataAccessException`(Redis 연결·시간 초과)이면 건너뛴다. "Session was invalidated" 같은 다른 실패는 그대로 던진다.
+  - 지표: `session_save_skipped_total`(라벨 없음).
+  - 구현 중 발견한 결함: 첫 버전은 이 요청에서 만든 새 세션의 저장 실패도 건너뛰었다. 그러자 기존 `SessionIntegrationTest`의 Redis 일시정지 구간에서 익명 `GET /api/v1/csrf`가 503이 아니라 200을 받았다. 저장되지 않은 CSRF 토큰을 내준 것이다. 새 세션은 대상에서 빼서 고쳤다.
+  - 테스트: 단위 테스트 [AccessTimeTolerantSessionRepositoryTest](../../src/test/java/com/wooyongjeong/limitedsale/common/session/AccessTimeTolerantSessionRepositoryTest.java) 5개(id 같음 → 건너뜀·계수, id 바뀜·새 세션·이 저장소가 내주지 않은 세션 → 실패, 다른 종류의 실패 → 그대로).
+  - 테스트: 통합 테스트 [SessionSaveFailureIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/SessionSaveFailureIntegrationTest.java). 실제 Redis 세션 저장소의 `save`만 시간 초과를 던지게 하면, v1 주문이 온전한 201(`ORDER_CREATED`, 본문 해석 가능)을 받는다. DB에 주문이 있고 지표가 오르며, 같은 쿠키로 다음 요청도 로그인 상태다.
+  - 대조군: 주입 순서가 잘못돼 감싸기 바깥에서 실패가 난 첫 실행은 같은 시나리오에서 500이었다(4-2 이전 동작).
+- #2 소비자: `application.yml`의 `spring.kafka.consumer.properties`에 두 값을 넣었다. 3-5 소비자 통합 테스트가 실제 소비자 설정에 들어갔는지 단언한다. 실제 인계 시간은 4-3 S4에서 잰다. 브로커의 `group.min.session.timeout.ms` 기본값(6초)보다 크다.
+- #3 테스트 설정
+  - 구현: `mock-pg/src/main/resources/application.yml` → `mock-pg.yml`. [MockPgConfigName](../../mock-pg/src/main/java/com/wooyongjeong/mockpg/MockPgConfigName.java)(EnvironmentPostProcessor, `META-INF/spring.factories`)이 소스에 `MockPgApplication`이 있는 애플리케이션에만 `spring.config.name=mock-pg`를 가장 낮은 우선순위로 넣는다. 그래서 `bootRun`·JAR·Mock PG 자체 테스트·판매 앱 테스트가 띄우는 Mock PG가 모두 같은 파일을 읽는다. 판매 앱 통합 테스트의 Mock PG 설정 경로와 "가린다"는 주석을 고쳤다. `KafkaAdminStartupGuard`는 방어용으로 남겼다.
+  - 테스트: [ConfigurationClasspathIntegrationTest](../../src/integrationTest/java/com/wooyongjeong/limitedsale/common/ConfigurationClasspathIntegrationTest.java)가 통합 테스트 클래스패스의 `application.yml`이 판매 앱 것 하나이고 `mock-pg.yml`이 따로 있음을 단언한다.
+  - 영향: 그동안 Mock PG 설정으로 돌던 문맥 중 `SessionIntegrationTest`가 판매 앱 설정의 고정 관리 포트(8090)로 두 문맥을 띄우다 충돌했다. 관리 포트를 0으로 명시해 고쳤다. 이 클래스는 이제 판매 앱의 Redis 타임아웃·Kafka·v2 설정으로 돈다(발행기·소비자·토픽 생성은 테스트 시스템 속성으로 꺼져 있다).
+- #4 아웃박스
+  - 구현: [OutboxCleanup](../../src/main/java/com/wooyongjeong/limitedsale/order/application/OutboxCleanup.java)과 [JdbcOutboxHistory](../../src/main/java/com/wooyongjeong/limitedsale/order/infrastructure/persistence/JdbcOutboxHistory.java). `DELETE … WHERE published_at < 지금 − 보존 기간 AND NOT EXISTS(그 접수가 ACCEPTED) ORDER BY id LIMIT 1000`이다.
+  - 실행: 발행기 스레드가 `limited-sale.order.outbox.cleanup.interval`(24시간, 첫 실행은 기동 `initial-delay` 1분 뒤)마다 시작한다. 지울 것이 남아 있는 동안 발행 루프 한 바퀴에 한 묶음씩 지운다. 보존 기간은 `limited-sale.order.outbox.retention`(7일), 지표는 `order_outbox_deleted_total`이다.
+  - 처음에는 삭제를 `JdbcOutboxStore`에 넣었다. 그러자 3-4의 완료 표시 실패 주입 테스트(`OutboxStore`만 구현하는 프록시)가 새 인터페이스를 가려 문맥이 뜨지 않았다. 별도 클래스로 나눴다.
+  - 테스트: 단위 [OutboxCleanupTest](../../src/test/java/com/wooyongjeong/limitedsale/order/application/OutboxCleanupTest.java)(가득 찬 묶음이면 계속, 지운 수 계수). 통합 `OrderOutboxPublisherIntegrationTest`의 새 테스트(보존 1시간): 2시간 전에 발행된 끝난 접수의 행만 지우고, 최근 행과 `ACCEPTED` 접수의 오래된 행은 남기며, 접수 행은 그대로임을 확인한다.
+- 전체 검증: `PYTHONDONTWRITEBYTECODE=1 ./gradlew clean build` 성공, 10분 40초(부하 평균 약 10~12). 판매 앱 단위 188·통합 249개, mock-pg 11·15개, Python 196개, 실패 0.
+  - 같은 커밋의 첫 전체 빌드는 30분 넘게 멈춰 중단했다. 스레드 덤프로 보니 `SaleCacheOrderIntegrationTest.declinedPaymentAndReleasedStockLeaveTheEntry`가 Mock PG에 보낸 HTTP 요청(시간 제한 없음)의 응답을 기다리고 있었고, 서버 쪽에는 그 요청을 처리 중인 스레드가 없었다.
+  - 3-4 때 `SaleIntegrationTest`에서 본 것과 같은 모양의 멈춤으로 두 번째다. 다시 돌린 빌드에서는 재현되지 않았고 원인은 확정하지 못했다.
+  - 그 요청에 30초 시간 제한을 넣어, 다시 일어나면 빌드 전체가 멈추지 않고 그 테스트만 실패하게 했다.
+
 ## 실행 체크리스트
 
 - [x] 사용자와 장애 시나리오·복구 기대 결과·검증 기한·범위 확정(2026-11-25, 위 "4-1 확정 정책". 시나리오별 기대 결과는 4-3 실행 전 확정)
@@ -66,6 +106,8 @@
 실험 전에 예상 결과와 검증 기한을 정한다. 복구 후 초과 판매·구매 한도 초과·중복 주문·중복 결제가 없어야 한다. 모든 접수 요청은 최종 상태와 대조하고, 처리 실패도 원인을 보고한다. 모두 실패하거나 미완료 요청을 제외한 결과를 성공으로 설명하지 않는다.
 
 ## 앞 단계에서 넘어온 후속 과제
+
+(4-2에서 Redis 응답 깨짐·소비자 인계·테스트 설정 가림·아웃박스 정리를 고쳤다. 위 "4-2 넘어온 과제 수정". 2-5의 502는 4-3 S1에서 재현·분석한다.)
 
 - 2-5: Redis가 멈추는 순간 처리 중이던 요청은 성공 응답을 쓰는 중에 Spring Session 저장이 실패한다. 이미 커밋된 주문·결제의 응답이 깨지거나 "주문 처리 실패" ERROR가 남는다. 같은 요청 키 재시도로 정합성은 지켜진다. 응답 전 세션 저장, 오류 분류 등 설계를 정한다. 근거는 [2-5 실험 결과](02-redis.md#2-5-실험-결과와-검증)다.
 - 2-5: 동시성 200에서 Caddy가 판매 인스턴스 연결에 실패한 502(원인 미확정).

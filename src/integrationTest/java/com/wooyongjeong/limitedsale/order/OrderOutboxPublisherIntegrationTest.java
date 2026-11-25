@@ -112,9 +112,14 @@ class OrderOutboxPublisherIntegrationTest {
     }
 
     private static ConfigurableApplicationContext application(boolean publisher, Class<?>... extraSources) {
+        return application(publisher, List.of(), extraSources);
+    }
+
+    private static ConfigurableApplicationContext application(boolean publisher, List<String> extraArgs,
+            Class<?>... extraSources) {
         var sources = new ArrayList<Class<?>>(List.of(LimitedSaleApplication.class));
         sources.addAll(List.of(extraSources));
-        return new SpringApplicationBuilder(sources.toArray(Class<?>[]::new)).run("--server.port=0",
+        var arguments = new ArrayList<>(List.of("--server.port=0",
             "--management.server.port=0", "--limited-sale.order.rate-limit.enabled=false",
             "--spring.config.additional-location=file:src/main/resources/application.yml",
             "--spring.profiles.active=test", "--limited-sale.recovery.enabled=false", "--spring.flyway.enabled=true",
@@ -125,7 +130,9 @@ class OrderOutboxPublisherIntegrationTest {
             "--spring.data.redis.port=" + REDIS.getMappedPort(6379), "--spring.data.redis.timeout=1s",
             "--limited-sale.order.async.enabled=true", "--limited-sale.order.outbox-publisher.enabled=" + publisher,
             "--limited-sale.kafka.topic-provisioning.enabled=true",
-            "--spring.kafka.bootstrap-servers=" + KAFKA.getBootstrapServers());
+            "--spring.kafka.bootstrap-servers=" + KAFKA.getBootstrapServers()));
+        arguments.addAll(extraArgs);
+        return new SpringApplicationBuilder(sources.toArray(Class<?>[]::new)).run(arguments.toArray(String[]::new));
     }
 
     private ConfigurableApplicationContext publisher(Class<?>... extraSources) {
@@ -439,6 +446,46 @@ class OrderOutboxPublisherIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT IS_FREE_LOCK(?)", Integer.class, LOCK)).isEqualTo(1);
         assertThat(Thread.getAllStackTraces().keySet()).noneMatch(thread -> thread.getName()
             .equals("order-outbox-publisher") && thread.isAlive());
+    }
+
+    @Test
+    void thePublisherDeletesPublishedRowsPastTheRetentionButKeepsTheRowsOfUnfinishedAcceptances() throws Exception {
+        long memberId = jdbc.queryForObject("SELECT id FROM members WHERE email = 'outbox@example.com'", Long.class);
+        long saleId = openSale();
+        // An old finished acceptance, a recent finished one and an old one that is still waiting.
+        long oldFinished = acceptance(memberId, saleId, true);
+        long recentFinished = acceptance(memberId, saleId, true);
+        long oldWaiting = acceptance(memberId, saleId, false);
+        publishedRow(oldFinished, saleId, 7200);
+        publishedRow(recentFinished, saleId, 0);
+        publishedRow(oldWaiting, saleId, 7200);
+        var publishing = application(true, List.of("--limited-sale.order.outbox.retention=PT1H",
+            "--limited-sale.order.outbox.cleanup.initial-delay=PT1S", "--limited-sale.order.outbox.cleanup.interval=PT1H",
+            // Keep the stall check away from the old waiting acceptance, so only the cleanup acts on these rows.
+            "--limited-sale.order.stall.after-publish=PT100H", "--limited-sale.order.stall.deadline=PT100H"));
+        started.add(publishing);
+
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() ->
+            assertThat(meter(publishing, "order.outbox.deleted", null)).isEqualTo(1));
+        assertThat(jdbc.queryForList("SELECT acceptance_id FROM order_outbox ORDER BY acceptance_id", Long.class))
+            .containsExactly(recentFinished, oldWaiting);
+        // The acceptances themselves are never deleted.
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_acceptances", Integer.class)).isEqualTo(3);
+    }
+
+    private static long acceptance(long memberId, long saleId, boolean finished) {
+        jdbc.update("INSERT INTO order_acceptances(public_id, member_id, request_key, sale_id, quantity, status, "
+            + "rejection_reason, accepted_at, finished_at) VALUES (RANDOM_BYTES(16), ?, RANDOM_BYTES(16), ?, 1, ?, ?, "
+            + "UTC_TIMESTAMP(6) - INTERVAL 3 HOUR, ?)", memberId, saleId, finished ? "REJECTED" : "ACCEPTED",
+            finished ? "SALE_SOLD_OUT" : null, finished ? java.sql.Timestamp.from(java.time.Instant.now()) : null);
+        return jdbc.queryForObject("SELECT MAX(id) FROM order_acceptances", Long.class);
+    }
+
+    private static void publishedRow(long acceptanceId, long saleId, int secondsAgo) {
+        jdbc.update("INSERT INTO order_outbox(topic, message_key, payload, created_at, published_at, attempts, "
+            + "acceptance_id, partition_no, record_offset) VALUES (?, ?, '{}', UTC_TIMESTAMP(6) - INTERVAL ? SECOND, "
+            + "UTC_TIMESTAMP(6) - INTERVAL ? SECOND, 0, ?, 0, 0)", TOPIC, Long.toString(saleId), secondsAgo, secondsAgo,
+            acceptanceId);
     }
 
     @Test

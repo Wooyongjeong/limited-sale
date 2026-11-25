@@ -61,7 +61,9 @@ class SessionIntegrationTest {
     static void start() {
         DB.start();
         REDIS.start();
-        String[] properties = {"server.port=0", "spring.datasource.url=" + DB.getJdbcUrl(),
+        // management.server.port=0: since 4-2 these contexts load the sales application.yml, whose management port is
+        // fixed (8090), and two of them run at once.
+        String[] properties = {"server.port=0", "management.server.port=0", "spring.datasource.url=" + DB.getJdbcUrl(),
             "spring.datasource.username=" + DB.getUsername(), "spring.datasource.password=" + DB.getPassword(),
             "spring.data.redis.host=" + REDIS.getHost(), "spring.data.redis.port=" + REDIS.getMappedPort(6379),
             "spring.data.redis.timeout=2s", "spring.data.redis.connect-timeout=2s",
@@ -384,7 +386,7 @@ class SessionIntegrationTest {
             .run(context -> assertThat(context.getStartupFailure())
                 .hasRootCauseInstanceOf(IllegalArgumentException.class)
                 .hasStackTraceContaining("Login failure limit must be positive"));
-        String[] args = {"--server.port=0", "--spring.datasource.url=" + DB.getJdbcUrl(),
+        String[] args = {"--server.port=0", "--management.server.port=0", "--spring.datasource.url=" + DB.getJdbcUrl(),
             "--spring.datasource.username=" + DB.getUsername(), "--spring.datasource.password=" + DB.getPassword(),
             "--spring.data.redis.host=" + REDIS.getHost(), "--spring.data.redis.port=" + REDIS.getMappedPort(6379),
             "--spring.flyway.locations=filesystem:src/main/resources/db/migration,classpath:db/nickmigration",
