@@ -1,0 +1,824 @@
+{
+  "condition": "v2-async",
+  "experiment": "D",
+  "label": null,
+  "status": "passed",
+  "plan": {
+    "users": 2000,
+    "stock": 300,
+    "vus": 200,
+    "detail_views": 0,
+    "abusers": 0,
+    "abuser_vus_per_member": 1
+  },
+  "checks": [
+    {
+      "name": "k6_exit_code",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "iterations_completed",
+      "passed": true,
+      "expected": 2000,
+      "actual": 2000
+    },
+    {
+      "name": "dropped_iterations",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "unresolved_requests",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "all_final_within_deadline",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "no_unfinished_acceptances",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "no_processing_failures",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "at_most_one_order_per_acceptance",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "client_never_hit_the_poll_deadline",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "normal_users_never_rate_limited",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "one_acceptance_per_user",
+      "passed": true,
+      "expected": 2000,
+      "actual": 2000
+    },
+    {
+      "name": "converged",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "confirmed",
+      "passed": true,
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "name": "remaining",
+      "passed": true,
+      "expected": 100,
+      "actual": 100
+    },
+    {
+      "name": "orders_match_order_created",
+      "passed": true,
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "name": "client_saw_every_order",
+      "passed": true,
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "name": "every_order_got_a_payment_answer",
+      "passed": true,
+      "expected": 200,
+      "actual": 200
+    },
+    {
+      "name": "reconciliation_violations",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "mysql_observe_complete",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "sale_cache_setting_took_effect",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "sold_out_gate_setting_took_effect",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "fault_injected_without_error",
+      "passed": true,
+      "expected": null,
+      "actual": null
+    },
+    {
+      "name": "only_requests_before_the_end_were_accepted",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "no_accepted_request_rejected_for_the_period",
+      "passed": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "orders_were_made_after_the_end",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    },
+    {
+      "name": "requests_after_the_end_were_turned_away",
+      "passed": true,
+      "expected": true,
+      "actual": true
+    }
+  ],
+  "failures": [],
+  "k6": {
+    "api": "v2",
+    "iterations_planned": 2000,
+    "vus": 200,
+    "detail_views": 0,
+    "abusers": 0,
+    "abuser_vus_per_member": 1,
+    "duration_seconds": 23.058937999999998,
+    "normal_duration_seconds": 23.058909,
+    "iterations_completed": 2000,
+    "dropped_iterations": 0,
+    "http_requests": 4475,
+    "http_requests_per_second": 194.06791414244665,
+    "http_req_failed_rate": 0,
+    "endpoints": {
+      "order_create": {
+        "count": 2000,
+        "avg_ms": 51.90809550000003,
+        "min_ms": 7.807,
+        "p50_ms": 30.1175,
+        "p95_ms": 190.5994,
+        "p99_ms": 260.96984,
+        "max_ms": 323.383,
+        "status_counts": {
+          "202": 200,
+          "409": 1800
+        },
+        "business_codes": {
+          "SALE_OUTSIDE_PERIOD": 1800,
+          "ORDER_ACCEPTED": 200
+        }
+      },
+      "order_status": {
+        "count": 2275,
+        "avg_ms": 45.92351164835167,
+        "min_ms": 5.374,
+        "p50_ms": 32.756,
+        "p95_ms": 137.05939999999987,
+        "p99_ms": 183.67754,
+        "max_ms": 325.017,
+        "status_counts": {
+          "200": 2275
+        },
+        "business_codes": {
+          "ORDER_ACCEPTANCE_FOUND": 2275
+        }
+      },
+      "order_payment": {
+        "count": 200,
+        "avg_ms": 446.1519199999999,
+        "min_ms": 44.006,
+        "p50_ms": 484.67949999999996,
+        "p95_ms": 583.3204499999999,
+        "p99_ms": 673.7660099999999,
+        "max_ms": 708.486,
+        "status_counts": {
+          "200": 200
+        },
+        "business_codes": {
+          "PAYMENT_SUCCEEDED": 200
+        }
+      },
+      "sale_detail": {
+        "count": 0,
+        "status_counts": {},
+        "business_codes": {}
+      },
+      "abuse_order_create": {
+        "count": 0,
+        "status_counts": {},
+        "business_codes": {}
+      },
+      "abuse_order_payment": {
+        "count": 0,
+        "status_counts": {},
+        "business_codes": {}
+      }
+    },
+    "latency_by_code": {
+      "ORDER_ACCEPTED": {
+        "count": 200,
+        "avg_ms": 176.20840500000006,
+        "min_ms": 93.072,
+        "p50_ms": 170.746,
+        "p95_ms": 264.1918,
+        "p99_ms": 282.03929000000005,
+        "max_ms": 282.896
+      },
+      "SALE_SOLD_OUT": {
+        "count": 0
+      }
+    },
+    "accept_to_final": {
+      "count": 200,
+      "avg_ms": 20966.125,
+      "min_ms": 17932,
+      "p50_ms": 22178,
+      "p95_ms": 22458.1,
+      "p99_ms": 22644.27,
+      "max_ms": 22675
+    },
+    "request_to_confirmed": {
+      "count": 200,
+      "avg_ms": 21412.46,
+      "min_ms": 18289,
+      "p50_ms": 22288.5,
+      "p95_ms": 23013.25,
+      "p99_ms": 23048.05,
+      "max_ms": 23057
+    },
+    "polls_per_acceptance": {
+      "avg": 11.375,
+      "max": 12,
+      "p50": 12,
+      "p95": 12
+    },
+    "finals": {
+      "ORDER_CREATED": 200
+    },
+    "server_errors_5xx": 0,
+    "connection_errors": 0,
+    "retried_requests": 0,
+    "unresolved_requests": 0,
+    "exit_code": 0
+  },
+  "load_generator": {
+    "cpu_seconds": 2.45,
+    "cpu_cores_mean": 0.11
+  },
+  "db": {
+    "orders": 200,
+    "confirmed": 200,
+    "confirmed_abuse": 0,
+    "confirmed_normal": 200,
+    "remaining": 100,
+    "converged": true,
+    "request_results": 0
+  },
+  "abuse": {
+    "stored_requests": 0,
+    "created": 0,
+    "rejections": {},
+    "confirmed": 0
+  },
+  "cache": {
+    "hit": 0,
+    "miss": 0,
+    "error": 0
+  },
+  "rate_limit": {
+    "create": {
+      "allowed": 2000,
+      "rejected": 0,
+      "bypassed": 0
+    },
+    "payment": {
+      "allowed": 200,
+      "rejected": 0,
+      "bypassed": 0
+    }
+  },
+  "gate": {
+    "hit": 0,
+    "miss": 2000,
+    "error": 0
+  },
+  "gate_updates": {
+    "mark": {
+      "success": 0,
+      "error": 0
+    },
+    "clear": {
+      "success": 0,
+      "error": 0
+    }
+  },
+  "derived": {
+    "normal_rate_limited_responses": 0,
+    "actual_order_throughput_per_second": 8.673,
+    "actual_order_throughput_per_normal_second": 8.673,
+    "detail_requests_per_second": 0.0,
+    "cache_hit_rate": null,
+    "gate_hit_rate": 0.0,
+    "abuse_requests_per_second": 0.0,
+    "abuse_requests_per_member_per_second": null,
+    "abuse_rejection_rate": null,
+    "create_rejection_rate_by_server": 0.0
+  },
+  "verifier_violations": 0,
+  "sql_violations": 0,
+  "order_create_by_instance": {
+    "sales1": 998,
+    "sales2": 1002
+  },
+  "load_balancer_access": {
+    "order_create_split": {},
+    "order_payment_split": {
+      "host.docker.internal:55882": {
+        "requests": 94,
+        "share": 0.47
+      },
+      "host.docker.internal:55883": {
+        "requests": 106,
+        "share": 0.53
+      }
+    },
+    "auth_failures": 0
+  },
+  "management": {
+    "instances": {
+      "sales1": {
+        "http_server": [
+          {
+            "method": "GET",
+            "uri": "/api/v2/order-requests/{id}",
+            "status": "200",
+            "count": 1145,
+            "mean_ms": 39.525
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders/{id}/payment",
+            "status": "200",
+            "count": 94,
+            "mean_ms": 432.128
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v2/orders",
+            "status": "202",
+            "count": 100,
+            "mean_ms": 139.252
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v2/orders",
+            "status": "409",
+            "count": 898,
+            "mean_ms": 33.848
+          }
+        ],
+        "hikari": {
+          "acquire_count": 2768,
+          "acquire_mean_ms": 20.35,
+          "acquire_max_ms_peak": 382.0,
+          "active_peak": 10.0,
+          "pending_peak": 42.0,
+          "max_connections": 10.0
+        },
+        "jvm": {
+          "gc_pause_count": 1,
+          "gc_pause_seconds": 0.007,
+          "heap_used_bytes_peak": 970342032.0,
+          "threads_live_peak": 166.0,
+          "tomcat_threads_busy_peak": null,
+          "tomcat_threads_max": null,
+          "cpu_seconds": 12.74,
+          "process_cpu_usage_peak": 0.15757038602451043,
+          "process_cpu_usage_mean": 0.0373,
+          "system_cpu_usage_peak": 0.9978828510938603,
+          "system_cpu_usage_mean": 0.5377
+        },
+        "business": {
+          "order_creation": {},
+          "order_payment": {
+            "payment_succeeded": 94
+          },
+          "order_unfinished_after": 0.0,
+          "order_requires_review_after": 0.0
+        },
+        "samples": 24
+      },
+      "sales2": {
+        "http_server": [
+          {
+            "method": "GET",
+            "uri": "/api/v2/order-requests/{id}",
+            "status": "200",
+            "count": 1130,
+            "mean_ms": 41.976
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v1/orders/{id}/payment",
+            "status": "200",
+            "count": 106,
+            "mean_ms": 452.856
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v2/orders",
+            "status": "202",
+            "count": 100,
+            "mean_ms": 134.507
+          },
+          {
+            "method": "POST",
+            "uri": "/api/v2/orders",
+            "status": "409",
+            "count": 902,
+            "mean_ms": 37.489
+          }
+        ],
+        "hikari": {
+          "acquire_count": 2486,
+          "acquire_mean_ms": 25.653,
+          "acquire_max_ms_peak": 293.0,
+          "active_peak": 10.0,
+          "pending_peak": 47.0,
+          "max_connections": 10.0
+        },
+        "jvm": {
+          "gc_pause_count": 1,
+          "gc_pause_seconds": 0.016,
+          "heap_used_bytes_peak": 1099924584.0,
+          "threads_live_peak": 180.0,
+          "tomcat_threads_busy_peak": null,
+          "tomcat_threads_max": null,
+          "cpu_seconds": 11.67,
+          "process_cpu_usage_peak": 0.16045380532530168,
+          "process_cpu_usage_mean": 0.0346,
+          "system_cpu_usage_peak": 0.9978843441466855,
+          "system_cpu_usage_mean": 0.5387
+        },
+        "business": {
+          "order_creation": {},
+          "order_payment": {
+            "payment_succeeded": 106
+          },
+          "order_unfinished_after": 46.0,
+          "order_requires_review_after": 0.0
+        },
+        "samples": 24
+      }
+    },
+    "combined": {
+      "http_server": [
+        {
+          "method": "GET",
+          "uri": "/api/v2/order-requests/{id}",
+          "status": "200",
+          "count": 2275,
+          "mean_ms": 40.742
+        },
+        {
+          "method": "POST",
+          "uri": "/api/v1/orders/{id}/payment",
+          "status": "200",
+          "count": 200,
+          "mean_ms": 443.114
+        },
+        {
+          "method": "POST",
+          "uri": "/api/v2/orders",
+          "status": "202",
+          "count": 200,
+          "mean_ms": 136.88
+        },
+        {
+          "method": "POST",
+          "uri": "/api/v2/orders",
+          "status": "409",
+          "count": 1800,
+          "mean_ms": 35.673
+        }
+      ],
+      "hikari": {
+        "acquire_count": 5254,
+        "acquire_mean_ms": 22.859,
+        "acquire_max_ms_peak": 382.0,
+        "active_peak": 10.0,
+        "pending_peak": 47.0,
+        "max_connections": 10.0
+      },
+      "jvm": {
+        "gc_pause_count": 2,
+        "gc_pause_seconds": 0.023,
+        "heap_used_bytes_peak": 1099924584.0,
+        "threads_live_peak": 180.0,
+        "tomcat_threads_busy_peak": null,
+        "cpu_seconds": 24.41,
+        "process_cpu_usage_peak": 0.16045380532530168,
+        "system_cpu_usage_peak": 0.9978843441466855,
+        "system_cpu_usage_mean": 0.5382
+      },
+      "business": {
+        "order_creation": {},
+        "order_payment": {
+          "payment_succeeded": 200
+        }
+      }
+    }
+  },
+  "mysql": {
+    "row_lock_waits": 203,
+    "row_lock_time_ms": 20932,
+    "row_lock_wait_avg_ms": 103.113,
+    "row_lock_time_max_ms_after": 185,
+    "row_lock_current_waits_after": 0,
+    "deadlocks": 0,
+    "lock_timeouts": 0,
+    "top_digests": [
+      {
+        "schema": "limited_sale",
+        "digest_text": "SELECT `se1_0` . `id` , `se1_0` . `created_at` , `se1_0` . `description` , `se1_0` . `ends_at` , `se1_0` . `is_stopped` , `se1_0` . `name` , `se1_0` . `per_memb",
+        "calls": 2399,
+        "total_ms": 21203.9,
+        "lock_ms": 20934.366,
+        "rows_examined": 2395,
+        "rows_sent": 2395,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 8.839,
+        "max_ms": 185.404
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "COMMIT",
+        "calls": 5173,
+        "total_ms": 13352.192,
+        "lock_ms": 0.0,
+        "rows_examined": 0,
+        "rows_sent": 0,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 2.581,
+        "max_ms": 24.207
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "INSERT INTO `order_acceptances` ( `accepted_at` , `failure_reason` , `finished_at` , `member_id` , `order_id` , `public_id` , `quantity` , `rejection_reason` , ",
+        "calls": 1999,
+        "total_ms": 864.397,
+        "lock_ms": 1.351,
+        "rows_examined": 0,
+        "rows_sent": 0,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.432,
+        "max_ms": 14.684
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "SELECT `oae1_0` . `id` , `oae1_0` . `accepted_at` , `oae1_0` . `failure_reason` , `oae1_0` . `finished_at` , `oae1_0` . `member_id` , `oae1_0` . `order_id` , `o",
+        "calls": 4696,
+        "total_ms": 617.375,
+        "lock_ms": 4.854,
+        "rows_examined": 2706,
+        "rows_sent": 2708,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.131,
+        "max_ms": 11.479
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "SET `autocommit` = ?",
+        "calls": 10321,
+        "total_ms": 596.619,
+        "lock_ms": 0.0,
+        "rows_examined": 0,
+        "rows_sent": 0,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.058,
+        "max_ms": 11.191
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "SELECT `DATE_FORMAT` ( UTC_TIMESTAMP (?) , ? )",
+        "calls": 3196,
+        "total_ms": 216.3,
+        "lock_ms": 0.0,
+        "rows_examined": 3193,
+        "rows_sent": 3195,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.068,
+        "max_ms": 11.337
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "SELECT `poe1_0` . `id` , `poe1_0` . `created_at` , `poe1_0` . `expires_at` , `poe1_0` . `lease_token` , `poe1_0` . `lease_until` , `poe1_0` . `member_id` , `poe",
+        "calls": 1599,
+        "total_ms": 181.73,
+        "lock_ms": 1.358,
+        "rows_examined": 1599,
+        "rows_sent": 1599,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.114,
+        "max_ms": 8.105
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "SELECT `pe1_0` . `id` , `pe1_0` . `amount` , `pe1_0` . `created_at` , `pe1_0` . `finalized_at` , `pe1_0` . `last_checked_at` , `pe1_0` . `order_id` , `pe1_0` . ",
+        "calls": 1200,
+        "total_ms": 141.029,
+        "lock_ms": 0.635,
+        "rows_examined": 1198,
+        "rows_sent": 1198,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.118,
+        "max_ms": 11.141
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "UPDATE `order_outbox` SET `published_at` = UTC_TIMESTAMP (?) , `partition_no` = ? , `record_offset` = ? WHERE `published_at` IS NULL AND `id` = ?",
+        "calls": 200,
+        "total_ms": 133.263,
+        "lock_ms": 0.08,
+        "rows_examined": 200,
+        "rows_sent": 0,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.666,
+        "max_ms": 1.711
+      },
+      {
+        "schema": "limited_sale",
+        "digest_text": "UPDATE `purchase_orders` SET `created_at` = ? , `expires_at` = ? , `lease_token` = ? , `lease_until` = ? , `member_id` = ? , `next_recovery_at` = ? , `next_revi",
+        "calls": 600,
+        "total_ms": 118.319,
+        "lock_ms": 0.339,
+        "rows_examined": 600,
+        "rows_sent": 0,
+        "no_index_used": 0,
+        "errors": 0,
+        "avg_ms": 0.197,
+        "max_ms": 4.517
+      }
+    ],
+    "unavailable_sections": []
+  },
+  "durations_seconds": {
+    "prepare_seconds": 18.7,
+    "k6_seconds": 23.28,
+    "final_seconds_after_load": 0.08,
+    "final_seconds_after_fault": 0.06,
+    "convergence_seconds": 0.06,
+    "verify_seconds": 0.32,
+    "total_seconds": 46.97
+  },
+  "started_at": "2026-11-25T02:10:54.875376+00:00",
+  "run_id": "ls175-c2a811d03bbd",
+  "api": "v2",
+  "async": {
+    "acceptances": 2000,
+    "by_status": {
+      "ORDER_CREATED": 200,
+      "REJECTED": 1800
+    },
+    "reasons": {
+      "REJECTED:SALE_OUTSIDE_PERIOD": 1800
+    },
+    "consumed": 200,
+    "unfinished": 0,
+    "processing_failed": 0,
+    "acceptances_with_more_than_one_order": 0,
+    "republished_acceptances": 0,
+    "order_inversions": 269,
+    "sold_out_before_a_later_order": 0,
+    "completion_ms": {
+      "count": 200,
+      "p50": 20727.012,
+      "p95": 21144.762,
+      "p99": 21187.411,
+      "max": 21198.689
+    },
+    "acceptance_window_seconds": 0.199,
+    "acceptances_per_second": 1004.793
+  },
+  "final_seconds_after_load": 0.08,
+  "all_final_within_deadline": true,
+  "completion_recorded": 200,
+  "fault": {
+    "name": "end-during-backlog",
+    "events": [
+      {
+        "at": "2026-11-25T02:11:46.019977+00:00",
+        "event": "broker stopped"
+      },
+      {
+        "at": "2026-11-25T02:11:46.271997+00:00",
+        "event": "sale ended",
+        "unfinished": 200
+      },
+      {
+        "at": "2026-11-25T02:11:57.499799+00:00",
+        "event": "broker started"
+      }
+    ],
+    "error": null
+  },
+  "environment": {
+    "os": "macOS-26.7-arm64-arm-64bit-Mach-O",
+    "cpu_model": "Apple M4 Pro",
+    "cpu_count": 14,
+    "memory_bytes": 51539607552,
+    "java_version": "openjdk version \"25.0.1\" 2025-10-21",
+    "mysql_version": "mysql  Ver 8.4.7 for Linux on aarch64 (MySQL Community Server - GPL)",
+    "redis_version": "Redis server v=7.4.12 sha=00000000:0 malloc=jemalloc-5.3.0 bits=64 build=6d565d4e3893fa59",
+    "docker_version": "29.8.0",
+    "instances": [
+      "sales1",
+      "sales2"
+    ],
+    "open_file_limit": [
+      1048576,
+      9223372036854775807
+    ],
+    "head": "5167556699bfdde8cbd99ec5975b97c2bd1b81f4",
+    "dirty": true,
+    "jar_sha256": {
+      "sales": "f5eee15117d6e513aada4a8513bf4d089bc6a22a925a3f8481b3ab9a4857c75f",
+      "pg": "b70898738c0af134749999fd4f8fb906e0c8fc34b78985306a8a34b7b7cae36b"
+    },
+    "order_rate_limit_enabled": true,
+    "k6_version": "k6 v2.1.0 (commit/devel, go1.26.4, darwin/arm64)",
+    "docker_vm": {
+      "cpus": 14,
+      "memory_bytes": 8318976000
+    },
+    "sales_jar_libraries": [
+      "HikariCP-7.0.2",
+      "micrometer-core-1.17.2",
+      "micrometer-registry-prometheus-1.17.2",
+      "mysql-connector-j-9.7.0",
+      "prometheus-metrics-core-1.7.0",
+      "tomcat-embed-core-11.0.27"
+    ],
+    "label": null,
+    "settings": {
+      "sale_cache_enabled": true,
+      "order_rate_limit_enabled": true,
+      "sold_out_gate_enabled": true,
+      "sold_out_gate_passed_explicitly": true,
+      "order_rate_limit_max_requests": 1,
+      "order_rate_limit_max_requests_passed_explicitly": true,
+      "order_rate_limit_window": "1s",
+      "overridden_application_defaults": {},
+      "defaults_not_overridden": {
+        "sale_cache_ttl": "PT60S",
+        "order_rate_limit_window": "1s",
+        "sold_out_gate_ttl": "PT5S"
+      }
+    },
+    "dirty_excluding_results": true
+  },
+  "durations_seconds_total_including_cleanup": 78.25
+}
